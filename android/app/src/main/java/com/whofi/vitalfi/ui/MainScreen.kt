@@ -384,6 +384,16 @@ private fun AboutDialog(
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                 )
+                Text(
+                    stringResource(R.string.about_company),
+                    color = Color(0xFFAAAAAA),
+                    fontSize = 13.sp,
+                )
+                Text(
+                    stringResource(R.string.about_license),
+                    color = Color(0xFF666666),
+                    fontSize = 11.sp,
+                )
                 AboutLink(
                     label = stringResource(R.string.about_whatsapp),
                     onClick = { onOpenUrl(whatsappUrl) },

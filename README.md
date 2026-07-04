@@ -109,3 +109,13 @@ El flujo de trabajo técnico consta de los siguientes pasos:
 2. **Filtrado Hampel y Pasabanda**: Se eliminan valores atípicos y se aíslan las frecuencias de respiración humana típica (0.1 Hz a 0.7 Hz).
 3. **Análisis de Espectro**: Se procesa la señal en el dominio de la frecuencia mediante Transformada Rápida de Fourier (FFT) para buscar picos de frecuencia dominantes.
 4. **Triangulación y Rumbo**: Integrando lecturas del magnetómetro, se asocian picos de atenuación con rumbos específicos para estimar el vector de localización de la víctima.
+
+---
+
+## 📄 Licencia
+
+**VitalFi / WhoFi** es **software libre** bajo la [Licencia MIT](LICENSE).
+
+**Copyright © 2026 Carlos Mundaray — [Solvitco](https://solvitco.com)**
+
+Puedes usar, copiar, modificar y distribuir este software siempre que conserves el aviso de copyright y la licencia. El software se proporciona «tal cual», sin garantías.
