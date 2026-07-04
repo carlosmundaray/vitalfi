@@ -15,6 +15,20 @@ Al usar esta herramienta, aceptas que pueden existir falsos positivos/falsos neg
 
 ---
 
+## 📥 Descargar la app (APK)
+
+Instala **VitalFi** en Android 8.0+ sin Play Store:
+
+| Versión | Descarga |
+|---------|----------|
+| **1.3.2** (recomendada) | [VitalFi-v1.3.2-signed.apk](releases/VitalFi-v1.3.2-signed.apk) |
+| 1.3.1 | [VitalFi-v1.3.1-signed.apk](releases/VitalFi-v1.3.1-signed.apk) |
+| 1.0.0 | [VitalFi-v1.0.0-signed.apk](releases/VitalFi-v1.0.0-signed.apk) |
+
+Historial y notas de cada versión: [releases/README.md](releases/README.md)
+
+---
+
 ## 📂 Estructura del Repositorio
 
 El proyecto se divide en los siguientes componentes principales:

@@ -23,6 +23,8 @@ captures/
 .externalNativeBuild/
 .cxx/
 *.apk
+!releases/
+!releases/*.apk
 *.aar
 *.keystore
 !keystore/

@@ -1,8 +1,10 @@
 # Firma de la APK VitalFi
 
-## APK
+## Descargas publicadas
 
-`release/VitalFi-v1.0.0-signed.apk` (~10 MB)
+Las APK firmadas para usuarios están en [`../releases/`](../releases/README.md).
+
+Versión actual: **1.3.2** — `releases/VitalFi-v1.3.2-signed.apk`
 
 ## Keystore
 
