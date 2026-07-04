@@ -14,7 +14,7 @@ class VictimAlertPlayer {
             ).also { toneGenerator = it }
             generator.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350)
         } catch (_: Exception) {
-            // Ignore if audio is unavailable on device.
+            // Sin audio disponible en el dispositivo.
         }
     }
 
