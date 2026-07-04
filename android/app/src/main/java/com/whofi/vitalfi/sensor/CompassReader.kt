@@ -27,7 +27,7 @@ class CompassReader(context: Context) : SensorEventListener {
 
     fun start(): Boolean {
         val sensor = rotationSensor ?: return false
-        isActive = sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
+        isActive = sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
         return isActive
     }
 

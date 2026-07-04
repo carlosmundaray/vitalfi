@@ -35,6 +35,7 @@ fun Radar3DView(
     viewAzim: Double,
     viewElev: Double,
     viewport: RadarViewport,
+    wifiCoverageRadiusM: Double,
     onVictimClick: (Int) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
     modifier: Modifier = Modifier,
@@ -77,7 +78,10 @@ fun Radar3DView(
                 .radarGestures(
                     viewport = viewport,
                     victims = victims,
-                    projectVictim = { victim -> project(victim.x, victim.y, victim.depth) },
+                    projectVictim = { victim ->
+                        val (rx, ry) = rotateMapCoords(victim.x, victim.y, bearingDeg)
+                        project(rx, ry, victim.depth)
+                    },
                     onVictimClick = onVictimClick,
                     onViewportChange = onViewportChange,
                 ),
@@ -109,8 +113,12 @@ fun Radar3DView(
                 drawLine(Color(0xFF1A2A1A), c, d, strokeWidth = 0.5f)
             }
 
+            drawWifiCoverage3D(wifiCoverageRadiusM, ::project, labelPaint)
+            drawCompassRose3D(bearingDeg, ::project, labelPaint)
+
             for (pt in heatmap) {
-                val p = project(pt.x, pt.y, -0.4)
+                val (rx, ry) = rotateMapCoords(pt.x, pt.y, bearingDeg)
+                val p = project(rx, ry, -0.4)
                 val alpha = (0.2f + 0.5f * pt.intensity.coerceIn(0.0, 1.0)).toFloat()
                 drawCircle(Color(0xFFFF6600).copy(alpha = alpha), 5f, p)
             }
@@ -118,7 +126,8 @@ fun Radar3DView(
             if (trail.size >= 2) {
                 val path = Path()
                 trail.forEachIndexed { i, t ->
-                    val p = project(t.x, t.y, t.z)
+                    val (rx, ry) = rotateMapCoords(t.x, t.y, bearingDeg)
+                    val p = project(rx, ry, t.z)
                     if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
                 }
                 drawPath(path, Color(0xFFFF6699).copy(alpha = 0.5f), style = Stroke(2f))
@@ -127,14 +136,58 @@ fun Radar3DView(
             val laptop = project(0.0, 0.0, 1.0)
             drawCircle(RadarCyan, 12f, laptop)
 
-            val bearingRad = Math.toRadians(bearingDeg).toFloat()
-            val dirEnd = project(sin(bearingRad) * 1.4, cos(bearingRad) * 1.4, 1.0)
-            drawLine(RadarCyan, laptop, dirEnd, strokeWidth = 3f)
+            // Frente del teléfono (hacia arriba en pantalla)
+            val frontEnd = project(0.0, 1.2, 1.0)
+            drawLine(RadarCyan.copy(alpha = 0.35f), laptop, frontEnd, strokeWidth = 5f)
+            drawLine(RadarCyan, laptop, frontEnd, strokeWidth = 3f)
+            drawContext.canvas.nativeCanvas.drawText(
+                "▲ Frente ${bearingDeg.toInt()}° ${bearingToCardinal(bearingDeg)}",
+                frontEnd.x + 8f,
+                frontEnd.y,
+                tagPaint,
+            )
 
-            drawVictims3D(victims, selectedVictimId, ::project, laptop, tagPaint, labelPaint)
+            navigationTarget(victims, selectedVictimId)?.let { target ->
+                val (rx, ry) = rotateMapCoords(target.x, target.y, bearingDeg)
+                val targetPoint = project(rx, ry, target.depth)
+                drawLine(RadarOrange.copy(alpha = 0.35f), laptop, targetPoint, strokeWidth = 8f)
+                drawLine(RadarOrange.copy(alpha = 0.55f), laptop, targetPoint, strokeWidth = 5f)
+                drawLine(RadarOrange, laptop, targetPoint, strokeWidth = 2.5f)
+                val turn = normalizedTurnDelta(target.bearing, bearingDeg)
+                val turnText = when {
+                    kotlin.math.abs(turn) < 12 -> "↑ Ve recto → ${bearingToCardinal(target.bearing)}"
+                    turn > 0 -> "↻ Gira ${turn.toInt()}° DERECHA → ${bearingToCardinal(target.bearing)}"
+                    else -> "↺ Gira ${(-turn).toInt()}° IZQUIERDA → ${bearingToCardinal(target.bearing)}"
+                }
+                drawContext.canvas.nativeCanvas.drawText(
+                    "→ ${target.label}: ${target.bearing.toInt()}° ${bearingToCardinal(target.bearing)} | ${"%.1f".format(target.distance)} m",
+                    8f,
+                    24f,
+                    tagPaint,
+                )
+                drawContext.canvas.nativeCanvas.drawText(
+                    turnText,
+                    8f,
+                    52f,
+                    android.graphics.Paint(tagPaint).apply {
+                        color = android.graphics.Color.parseColor("#FFCC00")
+                        textSize = tagPaint.textSize * 1.05f
+                    },
+                )
+            }
+
+            drawVictims3D(
+                victims,
+                bearingDeg,
+                selectedVictimId,
+                ::project,
+                laptop,
+                tagPaint,
+                labelPaint,
+            )
 
             drawContext.canvas.nativeCanvas.apply {
-                drawText("Radar 3D — pellizca zoom | arrastra mover", 8f, size.height - 8f, labelPaint)
+                drawText("Radar 3D — brújula N/E/S/O | pellizca zoom", 8f, size.height - 8f, labelPaint)
             }
         }
     }

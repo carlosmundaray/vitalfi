@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RotateLeft
 import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiFind
@@ -42,6 +43,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -109,8 +111,10 @@ fun MainScreen(
     onResetRadarView: () -> Unit,
     onToggleRadarFullscreen: () -> Unit,
     onCloseRadarFullscreen: () -> Unit,
+    onSetAlertSoundEnabled: (Boolean) -> Unit,
 ) {
     var showAbout by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val view = LocalView.current
 
@@ -152,6 +156,9 @@ fun MainScreen(
                 TextButton(onClick = { showAbout = true }) {
                     Icon(Icons.Default.Info, contentDescription = null, tint = Cyan)
                     Text(stringResource(R.string.about_button), color = Cyan, fontSize = 12.sp)
+                }
+                IconButton(onClick = { showSettings = true }) {
+                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title), tint = Cyan)
                 }
             }
 
@@ -271,6 +278,14 @@ fun MainScreen(
         )
     }
 
+    if (showSettings) {
+        SettingsDialog(
+            alertSoundEnabled = state.alertSoundEnabled,
+            onToggleAlertSound = onSetAlertSoundEnabled,
+            onDismiss = { showSettings = false },
+        )
+    }
+
     state.selectedVictim?.let { victim ->
         VictimDetailDialog(
             victim = victim,
@@ -294,6 +309,49 @@ fun MainScreen(
             onResetView3D = onResetView3D,
         )
     }
+}
+
+@Composable
+private fun SettingsDialog(
+    alertSoundEnabled: Boolean,
+    onToggleAlertSound: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.settings_alert_sound),
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            stringResource(R.string.settings_alert_sound_hint),
+                            color = Color(0xFF888888),
+                            fontSize = 11.sp,
+                        )
+                    }
+                    Switch(
+                        checked = alertSoundEnabled,
+                        onCheckedChange = onToggleAlertSound,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.about_close))
+            }
+        },
+    )
 }
 
 @Composable
@@ -450,6 +508,12 @@ private fun StatusCard(state: VitalFiUiState) {
                 fontSize = 11.sp,
             )
             Text("RSSI: ${state.rssiDbm?.let { "$it dBm" } ?: "—"}", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+            Text(
+                state.mlStatus,
+                color = if (state.mlReady) Color(0xFF66FF99) else Color(0xFF777777),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+            )
             Text(state.status, color = statusColor, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             if (state.calibrating) {
                 Text("Calibrando... ${state.calibRemainingSec}s", color = Color(0xFFFFCC00), fontSize = 12.sp)
@@ -482,7 +546,7 @@ private fun StatusCard(state: VitalFiUiState) {
                 )
             }
             Text(
-                "Muestras: ${state.sampleCount}/${state.maxSamples} | Rumbo: ${state.bearingDeg.roundToInt()}°",
+                "Muestras: ${state.sampleCount}/${state.maxSamples} | Rumbo: ${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)}",
                 color = Color(0xFF666666),
                 fontSize = 11.sp,
             )
@@ -493,11 +557,12 @@ private fun StatusCard(state: VitalFiUiState) {
 @Composable
 private fun NavigationHint(state: VitalFiUiState) {
     val pos = state.position
-    if (pos == null) {
+    val target = state.selectedVictim ?: state.victims.firstOrNull()
+    if (pos == null && target == null) {
         if (state.rubbleConfidence > 0.12 && (state.isActivity || state.isBreathing)) {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218))) {
                 Text(
-                    text = "Gira 360° lentamente alrededor del escombro para triangular la posición en el radar.",
+                    text = "Gira 360° lentamente alrededor del escombro. El radar muestra Norte (N) y tu rumbo actual.",
                     modifier = Modifier.padding(10.dp),
                     color = Color(0xFFFFCC00),
                     fontSize = 13.sp,
@@ -506,17 +571,14 @@ private fun NavigationHint(state: VitalFiUiState) {
         }
         return
     }
-    var turn = pos.bearing - state.bearingDeg
-    if (turn > 180) turn -= 360
-    if (turn < -180) turn += 360
-    val steer = when {
-        kotlin.math.abs(turn) < 15 -> "↑ AVANZA recto hacia la víctima"
-        turn > 0 -> "↗ Gira ${turn.toInt()}° a la DERECHA"
-        else -> "↖ Gira ${(-turn).toInt()}° a la IZQUIERDA"
-    }
+
+    val targetBearing = target?.bearing ?: pos!!.bearing
+    val targetDistance = target?.distance ?: pos!!.distance
+    val steer = buildNavigationHint(targetBearing, state.bearingDeg, targetDistance)
+    val depthLine = pos?.let { " | Prof: ${"%.1f".format(-it.depth)} m bajo escombros" } ?: ""
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218))) {
         Text(
-            text = "$steer\nDist: ${"%.1f".format(pos.distance)} m | Prof: ${"%.1f".format(-pos.depth)} m bajo escombros",
+            text = "$steer$depthLine\nTu rumbo: ${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)}",
             modifier = Modifier.padding(10.dp),
             color = Color(0xFFFFCC00),
             fontSize = 13.sp,
@@ -577,7 +639,7 @@ private fun VictimDetailDialog(victim: TrappedVictim, onDismiss: () -> Unit) {
                 VictimDetailRow("Coordenadas X", "${"%.2f".format(victim.x)} m")
                 VictimDetailRow("Coordenadas Y", "${"%.2f".format(victim.y)} m")
                 VictimDetailRow("Profundidad", "${"%.2f".format(-victim.depth)} m bajo escombros")
-                VictimDetailRow("Rumbo", "${victim.bearing.roundToInt()}°")
+                VictimDetailRow("Rumbo", "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}")
                 VictimDetailRow("Distancia", "${"%.2f".format(victim.distance)} m")
                 VictimDetailRow("Proximidad", victim.proximity)
                 VictimDetailRow(
@@ -613,6 +675,7 @@ fun RadarView(
     victims: List<TrappedVictim>,
     selectedVictimId: Int?,
     heatmap: List<HeatPoint>,
+    wifiCoverageRadiusM: Double,
     viewport: RadarViewport,
     onVictimClick: (Int) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
@@ -640,7 +703,8 @@ fun RadarView(
             val cy = canvasSize.height / 2f + viewport.panY
             val half = minOf(canvasSize.width, canvasSize.height) / 2f
             val scale = half / divisor * viewport.zoom
-            return Offset(cx + victim.x.toFloat() * scale, cy - victim.y.toFloat() * scale)
+            val (rx, ry) = rotateMapCoords(victim.x, victim.y, bearingDeg)
+            return Offset(cx + rx.toFloat() * scale, cy - ry.toFloat() * scale)
         }
 
         Canvas(
@@ -656,24 +720,23 @@ fun RadarView(
                 ),
         ) {
             canvasSize = IntSize(size.width.toInt(), size.height.toInt())
-            val (cx, cy) = radarCenter(viewport)
-            val scale = effectiveRadarScale(divisor, viewport)
 
             drawRadarGrid2D(divisor, viewport, labelPaint)
-            drawHeatmap2D(heatmap, divisor, viewport)
-
-            val bearingRad = Math.toRadians(bearingDeg).toFloat()
-            drawLine(
-                Cyan,
-                Offset(cx, cy),
-                Offset(cx + sin(bearingRad) * scale * 1.4f, cy - cos(bearingRad) * scale * 1.4f),
-                strokeWidth = 4f,
+            drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint)
+            drawHeatmap2D(heatmap, bearingDeg, divisor, viewport)
+            drawCompassRose2D(bearingDeg, divisor, viewport, labelPaint)
+            drawNavigationGuide2D(
+                bearingDeg = bearingDeg,
+                target = navigationTarget(victims, selectedVictimId),
+                divisor = divisor,
+                viewport = viewport,
+                labelPaint = labelPaint,
+                tagPaint = tagPaint,
             )
-            drawCircle(Cyan, 10f, Offset(cx, cy))
-            drawVictims2D(victims, divisor, viewport, selectedVictimId, labelPaint, tagPaint)
+            drawVictims2D(victims, bearingDeg, divisor, viewport, selectedVictimId, labelPaint, tagPaint)
 
             drawContext.canvas.nativeCanvas.drawText(
-                "Radar 2D — pellizca zoom | arrastra mover | toca P1, P2…",
+                "Radar 2D — ▲ frente del teléfono | N rojo = Norte real | gira para orientarte",
                 8f,
                 size.height - 8f,
                 labelPaint,

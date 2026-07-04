@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     onResetRadarView = { viewModel.resetRadarView() },
                     onToggleRadarFullscreen = { viewModel.toggleRadarFullscreen() },
                     onCloseRadarFullscreen = { viewModel.closeRadarFullscreen() },
+                    onSetAlertSoundEnabled = { viewModel.setAlertSoundEnabled(it) },
                 )
             }
         }

@@ -4,6 +4,17 @@ Este repositorio contiene la implementación del sistema **WhoFi / VitalFi**, di
 
 ---
 
+## ⚠️ Aviso Importante (Uso Experimental)
+
+**VitalFi es una herramienta experimental de apoyo basada en análisis de señales Wi-Fi.**  
+Los resultados son estimaciones y **no son 100% confiables**.
+
+VitalFi **no reemplaza** equipos profesionales de búsqueda y rescate, protocolos oficiales de emergencia, ni el criterio de personal técnico o médico especializado.
+
+Al usar esta herramienta, aceptas que pueden existir falsos positivos/falsos negativos y que toda decisión crítica debe confirmarse con métodos profesionales adicionales.
+
+---
+
 ## 📂 Estructura del Repositorio
 
 El proyecto se divide en los siguientes componentes principales:

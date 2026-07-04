@@ -10,14 +10,18 @@ import com.whofi.vitalfi.dsp.PositionEstimate
 import com.whofi.vitalfi.dsp.RubbleConfidenceTracker
 import com.whofi.vitalfi.dsp.VitalSignalDetector
 import com.whofi.vitalfi.dsp.polarToXY
+import com.whofi.vitalfi.audio.VictimAlertPlayer
 import com.whofi.vitalfi.export.CsvExporter
 import com.whofi.vitalfi.export.SessionLogEntry
+import com.whofi.vitalfi.ml.SignatureModel
 import com.whofi.vitalfi.sensor.CompassReader
+import com.whofi.vitalfi.settings.SettingsStore
 import com.whofi.vitalfi.ui.RadarViewport
 import com.whofi.vitalfi.ui.TrailPoint3D
 import com.whofi.vitalfi.wifi.RssiSample
 import com.whofi.vitalfi.wifi.ScannedNetwork
 import com.whofi.vitalfi.wifi.WifiCollectMode
+import com.whofi.vitalfi.wifi.WifiCoverageEstimator
 import com.whofi.vitalfi.wifi.WifiRssiCollector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,6 +74,11 @@ data class VitalFiUiState(
     val trail: List<TrailPoint3D> = emptyList(),
     val radarViewport: RadarViewport = RadarViewport(),
     val radarFullscreen: Boolean = false,
+    val mlReady: Boolean = false,
+    val mlScore: Double = 0.0,
+    val mlStatus: String = "ML desactivado",
+    val wifiCoverageRadiusM: Double = 0.0,
+    val alertSoundEnabled: Boolean = true,
     val toastMessage: String? = null,
 )
 
@@ -79,10 +88,21 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     private val compass = CompassReader(app)
     private val victimTracker = MultiVictimTracker()
     private val rubbleTracker = RubbleConfidenceTracker()
+    private val signatureModel = SignatureModel(app)
+    private val settingsStore = SettingsStore(app)
+    private val alertPlayer = VictimAlertPlayer()
     private val sessionLog = mutableListOf<SessionLogEntry>()
     private val positionTrail = mutableListOf<TrailPoint3D>()
+    private val alertedVictimIds = mutableSetOf<Int>()
 
-    private val _uiState = MutableStateFlow(VitalFiUiState(maxSamples = collector.maxSamples))
+    private val _uiState = MutableStateFlow(
+        VitalFiUiState(
+            maxSamples = collector.maxSamples,
+            mlReady = signatureModel.isReady,
+            mlStatus = signatureModel.statusLabel,
+            alertSoundEnabled = settingsStore.alertSoundEnabled,
+        ),
+    )
     val uiState: StateFlow<VitalFiUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null
@@ -92,12 +112,14 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     private var cachedRecentQuality = emptyList<Double>()
     private var connectedNoSamplesSinceMs: Long = 0L
     private var suggestedPassiveFallback = false
+    private var compassJob: Job? = null
 
     fun start() {
         if (running) return
         running = true
 
         compass.start()
+        startCompassUpdates()
         if (collector.mode == WifiCollectMode.CONNECTED || !collector.targetSsid.isNullOrBlank()) {
             collector.start(viewModelScope)
         }
@@ -126,13 +148,20 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     fun stop() {
         running = false
         analysisJob?.cancel()
+        compassJob?.cancel()
         collector.stop()
         compass.stop()
     }
 
     override fun onCleared() {
         stop()
+        alertPlayer.release()
         super.onCleared()
+    }
+
+    fun setAlertSoundEnabled(enabled: Boolean) {
+        settingsStore.alertSoundEnabled = enabled
+        _uiState.value = _uiState.value.copy(alertSoundEnabled = enabled)
     }
 
     fun reset() {
@@ -142,6 +171,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         compass.resetManual()
         sessionLog.clear()
         positionTrail.clear()
+        alertedVictimIds.clear()
         cachedRecentQuality = emptyList()
         _uiState.value = _uiState.value.copy(
             trail = emptyList(),
@@ -157,6 +187,10 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             hint = "Calibrando de nuevo. Permanece quieto 30 s.",
             recentQuality = emptyList(),
             sampleCount = 0,
+            mlReady = signatureModel.isReady,
+            mlScore = 0.0,
+            mlStatus = signatureModel.statusLabel,
+            wifiCoverageRadiusM = 0.0,
         )
     }
 
@@ -226,6 +260,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         rubbleTracker.reset(System.currentTimeMillis())
         sessionLog.clear()
         positionTrail.clear()
+        alertedVictimIds.clear()
         victimTracker.reset()
         cachedRecentQuality = emptyList()
         _uiState.value = _uiState.value.copy(
@@ -311,6 +346,21 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         if (running) collector.start(viewModelScope)
     }
 
+    private fun startCompassUpdates() {
+        compassJob?.cancel()
+        compassJob = viewModelScope.launch {
+            while (isActive && running) {
+                val bearing = compass.effectiveBearing()
+                val label = compass.sourceLabel()
+                val prev = _uiState.value
+                if (prev.bearingDeg != bearing || prev.compassLabel != label) {
+                    _uiState.value = prev.copy(bearingDeg = bearing, compassLabel = label)
+                }
+                delay(80)
+            }
+        }
+    }
+
     private suspend fun runAnalysisTick() {
         val snapshot = collector.samplesSnapshot()
         val series = collector.qualitySeriesSnapshot()
@@ -324,6 +374,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         val connected = collector.isWifiConnected()
         val wifiWithoutInternet = collector.usesWifiWithoutInternet()
         val rssi = collector.currentRssi()
+        val wifiCoverageRadiusM = WifiCoverageEstimator.estimateRadiusM(rssi)
         val effectiveFs = collector.estimateSampleRateHz(snapshot)
         val analysisMinSamples = if (mode == WifiCollectMode.PASSIVE_SCAN) 6 else 10
         val collectMinSamples = analysisMinSamples
@@ -337,6 +388,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 hint = "Activa Wi-Fi en ajustes. No hace falta internet.",
                 bearingDeg = bearing,
                 compassLabel = compassLabel,
+                wifiCoverageRadiusM = wifiCoverageRadiusM,
             )
             return
         }
@@ -374,6 +426,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 calibrating = rubbleTracker.calibrating,
                 calibRemainingSec = rubbleTracker.calibRemainingSec(now),
                 trail = positionTrail.toList(),
+                wifiCoverageRadiusM = wifiCoverageRadiusM,
             )
             return
         }
@@ -387,10 +440,13 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 minSamples = analysisMinSamples,
             )
         }
+        val ml = withContext(Dispatchers.Default) { signatureModel.infer(series) }
 
         val rubbleConf = rubbleTracker.update(detection, now)
-        val isBreathing = detection.isBreathing
-        val isActivity = detection.isActivity
+        val mlBreathing = ml?.breathingScore ?: 0.0
+        val mlActivity = ml?.activityScore ?: 0.0
+        val isBreathing = detection.isBreathing || mlBreathing > 0.72
+        val isActivity = detection.isActivity || mlActivity > 0.62
         val hasSignal = !detection.signalFlat &&
             (detection.variance > 0.01 || detection.uniqueValues >= 2)
 
@@ -420,6 +476,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val victims = victimTracker.locateVictims(minScore = 0.025, nowMs = now)
+        maybePlayTrappedAlert(victims)
         val primary = victims.firstOrNull()
 
         val best = victimTracker.bestEstimate(minScore = 0.03)
@@ -482,7 +539,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             isBreathing = primary?.isBreathing ?: isBreathing,
             isActivity = primary?.isActivity ?: isActivity,
             respRate = primary?.respRate?.takeIf { it > 0 } ?: detection.respRate,
-            confidence = primary?.confidence?.takeIf { it > 0 } ?: detection.confidence,
+            confidence = primary?.confidence?.takeIf { it > 0 }
+                ?: max(detection.confidence, mlBreathing * 0.85),
             rubbleConfidence = primary?.rubbleConfidence?.takeIf { it > 0 } ?: rubbleConf,
             heartBeating = primary?.heartBeating ?: detection.heartBeating,
             heartRateBpm = primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm,
@@ -500,8 +558,37 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             recentQuality = cachedRecentQuality,
             collectMode = mode,
             trail = positionTrail.toList(),
+            mlReady = signatureModel.isReady,
+            mlScore = mlBreathing,
+            mlStatus = if (signatureModel.isReady) {
+                "ML ${"%.0f".format(mlBreathing * 100)}% | firma ${"%.2f".format(ml?.signatureNorm ?: 0.0)}"
+            } else {
+                signatureModel.statusLabel
+            },
+            wifiCoverageRadiusM = wifiCoverageRadiusM,
             toastMessage = prev.toastMessage,
         )
+    }
+
+    private fun isTrappedVictim(victim: TrappedVictim): Boolean =
+        victim.isBreathing ||
+            (victim.rubbleConfidence >= 0.22 && (victim.isActivity || victim.isBreathing))
+
+    private fun maybePlayTrappedAlert(victims: List<TrappedVictim>) {
+        if (!settingsStore.alertSoundEnabled) return
+
+        val newlyTrapped = victims.filter { victim ->
+            victim.id !in alertedVictimIds && isTrappedVictim(victim)
+        }
+        if (newlyTrapped.isEmpty()) return
+
+        newlyTrapped.forEach { alertedVictimIds.add(it.id) }
+        viewModelScope.launch {
+            repeat(3) {
+                alertPlayer.playTrappedAlert()
+                delay(450)
+            }
+        }
     }
 
     private fun buildPosition(estBearing: Double, estDist: Double, rubbleConf: Double): PositionEstimate {

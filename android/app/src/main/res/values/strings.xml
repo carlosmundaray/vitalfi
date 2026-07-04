@@ -17,4 +17,7 @@
     <string name="about_website_url">https://solvitco.com/</string>
     <string name="about_close">Cerrar</string>
     <string name="about_version">Versión %1$s</string>
+    <string name="settings_title">Configuración</string>
+    <string name="settings_alert_sound">Sonido al detectar persona</string>
+    <string name="settings_alert_sound_hint">Reproduce 3 alertas cuando se detecta una posible víctima atrapada.</string>
 </resources>
