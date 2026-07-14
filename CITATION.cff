@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use VitalFi in research, please cite it using the metadata below."
 type: software
-title: "VitalFi: Wi-Fi–based life detection under rubble"
+title: "VitalFi: Wi-Fi-based life detection under rubble"
 abstract: >-
   VitalFi is an open-source experimental Android application and companion Python
   tooling for research on device-free Wi-Fi sensing in search-and-rescue scenarios.
@@ -20,23 +20,22 @@ license: GPL-3.0-only
 version: "1.3.20"
 date-released: "2026-07-14"
 keywords:
-  - Wi-Fi sensing
+  - "Wi-Fi sensing"
   - RSSI
-  - search and rescue
-  - through-rubble detection
+  - "search and rescue"
+  - "through-rubble detection"
   - Android
-  - offline DSP
-  - disaster response
-  - breathing detection
+  - "offline DSP"
+  - "disaster response"
+  - "breathing detection"
 preferred-citation:
   type: software
-  title: "VitalFi: Wi-Fi–based life detection under rubble"
+  title: "VitalFi: Wi-Fi-based life detection under rubble"
   authors:
     - family-names: Mundaray
       given-names: Carlos
       affiliation: "Solvitco"
       orcid: "https://orcid.org/0009-0002-6152-0256"
-  version: "1.3.20"
   year: 2026
   url: "https://github.com/carlosmundaray/vitalfi"
   # Tras Zenodo, añade por ejemplo:
