@@ -9,7 +9,7 @@
 | Campo | Valor |
 |-------|--------|
 | **Autor** | Carlos Mundaray — [Solvitco](https://solvitco.com) |
-| **ORCID** | *(añade tu ORCID iD en [`CITATION.cff`](CITATION.cff) y aquí, p. ej. `https://orcid.org/0000-XXXX-XXXX-XXXX`)* |
+| **ORCID** | [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256) |
 | **Repositorio** | https://github.com/carlosmundaray/vitalfi |
 | **Licencia** | [GNU GPL v3](LICENSE) |
 | **Versión de software** | **1.3.20** |
@@ -36,7 +36,7 @@
 
 - **Carlos Mundaray** — Solvitco ([solvitco.com](https://solvitco.com))  
   - GitHub: [@carlosmundaray](https://github.com/carlosmundaray)  
-  - ORCID: *completar en [`CITATION.cff`](CITATION.cff)*  
+  - ORCID: [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256)
 
 Contacto y aviso legal: [Términos y Condiciones / Privacidad](docs/TERMINOS_Y_CONDICIONES.md).
 
@@ -68,7 +68,7 @@ Tras archivar en **Zenodo**, sustituye la URL por el **DOI** (concept DOI o DOI 
 
 ### Publicar en ORCID (pasos recomendados)
 
-1. Completa tu **ORCID iD** en `CITATION.cff` (campo `orcid` del autor).
+1. ORCID del autor ya está en `CITATION.cff`: [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256).
 2. Crea una cuenta en [Zenodo](https://zenodo.org) e inicia sesión con GitHub u ORCID.
 3. En Zenodo → GitHub, habilita el repositorio `carlosmundaray/vitalfi`.
 4. Publica un **Release** en GitHub (p. ej. `v1.3.20`); Zenodo generará un **DOI**.

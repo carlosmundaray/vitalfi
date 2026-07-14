@@ -80,5 +80,6 @@ Nos reservamos el derecho de modificar o actualizar estos términos de uso y pol
 Si tiene preguntas sobre estos términos, la integración con ORCID o el tratamiento de sus datos personales en este proyecto de investigación, puede ponerse en contacto con nosotros a través de:
 
 * **Desarrollador Principal:** Carlos Mundaray
+* **ORCID:** [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256)
 * **Sitio Web Oficial:** [Solvitco](https://solvitco.com)
 * **Repositorio de Código:** [GitHub - VitalFi](https://github.com/carlosmundaray/vitalfi) (o el canal de soporte especificado en el repositorio).
