@@ -1,5 +1,10 @@
 package com.whofi.vitalfi.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
@@ -37,6 +44,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -71,6 +79,7 @@ import com.whofi.vitalfi.R
 import com.whofi.vitalfi.VitalFiUiState
 import com.whofi.vitalfi.dsp.HeatPoint
 import com.whofi.vitalfi.dsp.PositionEstimate
+import com.whofi.vitalfi.dsp.describePersonPosition
 import com.whofi.vitalfi.dsp.TrappedVictim
 import com.whofi.vitalfi.wifi.ScannedNetwork
 import com.whofi.vitalfi.wifi.WifiCollectMode
@@ -112,11 +121,35 @@ fun MainScreen(
     onToggleRadarFullscreen: () -> Unit,
     onCloseRadarFullscreen: () -> Unit,
     onSetAlertSoundEnabled: (Boolean) -> Unit,
+    onSetTrappedOnlyMode: (Boolean) -> Unit,
+    onMarkRubbleZone: () -> Unit,
+    onClearRubbleZone: () -> Unit,
+    onExcludeRescuer: () -> Unit,
+    onClearExclusions: () -> Unit,
+    onAdjustElevation: (Double) -> Unit,
+    onResetElevation: () -> Unit,
+    onToggleAutoElevation: (Boolean) -> Unit,
+    onToggleRadarLayer: (String) -> Unit,
+    onRadarLayersSoloPersona: () -> Unit,
+    onRadarLayersTodo: () -> Unit,
+    onRadarLayersModoRescate: () -> Unit,
+    onSetVibrationEnabled: (Boolean) -> Unit,
+    onSetKeepScreenOn: (Boolean) -> Unit,
+    onSetDetectionSensitivity: (Double) -> Unit,
+    onSetShowRadar3D: (Boolean) -> Unit,
+    onSetRubbleZoneRadius: (Double) -> Unit,
+    onSetDefaultWifiMode: (WifiCollectMode) -> Unit,
+    onSetColorblindMode: (Boolean) -> Unit,
 ) {
     var showAbout by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val view = LocalView.current
+
+    DisposableEffect(state.keepScreenOn) {
+        view.keepScreenOn = state.keepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
 
     DisposableEffect(state.radarFullscreen) {
         val window = (view.context as Activity).window
@@ -153,6 +186,13 @@ fun MainScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
+                Button(
+                    onClick = onReset,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
+                    Text("Reiniciar", fontSize = 12.sp)
+                }
                 TextButton(onClick = { showAbout = true }) {
                     Icon(Icons.Default.Info, contentDescription = null, tint = Cyan)
                     Text(stringResource(R.string.about_button), color = Cyan, fontSize = 12.sp)
@@ -178,6 +218,14 @@ fun MainScreen(
 
             StatusCard(state)
 
+            TrappedFilterControls(
+                state = state,
+                onMarkRubbleZone = onMarkRubbleZone,
+                onClearRubbleZone = onClearRubbleZone,
+                onExcludeRescuer = onExcludeRescuer,
+                onClearExclusions = onClearExclusions,
+            )
+
             VictimsSummaryCard(state, onSelectVictim)
 
             Row(
@@ -188,7 +236,7 @@ fun MainScreen(
                 FilterChip(
                     selected = state.showRadar3D,
                     onClick = onToggleRadar3D,
-                    label = { Text(if (state.showRadar3D) "Radar 3D" else "Radar 2D") },
+                    label = { Text(if (state.showRadar3D) "Vista 3D" else "Radar 2D") },
                     leadingIcon = { Icon(Icons.Default.ViewInAr, null) },
                 )
                 Button(onClick = onExportCsv) {
@@ -210,6 +258,13 @@ fun MainScreen(
                 onViewElevUp = onViewElevUp,
                 onViewElevDown = onViewElevDown,
                 onResetView3D = onResetView3D,
+                onAdjustElevation = onAdjustElevation,
+                onResetElevation = onResetElevation,
+                onToggleAutoElevation = onToggleAutoElevation,
+                onToggleRadarLayer = onToggleRadarLayer,
+                onRadarLayersSoloPersona = onRadarLayersSoloPersona,
+                onRadarLayersTodo = onRadarLayersTodo,
+                onRadarLayersModoRescate = onRadarLayersModoRescate,
             )
 
             SignalChart(
@@ -225,10 +280,6 @@ fun MainScreen(
             ) {
                 IconButton(onClick = onBearingLeft) {
                     Icon(Icons.Default.RotateLeft, "Girar izq", tint = Cyan)
-                }
-                Button(onClick = onReset) {
-                    Icon(Icons.Default.Refresh, null)
-                    Text(" Reiniciar")
                 }
                 IconButton(onClick = onBearingRight) {
                     Icon(Icons.Default.RotateRight, "Girar der", tint = Cyan)
@@ -280,8 +331,27 @@ fun MainScreen(
 
     if (showSettings) {
         SettingsDialog(
-            alertSoundEnabled = state.alertSoundEnabled,
+            state = state,
             onToggleAlertSound = onSetAlertSoundEnabled,
+            onToggleTrappedOnly = onSetTrappedOnlyMode,
+            onToggleVibration = onSetVibrationEnabled,
+            onToggleKeepScreenOn = onSetKeepScreenOn,
+            onSetSensitivity = onSetDetectionSensitivity,
+            onSetShowRadar3D = onSetShowRadar3D,
+            onSetRubbleZoneRadius = onSetRubbleZoneRadius,
+            onSetDefaultWifiMode = onSetDefaultWifiMode,
+            onSetColorblindMode = onSetColorblindMode,
+            onToggleRadarLayer = onToggleRadarLayer,
+            onRadarLayersModoRescate = onRadarLayersModoRescate,
+            onRadarLayersSoloPersona = onRadarLayersSoloPersona,
+            onRadarLayersTodo = onRadarLayersTodo,
+            onMarkRubbleZone = onMarkRubbleZone,
+            onClearRubbleZone = onClearRubbleZone,
+            onExcludeRescuer = onExcludeRescuer,
+            onClearExclusions = onClearExclusions,
+            onToggleAutoElevation = onToggleAutoElevation,
+            onAdjustElevation = onAdjustElevation,
+            onResetElevation = onResetElevation,
             onDismiss = { showSettings = false },
         )
     }
@@ -290,6 +360,8 @@ fun MainScreen(
         VictimDetailDialog(
             victim = victim,
             onDismiss = onDismissVictim,
+            phoneBearingDeg = state.bearingDeg,
+            colorblind = state.colorblindMode,
         )
     }
 
@@ -307,42 +379,381 @@ fun MainScreen(
             onViewElevUp = onViewElevUp,
             onViewElevDown = onViewElevDown,
             onResetView3D = onResetView3D,
+            onAdjustElevation = onAdjustElevation,
+            onResetElevation = onResetElevation,
+            onToggleAutoElevation = onToggleAutoElevation,
+            onToggleRadarLayer = onToggleRadarLayer,
+            onRadarLayersSoloPersona = onRadarLayersSoloPersona,
+            onRadarLayersTodo = onRadarLayersTodo,
+            onRadarLayersModoRescate = onRadarLayersModoRescate,
         )
     }
 }
 
 @Composable
+private fun SettingsSwitchRow(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontWeight = FontWeight.Medium)
+            Text(hint, color = Color(0xFF888888), fontSize = 11.sp)
+        }
+        Switch(checked = checked, onCheckedChange = onToggle)
+    }
+}
+
+@Composable
+private fun SettingsSectionTitle(title: String) {
+    Text(
+        title,
+        color = Cyan,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 4.dp),
+    )
+}
+
+@Composable
+private fun SettingsOptionButtons(
+    options: List<Pair<String, Double>>,
+    selectedValue: Double,
+    tolerance: Double = 5.0,
+    onSelect: (Double) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { (label, value) ->
+            val selected = kotlin.math.abs(selectedValue - value) < tolerance
+            Button(
+                onClick = { onSelect(value) },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selected) Cyan else Color(0xFF1A2A1A),
+                    contentColor = if (selected) Color.Black else Color(0xFFAACCAA),
+                ),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+            ) {
+                Text(label, fontSize = 11.sp, maxLines = 2)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun SettingsDialog(
-    alertSoundEnabled: Boolean,
+    state: VitalFiUiState,
     onToggleAlertSound: (Boolean) -> Unit,
+    onToggleTrappedOnly: (Boolean) -> Unit,
+    onToggleVibration: (Boolean) -> Unit,
+    onToggleKeepScreenOn: (Boolean) -> Unit,
+    onSetSensitivity: (Double) -> Unit,
+    onSetShowRadar3D: (Boolean) -> Unit,
+    onSetRubbleZoneRadius: (Double) -> Unit,
+    onSetDefaultWifiMode: (WifiCollectMode) -> Unit,
+    onSetColorblindMode: (Boolean) -> Unit,
+    onToggleRadarLayer: (String) -> Unit,
+    onRadarLayersModoRescate: () -> Unit,
+    onRadarLayersSoloPersona: () -> Unit,
+    onRadarLayersTodo: () -> Unit,
+    onMarkRubbleZone: () -> Unit,
+    onClearRubbleZone: () -> Unit,
+    onExcludeRescuer: () -> Unit,
+    onClearExclusions: () -> Unit,
+    onToggleAutoElevation: (Boolean) -> Unit,
+    onAdjustElevation: (Double) -> Unit,
+    onResetElevation: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // —— Detección ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_detection))
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_trapped_only),
+                    hint = stringResource(R.string.settings_trapped_only_hint),
+                    checked = state.trappedOnlyMode,
+                    onToggle = onToggleTrappedOnly,
+                )
+                Column {
+                    Text(
+                        stringResource(R.string.settings_sensitivity),
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        stringResource(R.string.settings_sensitivity_hint),
+                        color = Color(0xFF888888),
+                        fontSize = 11.sp,
+                    )
+                    SettingsOptionButtons(
+                        options = listOf(
+                            stringResource(R.string.settings_sensitivity_low) to 1.2,
+                            stringResource(R.string.settings_sensitivity_normal) to 2.0,
+                            stringResource(R.string.settings_sensitivity_high) to 3.0,
+                        ),
+                        selectedValue = state.detectionSensitivity,
+                        tolerance = 0.3,
+                        onSelect = onSetSensitivity,
+                    )
+                }
+
+                // —— Zona de búsqueda ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_zone))
+                Column {
+                    Text(
+                        stringResource(R.string.settings_rubble_radius),
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        stringResource(R.string.settings_rubble_radius_hint),
+                        color = Color(0xFF888888),
+                        fontSize = 11.sp,
+                    )
+                    SettingsOptionButtons(
+                        options = listOf(
+                            stringResource(R.string.settings_rubble_radius_narrow) to 35.0,
+                            stringResource(R.string.settings_rubble_radius_normal) to 55.0,
+                            stringResource(R.string.settings_rubble_radius_wide) to 90.0,
+                        ),
+                        selectedValue = state.rubbleZoneRadiusDeg,
+                        onSelect = onSetRubbleZoneRadius,
+                    )
+                }
+                state.rubbleZoneLabel?.let { label ->
+                    Text(label, color = Cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+                if (state.excludedRescuerCount > 0) {
+                    Text(
+                        "Sectores excluidos: ${state.excludedRescuerCount}",
+                        color = Color(0xFF888888),
+                        fontSize = 11.sp,
+                    )
+                }
+                Text(
+                    stringResource(R.string.mark_rubble_zone_hint),
+                    color = Color(0xFF666666),
+                    fontSize = 11.sp,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(onClick = onMarkRubbleZone) {
+                        Text(stringResource(R.string.mark_rubble_zone), fontSize = 11.sp)
+                    }
+                    if (state.rubbleZoneLabel != null) {
+                        TextButton(onClick = onClearRubbleZone) {
+                            Text("Quitar zona", fontSize = 11.sp)
+                        }
+                    }
+                    Button(onClick = onExcludeRescuer) {
+                        Text(stringResource(R.string.exclude_rescuer), fontSize = 11.sp)
+                    }
+                    if (state.excludedRescuerCount > 0) {
+                        TextButton(onClick = onClearExclusions) {
+                            Text(stringResource(R.string.clear_exclusions), fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                // —— Wi-Fi ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_wifi))
+                Column {
+                    Text(
+                        stringResource(R.string.settings_wifi_default),
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        stringResource(R.string.settings_wifi_default_hint),
+                        color = Color(0xFF888888),
+                        fontSize = 11.sp,
+                    )
+                    SettingsOptionButtons(
+                        options = listOf(
+                            stringResource(R.string.settings_wifi_connected) to 0.0,
+                            stringResource(R.string.settings_wifi_passive) to 1.0,
+                        ),
+                        selectedValue = if (state.defaultWifiMode == WifiCollectMode.CONNECTED) 0.0 else 1.0,
+                        tolerance = 0.5,
+                        onSelect = { v ->
+                            onSetDefaultWifiMode(
+                                if (v < 0.5) WifiCollectMode.CONNECTED else WifiCollectMode.PASSIVE_SCAN,
+                            )
+                        },
+                    )
+                }
+
+                // —— Accesibilidad ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_accessibility))
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_colorblind),
+                    hint = stringResource(R.string.settings_colorblind_hint),
+                    checked = state.colorblindMode,
+                    onToggle = onSetColorblindMode,
+                )
+                Text(
+                    "Iconos: ⛏ cavar · ◆ respira/viva · ▲ movimiento · ? señal · ←→ girar",
+                    color = Color(0xFFAAAAAA),
+                    fontSize = 11.sp,
+                )
+
+                // —— Alertas ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_alerts))
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_alert_sound),
+                    hint = stringResource(R.string.settings_alert_sound_hint),
+                    checked = state.alertSoundEnabled,
+                    onToggle = onToggleAlertSound,
+                )
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_vibration),
+                    hint = stringResource(R.string.settings_vibration_hint),
+                    checked = state.vibrationEnabled,
+                    onToggle = onToggleVibration,
+                )
+
+                // —— Altura de escaneo ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_elevation))
+                if (state.hasBarometer) {
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.settings_auto_elevation),
+                        hint = stringResource(R.string.settings_auto_elevation_hint),
+                        checked = state.autoElevationActive,
+                        onToggle = onToggleAutoElevation,
+                    )
+                } else {
+                    Text(
+                        stringResource(R.string.settings_no_barometer),
+                        color = Color(0xFF888888),
+                        fontSize = 11.sp,
+                    )
+                }
+                if (!state.autoElevationActive || !state.hasBarometer) {
+                    Column {
                         Text(
-                            stringResource(R.string.settings_alert_sound),
+                            stringResource(R.string.settings_manual_elevation),
                             color = Color.White,
                             fontWeight = FontWeight.Medium,
                         )
                         Text(
-                            stringResource(R.string.settings_alert_sound_hint),
+                            stringResource(R.string.settings_manual_elevation_hint),
                             color = Color(0xFF888888),
                             fontSize = 11.sp,
                         )
+                        val sign = if (state.scanningElevationM >= 0) "+" else ""
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = { onAdjustElevation(-0.5) }) {
+                                Text("−", color = Cyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                "$sign${"%.1f".format(state.scanningElevationM)} m",
+                                color = Color(0xFF66FF99),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 16.sp,
+                            )
+                            IconButton(onClick = { onAdjustElevation(0.5) }) {
+                                Text("+", color = Cyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                            TextButton(onClick = onResetElevation) {
+                                Text("0 m", fontSize = 12.sp)
+                            }
+                        }
                     }
-                    Switch(
-                        checked = alertSoundEnabled,
-                        onCheckedChange = onToggleAlertSound,
+                }
+
+                // —— Pantalla y radar ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_display))
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_keep_screen_on),
+                    hint = stringResource(R.string.settings_keep_screen_on_hint),
+                    checked = state.keepScreenOn,
+                    onToggle = onToggleKeepScreenOn,
+                )
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_radar_3d),
+                    hint = stringResource(R.string.settings_radar_3d_hint),
+                    checked = state.showRadar3D,
+                    onToggle = onSetShowRadar3D,
+                )
+                Column {
+                    Text(
+                        stringResource(R.string.settings_radar_layers),
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
                     )
+                    Text(
+                        stringResource(R.string.settings_radar_layers_hint),
+                        color = Color(0xFF888888),
+                        fontSize = 11.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "Rescate" to onRadarLayersModoRescate,
+                            "Solo persona" to onRadarLayersSoloPersona,
+                            "Todo" to onRadarLayersTodo,
+                        ).forEach { (label, action) ->
+                            Button(
+                                onClick = action,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF1A2A1A),
+                                    contentColor = Cyan,
+                                ),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                            ) {
+                                Text(label, fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+                val layers = state.radarLayers
+                val layerToggles = listOf(
+                    "grid" to (stringResource(R.string.settings_layer_grid) to layers.grid),
+                    "compass" to (stringResource(R.string.settings_layer_compass) to layers.compass),
+                    "wifi" to (stringResource(R.string.settings_layer_wifi) to layers.wifi),
+                    "heatmap" to (stringResource(R.string.settings_layer_heatmap) to layers.heatmap),
+                    "guide" to (stringResource(R.string.settings_layer_guide) to layers.guide),
+                    "depthRays" to ("Rayas profundidad" to layers.depthRays),
+                    "rubble" to (stringResource(R.string.settings_layer_rubble) to layers.rubble),
+                    "trail" to (stringResource(R.string.settings_layer_trail) to layers.trail),
+                    "labels" to (stringResource(R.string.settings_layer_labels) to layers.labels),
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    layerToggles.forEach { (key, labelChecked) ->
+                        val (label, checked) = labelChecked
+                        FilterChip(
+                            selected = checked,
+                            onClick = { onToggleRadarLayer(key) },
+                            label = { Text(label, fontSize = 11.sp) },
+                        )
+                    }
                 }
             }
         },
@@ -352,6 +763,66 @@ private fun SettingsDialog(
             }
         },
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TrappedFilterControls(
+    state: VitalFiUiState,
+    onMarkRubbleZone: () -> Unit,
+    onClearRubbleZone: () -> Unit,
+    onExcludeRescuer: () -> Unit,
+    onClearExclusions: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101810)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                if (state.trappedOnlyMode) "Filtro anti-rescatista activo" else "Modo detección amplia",
+                color = if (state.trappedOnlyMode) RadarGreen else Orange,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+            )
+            state.rubbleZoneLabel?.let { label ->
+                Text(label, color = Cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            }
+            state.filterStatus?.let { filter ->
+                Text(filter, color = Color(0xFFAAAAAA), fontSize = 11.sp)
+            }
+            if (state.excludedRescuerCount > 0) {
+                Text(
+                    "Sectores excluidos: ${state.excludedRescuerCount}",
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                )
+            }
+            Text(
+                stringResource(R.string.mark_rubble_zone_hint),
+                color = Color(0xFF666666),
+                fontSize = 11.sp,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = onMarkRubbleZone) {
+                    Text(stringResource(R.string.mark_rubble_zone), fontSize = 11.sp)
+                }
+                if (state.rubbleZoneLabel != null) {
+                    TextButton(onClick = onClearRubbleZone) {
+                        Text("Quitar zona", fontSize = 11.sp)
+                    }
+                }
+                Button(onClick = onExcludeRescuer) {
+                    Text(stringResource(R.string.exclude_rescuer), fontSize = 11.sp)
+                }
+                if (state.excludedRescuerCount > 0) {
+                    TextButton(onClick = onClearExclusions) {
+                        Text(stringResource(R.string.clear_exclusions), fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -568,11 +1039,11 @@ private fun StatusCard(state: VitalFiUiState) {
 private fun NavigationHint(state: VitalFiUiState) {
     val pos = state.position
     val target = state.selectedVictim ?: state.victims.firstOrNull()
-    if (pos == null && target == null) {
+            if (pos == null && target == null) {
         if (state.rubbleConfidence > 0.12 && (state.isActivity || state.isBreathing)) {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218))) {
                 Text(
-                    text = "Gira 360° lentamente alrededor del escombro. El radar muestra Norte (N) y tu rumbo actual.",
+                    text = "🗺️ Búsqueda: gira 360° despacio. Cuando aparezca el punto, alinea la flecha y camina hacia él (como un tesoro).",
                     modifier = Modifier.padding(10.dp),
                     color = Color(0xFFFFCC00),
                     fontSize = 13.sp,
@@ -618,8 +1089,9 @@ private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> U
                         selected = state.selectedVictim?.id == victim.id,
                         onClick = { onSelectVictim(victim.id) },
                         label = {
+                            val kind = victimStatusKind(victim)
                             Text(
-                                "${victim.label} (${"%.1f".format(victim.x)},${"%.1f".format(victim.y)})",
+                                "${victim.label} ${victimStatusIconLabel(kind)} ${"%.1f".format(victim.distance)}m",
                                 fontSize = 11.sp,
                             )
                         },
@@ -636,22 +1108,48 @@ private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> U
 }
 
 @Composable
-private fun VictimDetailDialog(victim: TrappedVictim, onDismiss: () -> Unit) {
-    val color = victimColor(victim)
+private fun VictimDetailDialog(
+    victim: TrappedVictim,
+    onDismiss: () -> Unit,
+    phoneBearingDeg: Double,
+    colorblind: Boolean = false,
+) {
+    val kind = victimStatusKind(victim)
+    val color = victimColor(victim, colorblind)
+    val rel = describePersonPosition(victim.x, victim.y, victim.depth, phoneBearingDeg)
+    val horizDist = rel.distanceM
+    val burialM = rel.depthM
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("${victim.label} — ${victim.status}", color = color, fontWeight = FontWeight.Bold)
+            Text(
+                "${victimStatusIconLabel(kind)} · ${victim.label}",
+                color = color,
+                fontWeight = FontWeight.Bold,
+            )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("100% offline — datos locales Wi-Fi", color = RadarGreen, fontSize = 11.sp)
-                VictimDetailRow("Coordenadas X", "${"%.2f".format(victim.x)} m")
-                VictimDetailRow("Coordenadas Y", "${"%.2f".format(victim.y)} m")
-                VictimDetailRow("Profundidad", "${"%.2f".format(-victim.depth)} m bajo escombros")
-                VictimDetailRow("Rumbo", "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}")
-                VictimDetailRow("Distancia", "${"%.2f".format(victim.distance)} m")
-                VictimDetailRow("Proximidad", victim.proximity)
+                Text(victim.status, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    "Mediciones Wi-Fi · iconos = estado (no solo color)",
+                    color = if (colorblind) Color(0xFF80C0FF) else RadarGreen,
+                    fontSize = 11.sp,
+                )
+                VictimDetailRow("Desde ti", rel.horizontal)
+                VictimDetailRow("Vertical", rel.vertical)
+                VictimDetailRow("Distancia horizontal", "${"%.2f".format(horizDist)} m")
+                VictimDetailRow(
+                    "Profundidad",
+                    if (burialM >= 0.12) "${"%.2f".format(burialM)} m bajo escombros"
+                    else "A nivel del suelo",
+                )
+                VictimDetailRow("Distancia 3D (recta)", "${"%.2f".format(rel.slantRangeM)} m")
+                VictimDetailRow(
+                    "Rumbo",
+                    "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}",
+                )
+                VictimDetailRow("Zona", "${victim.proximity} (~${"%.1f".format(horizDist)} m)")
                 VictimDetailRow(
                     "Respirando",
                     if (victim.isBreathing) "SÍ — ${"%.1f".format(victim.respRate)} rpm" else "No detectado",
@@ -663,6 +1161,12 @@ private fun VictimDetailDialog(victim: TrappedVictim, onDismiss: () -> Unit) {
                 VictimDetailRow("Actividad", if (victim.isActivity) "Sí" else "No")
                 VictimDetailRow("Confianza vital", "${"%.0f".format(victim.confidence * 100)}%")
                 VictimDetailRow("Confianza escombros", "${"%.0f".format(victim.rubbleConfidence * 100)}%")
+                Text(
+                    rel.coordsLine,
+                    color = Color(0xFF666666),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
             }
         },
         confirmButton = {
@@ -687,11 +1191,27 @@ fun RadarView(
     heatmap: List<HeatPoint>,
     wifiCoverageRadiusM: Double,
     viewport: RadarViewport,
+    layers: RadarLayers = RadarLayers(),
+    colorblind: Boolean = false,
     onVictimClick: (Int) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0D140D)), modifier = modifier) {
+    val breatheTransition = rememberInfiniteTransition(label = "breathe2d")
+    val breatheClock by breatheTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 60_000, easing = LinearEasing),
+        ),
+        label = "breatheClock",
+    )
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF050A05)),
+        modifier = modifier,
+        shape = CircleShape,
+    ) {
         val labelPaint = remember {
             android.graphics.Paint().apply {
                 color = android.graphics.Color.GRAY
@@ -706,7 +1226,7 @@ fun RadarView(
             }
         }
         var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-        val divisor = 6f
+        val divisor = RADAR_DEFAULT_RANGE_M
 
         fun projectVictim(victim: TrappedVictim): Offset {
             val cx = canvasSize.width / 2f + viewport.panX
@@ -731,25 +1251,33 @@ fun RadarView(
         ) {
             canvasSize = IntSize(size.width.toInt(), size.height.toInt())
 
-            drawRadarGrid2D(divisor, viewport, labelPaint)
-            drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint)
-            drawHeatmap2D(heatmap, bearingDeg, divisor, viewport)
-            drawCompassRose2D(bearingDeg, divisor, viewport, labelPaint)
-            drawNavigationGuide2D(
-                bearingDeg = bearingDeg,
-                target = navigationTarget(victims, selectedVictimId),
-                divisor = divisor,
-                viewport = viewport,
-                labelPaint = labelPaint,
-                tagPaint = tagPaint,
-            )
-            drawVictims2D(victims, bearingDeg, divisor, viewport, selectedVictimId, labelPaint, tagPaint)
-
-            drawContext.canvas.nativeCanvas.drawText(
-                "Radar 2D — ▲ frente del teléfono | N rojo = Norte real | gira para orientarte",
-                8f,
-                size.height - 8f,
+            if (layers.grid) drawRadarGrid2D(divisor, viewport, labelPaint)
+            if (layers.wifi) drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint)
+            if (layers.heatmap) drawHeatmap2D(heatmap, bearingDeg, divisor, viewport)
+            if (layers.compass) drawCompassRose2D(bearingDeg, divisor, viewport, labelPaint)
+            if (layers.guide) {
+                drawNavigationGuide2D(
+                    bearingDeg = bearingDeg,
+                    target = navigationTarget(victims, selectedVictimId),
+                    divisor = divisor,
+                    viewport = viewport,
+                    labelPaint = labelPaint,
+                    tagPaint = tagPaint,
+                    colorblind = colorblind,
+                )
+            }
+            drawVictims2D(
+                victims,
+                bearingDeg,
+                divisor,
+                viewport,
+                selectedVictimId,
+                breatheClock.toDouble(),
                 labelPaint,
+                tagPaint,
+                showLabels = layers.labels,
+                showGuideLines = false,
+                colorblind = colorblind,
             )
         }
     }

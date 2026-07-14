@@ -1,6 +1,5 @@
 package com.whofi.vitalfi.dsp
 
-import kotlin.math.max
 import kotlin.math.min
 
 data class TrappedVictim(
@@ -34,6 +33,7 @@ class MultiVictimTracker(
 ) {
     private val scores = DoubleArray(numBins)
     private val distances = DoubleArray(numBins)
+    private val bearings = DoubleArray(numBins) { Double.NaN }
     private val breathing = DoubleArray(numBins)
     private val activity = DoubleArray(numBins)
     private val confidence = DoubleArray(numBins)
@@ -47,6 +47,7 @@ class MultiVictimTracker(
     fun reset() {
         scores.fill(0.0)
         distances.fill(0.0)
+        bearings.fill(Double.NaN)
         breathing.fill(0.0)
         activity.fill(0.0)
         confidence.fill(0.0)
@@ -58,8 +59,10 @@ class MultiVictimTracker(
         nextVictimId = 1
     }
 
-    private fun binIndex(bearingDeg: Double): Int =
-        ((bearingDeg / 360.0 * numBins).toInt()) % numBins
+    private fun binIndex(bearingDeg: Double): Int {
+        val norm = ((bearingDeg % 360.0) + 360.0) % 360.0
+        return ((norm / 360.0 * numBins).toInt()) % numBins
+    }
 
     fun update(
         bearingDeg: Double,
@@ -73,20 +76,33 @@ class MultiVictimTracker(
         val idx = binIndex(bearingDeg)
         for (i in scores.indices) {
             scores[i] *= decay
-            distances[i] *= decay
             breathing[i] *= decay
             activity[i] *= decay
             confidence[i] *= decay
             respRate[i] *= decay
             heartRate[i] *= decay
             rubble[i] *= decay
+            // No decaer distancias: eso las acercaba artificialmente a 0 m.
+            if (scores[i] < 0.002) {
+                distances[i] = 0.0
+                bearings[i] = Double.NaN
+            }
         }
 
         scores[idx] += strength
+        val clampedDist = distanceM.coerceIn(0.15, 8.0)
         distances[idx] = if (distances[idx] > 0) {
-            distances[idx] * 0.75 + distanceM * 0.25
+            // Asimétrico: al ACERCARTE la lectura baja rápido (sigue tu avance);
+            // al alejarse sube lento (evita saltos por ruido).
+            val alpha = if (clampedDist < distances[idx]) 0.60 else 0.25
+            distances[idx] * (1 - alpha) + clampedDist * alpha
         } else {
-            distanceM
+            clampedDist
+        }
+        bearings[idx] = if (!bearings[idx].isNaN()) {
+            smoothBearing(bearings[idx], bearingDeg, 0.35)
+        } else {
+            bearingDeg
         }
 
         if (detection.isBreathing) breathing[idx] = min(1.0, breathing[idx] + 0.35)
@@ -114,7 +130,7 @@ class MultiVictimTracker(
         val peak = scores.maxOrNull() ?: return null
         if (peak < minScore) return null
         val idx = scores.indices.maxByOrNull { scores[it] } ?: return null
-        val bearing = (idx + 0.5) * 360.0 / numBins
+        val bearing = bearingForBin(idx)
         val distance = if (distances[idx] > 0) distances[idx] else 2.5
         return Triple(bearing, distance, peak)
     }
@@ -122,7 +138,7 @@ class MultiVictimTracker(
     fun strongestBearing(): Pair<Double, Double>? {
         val idx = scores.indices.maxByOrNull { scores[it] } ?: return null
         if (scores[idx] < 0.005) return null
-        val bearing = (idx + 0.5) * 360.0 / numBins
+        val bearing = bearingForBin(idx)
         val distance = if (distances[idx] > 0) distances[idx] else 2.5
         return bearing to distance
     }
@@ -132,7 +148,7 @@ class MultiVictimTracker(
         val peak = scores.maxOrNull() ?: 0.0
         for (i in scores.indices) {
             if (scores[i] < maxOf(0.005, peak * 0.1)) continue
-            val bearing = (i + 0.5) * 360.0 / numBins
+            val bearing = bearingForBin(i)
             val dist = if (distances[i] > 0) distances[i] else 2.0
             val (x, y) = polarToXY(dist, bearing)
             points.add(HeatPoint(x, y, scores[i]))
@@ -140,9 +156,16 @@ class MultiVictimTracker(
         return points
     }
 
+    /**
+     * Profundidad bajo el suelo (Z negativo). Depende más de la confianza de escombros
+     * que de la distancia horizontal (antes: depth ≈ distance×0.25, poco fiable).
+     */
     fun depthUnderRubble(distanceM: Double, confidence: Double): Double {
-        val depth = min(1.8, max(0.3, distanceM * 0.25))
-        return -depth * (0.5 + 0.5 * min(1.0, confidence))
+        val conf = confidence.coerceIn(0.0, 1.0)
+        val base = 0.30 + conf * 1.15
+        val distFactor = (distanceM * 0.06).coerceIn(0.0, 0.30)
+        val depth = (base + distFactor).coerceIn(0.25, 1.8)
+        return -depth
     }
 
     fun locateVictims(minScore: Double = 0.025, nowMs: Long): List<TrappedVictim> {
@@ -153,7 +176,7 @@ class MultiVictimTracker(
     }
 
     private fun buildVictim(bin: Int, nowMs: Long): TrappedVictim {
-        val bearing = (bin + 0.5) * 360.0 / numBins
+        val bearing = bearingForBin(bin)
         val dist = if (distances[bin] > 0) distances[bin] else 2.0
         val (x, y) = polarToXY(dist, bearing)
         val rubbleConf = rubble[bin].coerceIn(0.0, 1.0)
@@ -190,6 +213,19 @@ class MultiVictimTracker(
         )
     }
 
+    private fun bearingForBin(bin: Int): Double {
+        val stored = bearings[bin]
+        if (!stored.isNaN()) return ((stored % 360.0) + 360.0) % 360.0
+        return (bin + 0.5) * 360.0 / numBins
+    }
+
+    private fun smoothBearing(previous: Double, sample: Double, alpha: Double): Double {
+        var delta = sample - previous
+        while (delta > 180.0) delta -= 360.0
+        while (delta < -180.0) delta += 360.0
+        return ((previous + alpha * delta) % 360.0 + 360.0) % 360.0
+    }
+
     private fun victimStatus(
         isBreathing: Boolean,
         isActivity: Boolean,
@@ -206,8 +242,9 @@ class MultiVictimTracker(
 
     private fun proximityLabel(distance: Double, isBreathing: Boolean, isActivity: Boolean): String =
         when {
-            distance < 1.2 -> "MUY CERCA"
-            distance < 2.2 -> "CERCA"
+            distance < 0.6 && (isBreathing || isActivity) -> "PUNTO CERO — DEBAJO DE TI"
+            distance < 1.0 -> "MUY CERCA"
+            distance < 2.0 -> "CERCA"
             distance < 3.5 -> "MEDIA"
             isActivity || isBreathing -> "LEJOS (señal)"
             else -> "LEJOS"

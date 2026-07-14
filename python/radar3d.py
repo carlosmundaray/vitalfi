@@ -34,6 +34,7 @@ class Radar3DView:
         self._heatmap_scatter = None
         self._target_scatter = None
         self._target_glow = None
+        self._target_sphere_lines: list = []
 
         self._setup_scene()
 
@@ -130,6 +131,64 @@ class Radar3DView:
         depth = min(1.8, max(0.3, distance_m * 0.25))
         return -depth * (0.5 + 0.5 * min(1.0, confidence))
 
+    @staticmethod
+    def describe_person_position(
+        x: float, y: float, z: float, phone_bearing_deg: float = 0.0
+    ) -> str:
+        """Texto legible: frente/atrás, izq/der, arriba/bajo escombros."""
+        rad = math.radians(-phone_bearing_deg)
+        rel_x = x * math.cos(rad) - y * math.sin(rad)
+        rel_y = x * math.sin(rad) + y * math.cos(rad)
+        hor: list[str] = []
+        if rel_y >= 0.35:
+            hor.append("Frente")
+        elif rel_y <= -0.35:
+            hor.append("Atrás")
+        if rel_x >= 0.35:
+            hor.append("Derecha")
+        elif rel_x <= -0.35:
+            hor.append("Izquierda")
+        horizontal = " y ".join(hor) if hor else "Cerca de ti"
+        if z > 0.35:
+            vertical = f"Arriba del suelo (+{z:.1f} m)"
+        elif z < -0.15:
+            vertical = f"Bajo escombros ({abs(z):.1f} m)"
+        else:
+            vertical = "A nivel del suelo"
+        dist = math.hypot(x, y)
+        return f"{horizontal} · {vertical} · {dist:.1f} m | X={x:+.2f} Y={y:+.2f} Z={z:+.2f}"
+
+    def _clear_sphere_lines(self) -> None:
+        for line in self._target_sphere_lines:
+            self._remove_artist(line)
+        self._target_sphere_lines.clear()
+
+    def _draw_sphere_wireframe(
+        self, cx: float, cy: float, cz: float, radius: float, color: str
+    ) -> None:
+        """Esfera 3D (3 anillos) en el torso estimado de la persona."""
+        self._clear_sphere_lines()
+        segments = 32
+        for plane in ("xy", "xz", "yz"):
+            xs, ys, zs = [], [], []
+            for i in range(segments + 1):
+                t = i / segments * 2 * math.pi
+                if plane == "xy":
+                    xs.append(cx + radius * math.cos(t))
+                    ys.append(cy + radius * math.sin(t))
+                    zs.append(cz)
+                elif plane == "xz":
+                    xs.append(cx + radius * math.cos(t))
+                    ys.append(cy)
+                    zs.append(cz + radius * math.sin(t))
+                else:
+                    xs.append(cx)
+                    ys.append(cy + radius * math.cos(t))
+                    zs.append(cz + radius * math.sin(t))
+            alpha = 0.55 if plane == "xy" else 0.35
+            line, = self.ax.plot(xs, ys, zs, color=color, alpha=alpha, linewidth=1.2)
+            self._target_sphere_lines.append(line)
+
     def update(
         self,
         pos_x: float | None,
@@ -192,17 +251,22 @@ class Radar3DView:
         if pos_x is not None and pos_y is not None:
             dist = math.hypot(pos_x, pos_y)
             pos_z = self._depth_under_rubble(dist, confidence)
+            torso_z = pos_z + 1.14
             color = target_color if is_breathing else "#ff9900"
 
+            self._draw_sphere_wireframe(pos_x, pos_y, torso_z, 0.38, color)
+
             self._target_scatter = self._scatter(
-                [pos_x], [pos_y], [pos_z], self._target_scatter,
-                c=color, s=120, marker="*", depthshade=True,
+                [pos_x], [pos_y], [torso_z], self._target_scatter,
+                c=color, s=120, marker="o", depthshade=True,
             )
             self._target_glow = self._scatter(
-                [pos_x], [pos_y], [pos_z], self._target_glow,
+                [pos_x], [pos_y], [torso_z], self._target_glow,
                 c=color, s=280, alpha=0.18, depthshade=False,
             )
-            self._beam_line.set_data_3d([0, pos_x], [0, pos_y], [1.0, pos_z])
+            self._beam_line.set_data_3d([0, pos_x], [0, pos_y], [1.0, torso_z])
+
+            rel = self.describe_person_position(pos_x, pos_y, pos_z, bearing_deg)
 
             nav_angle = math.degrees(math.atan2(pos_x, pos_y)) % 360
             turn = nav_angle - bearing_deg
@@ -219,12 +283,14 @@ class Radar3DView:
                 steer = f"↖ Gira {abs(turn):.0f}° a la IZQUIERDA"
 
             self._nav_text.set_text(
+                f"{rel}\n"
                 f"{steer}\n"
                 f"Dist horizontal: {dist:.1f} m\n"
                 f"Profundidad est.: {abs(pos_z):.1f} m bajo escombros\n"
                 f"Rumbo objetivo: {nav_angle:.0f}° | Q/E rotar vista | W/S inclinar"
             )
         else:
+            self._clear_sphere_lines()
             self._remove_artist(self._target_scatter)
             self._remove_artist(self._target_glow)
             self._target_scatter = None

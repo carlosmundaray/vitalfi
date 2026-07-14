@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.whofi.vitalfi.dsp.MultiVictimTracker
+import com.whofi.vitalfi.dsp.RescuerExclusionTracker
+import com.whofi.vitalfi.dsp.TrappedPersonFilter
 import com.whofi.vitalfi.dsp.TrappedVictim
 import com.whofi.vitalfi.dsp.HeatPoint
 import com.whofi.vitalfi.dsp.PositionEstimate
@@ -16,9 +18,9 @@ import com.whofi.vitalfi.export.SessionLogEntry
 import com.whofi.vitalfi.ml.SignatureModel
 import com.whofi.vitalfi.sensor.CompassReader
 import com.whofi.vitalfi.settings.SettingsStore
+import com.whofi.vitalfi.ui.RadarLayers
 import com.whofi.vitalfi.ui.RadarViewport
 import com.whofi.vitalfi.ui.TrailPoint3D
-import com.whofi.vitalfi.wifi.RssiSample
 import com.whofi.vitalfi.wifi.ScannedNetwork
 import com.whofi.vitalfi.wifi.WifiCollectMode
 import com.whofi.vitalfi.wifi.WifiCoverageEstimator
@@ -69,27 +71,47 @@ data class VitalFiUiState(
     val showNetworkPicker: Boolean = false,
     val isScanningNetworks: Boolean = false,
     val showRadar3D: Boolean = true,
-    val viewAzim: Double = -55.0,
-    val viewElev: Double = 28.0,
+    val viewAzim: Double = 0.0,
+    val viewElev: Double = 68.0,
     val trail: List<TrailPoint3D> = emptyList(),
     val radarViewport: RadarViewport = RadarViewport(),
+    val radarLayers: RadarLayers = RadarLayers(),
     val radarFullscreen: Boolean = false,
     val mlReady: Boolean = false,
     val mlScore: Double = 0.0,
     val mlStatus: String = "ML desactivado",
     val wifiCoverageRadiusM: Double = 0.0,
     val alertSoundEnabled: Boolean = true,
+    val vibrationEnabled: Boolean = true,
+    val keepScreenOn: Boolean = true,
+    val detectionSensitivity: Double = 2.0,
     val toastMessage: String? = null,
+    val trappedOnlyMode: Boolean = true,
+    val rubbleZoneLabel: String? = null,
+    val filterStatus: String? = null,
+    val excludedRescuerCount: Int = 0,
+    val scanningElevationM: Double = 0.0,
+    val hasBarometer: Boolean = false,
+    val autoElevationActive: Boolean = true,
+    val rubbleZoneRadiusDeg: Double = 55.0,
+    val defaultWifiMode: WifiCollectMode = WifiCollectMode.PASSIVE_SCAN,
+    val colorblindMode: Boolean = true,
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
 
     private val collector = WifiRssiCollector(app, sampleRateHz = 2.0, maxSamples = 180)
     private val compass = CompassReader(app)
+    private val barometer = com.whofi.vitalfi.sensor.BarometerReader(app)
     private val victimTracker = MultiVictimTracker()
     private val rubbleTracker = RubbleConfidenceTracker()
-    private val signatureModel = SignatureModel(app)
     private val settingsStore = SettingsStore(app)
+    private val exclusionTracker = RescuerExclusionTracker().also { tracker ->
+        settingsStore.rubbleZoneCenterDeg?.let { center ->
+            tracker.setRubbleZone(center, settingsStore.rubbleZoneRadiusDeg)
+        }
+    }
+    private val signatureModel = SignatureModel(app)
     private val alertPlayer = VictimAlertPlayer()
     private val sessionLog = mutableListOf<SessionLogEntry>()
     private val positionTrail = mutableListOf<TrailPoint3D>()
@@ -101,6 +123,27 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             mlReady = signatureModel.isReady,
             mlStatus = signatureModel.statusLabel,
             alertSoundEnabled = settingsStore.alertSoundEnabled,
+            vibrationEnabled = settingsStore.vibrationEnabled,
+            keepScreenOn = settingsStore.keepScreenOn,
+            detectionSensitivity = settingsStore.detectionSensitivity,
+            trappedOnlyMode = settingsStore.trappedOnlyMode,
+            rubbleZoneLabel = loadRubbleZoneLabel(),
+            hasBarometer = barometer.hasSensor,
+            autoElevationActive = settingsStore.autoElevationActive && barometer.hasSensor,
+            scanningElevationM = if (settingsStore.autoElevationActive && barometer.hasSensor) {
+                0.0
+            } else {
+                settingsStore.manualElevationM
+            },
+            radarLayers = settingsStore.loadRadarLayers(),
+            showRadar3D = settingsStore.showRadar3D,
+            rubbleZoneRadiusDeg = settingsStore.rubbleZoneRadiusDeg,
+            defaultWifiMode = if (settingsStore.defaultWifiMode == "CONNECTED") {
+                WifiCollectMode.CONNECTED
+            } else {
+                WifiCollectMode.PASSIVE_SCAN
+            },
+            colorblindMode = settingsStore.colorblindMode,
         ),
     )
     val uiState: StateFlow<VitalFiUiState> = _uiState.asStateFlow()
@@ -120,11 +163,13 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
 
         compass.start()
         startCompassUpdates()
+        barometer.start()
         if (collector.mode == WifiCollectMode.CONNECTED || !collector.targetSsid.isNullOrBlank()) {
             collector.start(viewModelScope)
         }
         if (rubbleTracker.calibrating) {
             rubbleTracker.begin(System.currentTimeMillis())
+            barometer.calibrateBaseline()
         }
 
         analysisJob?.cancel()
@@ -151,6 +196,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         compassJob?.cancel()
         collector.stop()
         compass.stop()
+        barometer.stop()
     }
 
     override fun onCleared() {
@@ -159,14 +205,107 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         super.onCleared()
     }
 
+    private fun loadRubbleZoneLabel(): String? = exclusionTracker.rubbleZoneLabel()
+
     fun setAlertSoundEnabled(enabled: Boolean) {
         settingsStore.alertSoundEnabled = enabled
         _uiState.value = _uiState.value.copy(alertSoundEnabled = enabled)
     }
 
+    fun setTrappedOnlyMode(enabled: Boolean) {
+        settingsStore.trappedOnlyMode = enabled
+        _uiState.value = _uiState.value.copy(trappedOnlyMode = enabled)
+    }
+
+    fun setVibrationEnabled(enabled: Boolean) {
+        settingsStore.vibrationEnabled = enabled
+        _uiState.value = _uiState.value.copy(vibrationEnabled = enabled)
+    }
+
+    fun setKeepScreenOn(enabled: Boolean) {
+        settingsStore.keepScreenOn = enabled
+        _uiState.value = _uiState.value.copy(keepScreenOn = enabled)
+    }
+
+    fun setDetectionSensitivity(value: Double) {
+        val clamped = value.coerceIn(1.0, 3.5)
+        settingsStore.detectionSensitivity = clamped
+        _uiState.value = _uiState.value.copy(detectionSensitivity = clamped)
+    }
+
+    fun setRubbleZoneRadiusDeg(value: Double) {
+        val clamped = value.coerceIn(20.0, 120.0)
+        settingsStore.rubbleZoneRadiusDeg = clamped
+        settingsStore.rubbleZoneCenterDeg?.let { center ->
+            exclusionTracker.setRubbleZone(center, clamped)
+        }
+        _uiState.value = _uiState.value.copy(
+            rubbleZoneRadiusDeg = clamped,
+            rubbleZoneLabel = exclusionTracker.rubbleZoneLabel(),
+        )
+    }
+
+    fun setShowRadar3D(enabled: Boolean) {
+        settingsStore.showRadar3D = enabled
+        _uiState.value = _uiState.value.copy(showRadar3D = enabled)
+    }
+
+    fun setColorblindMode(enabled: Boolean) {
+        settingsStore.colorblindMode = enabled
+        _uiState.value = _uiState.value.copy(colorblindMode = enabled)
+    }
+
+    fun setDefaultWifiMode(mode: WifiCollectMode) {
+        settingsStore.defaultWifiMode = when (mode) {
+            WifiCollectMode.CONNECTED -> "CONNECTED"
+            WifiCollectMode.PASSIVE_SCAN -> "PASSIVE_SCAN"
+        }
+        _uiState.value = _uiState.value.copy(defaultWifiMode = mode)
+    }
+
+    fun markRubbleZoneAtCurrentBearing() {
+        val bearing = _uiState.value.bearingDeg
+        exclusionTracker.setRubbleZone(bearing, settingsStore.rubbleZoneRadiusDeg)
+        settingsStore.rubbleZoneCenterDeg = bearing
+        _uiState.value = _uiState.value.copy(
+            rubbleZoneLabel = exclusionTracker.rubbleZoneLabel(),
+            toastMessage = "Zona de escombros marcada hacia ${bearing.toInt()}°",
+        )
+    }
+
+    fun clearRubbleZone() {
+        exclusionTracker.clearRubbleZone()
+        settingsStore.rubbleZoneCenterDeg = null
+        _uiState.value = _uiState.value.copy(
+            rubbleZoneLabel = null,
+            toastMessage = "Zona de escombros eliminada",
+        )
+    }
+
+    fun excludeRescuerAtCurrentBearing() {
+        val bearing = _uiState.value.bearingDeg
+        exclusionTracker.excludeSector(bearing)
+        _uiState.value = _uiState.value.copy(
+            toastMessage = "Sector ${bearing.toInt()}° excluido (rescatista)",
+            excludedRescuerCount = exclusionTracker.excludedSectorCount(),
+        )
+    }
+
+    fun clearRescuerExclusions() {
+        exclusionTracker.clearExclusions()
+        _uiState.value = _uiState.value.copy(
+            excludedRescuerCount = 0,
+            toastMessage = "Exclusiones de rescatistas borradas",
+        )
+    }
+
     fun reset() {
         collector.clear()
         victimTracker.reset()
+        exclusionTracker.reset()
+        settingsStore.rubbleZoneCenterDeg?.let { center ->
+            exclusionTracker.setRubbleZone(center, settingsStore.rubbleZoneRadiusDeg)
+        }
         rubbleTracker.reset(System.currentTimeMillis())
         compass.resetManual()
         sessionLog.clear()
@@ -213,11 +352,11 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetView3D() {
-        _uiState.value = _uiState.value.copy(viewAzim = -55.0, viewElev = 28.0)
+        _uiState.value = _uiState.value.copy(viewAzim = 0.0, viewElev = 68.0)
     }
 
     fun toggleRadar3D() {
-        _uiState.value = _uiState.value.copy(showRadar3D = !_uiState.value.showRadar3D)
+        setShowRadar3D(!_uiState.value.showRadar3D)
     }
 
     fun setConnectedMode() {
@@ -226,8 +365,10 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         connectedNoSamplesSinceMs = 0L
         collector.setConnectedMode()
         restartCollector()
+        settingsStore.defaultWifiMode = "CONNECTED"
         _uiState.value = _uiState.value.copy(
             collectMode = WifiCollectMode.CONNECTED,
+            defaultWifiMode = WifiCollectMode.CONNECTED,
             showNetworkPicker = false,
             hint = "Conectado al router — funciona sin internet (~2 Hz).",
         )
@@ -263,8 +404,10 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         alertedVictimIds.clear()
         victimTracker.reset()
         cachedRecentQuality = emptyList()
+        settingsStore.defaultWifiMode = "PASSIVE_SCAN"
         _uiState.value = _uiState.value.copy(
             collectMode = WifiCollectMode.PASSIVE_SCAN,
+            defaultWifiMode = WifiCollectMode.PASSIVE_SCAN,
             showNetworkPicker = false,
             ssid = network.ssid,
             hint = "Escaneo pasivo de «${network.ssid}» (~1 muestra/8 s). Acerca el router al escombro.",
@@ -303,6 +446,40 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetRadarView() {
         _uiState.value = _uiState.value.copy(radarViewport = RadarViewport())
+    }
+
+    fun setRadarLayers(layers: RadarLayers) {
+        settingsStore.saveRadarLayers(layers)
+        _uiState.value = _uiState.value.copy(radarLayers = layers)
+    }
+
+    fun toggleRadarLayer(layer: String) {
+        val cur = _uiState.value.radarLayers
+        val next = when (layer) {
+            "grid" -> cur.copy(grid = !cur.grid)
+            "compass" -> cur.copy(compass = !cur.compass)
+            "wifi" -> cur.copy(wifi = !cur.wifi)
+            "heatmap" -> cur.copy(heatmap = !cur.heatmap)
+            "guide" -> cur.copy(guide = !cur.guide)
+            "rubble" -> cur.copy(rubble = !cur.rubble)
+            "trail" -> cur.copy(trail = !cur.trail)
+            "labels" -> cur.copy(labels = !cur.labels)
+            "depthRays", "rayas" -> cur.copy(depthRays = !cur.depthRays)
+            else -> cur
+        }
+        setRadarLayers(next)
+    }
+
+    fun radarLayersSoloPersona() {
+        setRadarLayers(_uiState.value.radarLayers.soloPersona())
+    }
+
+    fun radarLayersModoRescate() {
+        setRadarLayers(_uiState.value.radarLayers.modoRescate())
+    }
+
+    fun radarLayersTodo() {
+        setRadarLayers(RadarLayers().todoVisible())
     }
 
     fun toggleRadarFullscreen() {
@@ -435,7 +612,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             VitalSignalDetector.analyze(
                 signal = series,
                 fs = effectiveFs.coerceAtLeast(0.05),
-                sensitivity = 2.0,
+                sensitivity = settingsStore.detectionSensitivity,
                 rubbleMode = true,
                 minSamples = analysisMinSamples,
             )
@@ -445,13 +622,27 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         val rubbleConf = rubbleTracker.update(detection, now)
         val mlBreathing = ml?.breathingScore ?: 0.0
         val mlActivity = ml?.activityScore ?: 0.0
-        val isBreathing = detection.isBreathing || mlBreathing > 0.72
-        val isActivity = detection.isActivity || mlActivity > 0.62
+        // Solo datos reales de Wi-Fi RSSI: el ML no inventa víctimas sin señal real.
         val hasSignal = !detection.signalFlat &&
             (detection.variance > 0.01 || detection.uniqueValues >= 2)
+        val isBreathing = detection.isBreathing || (hasSignal && mlBreathing > 0.78)
+        val isActivity = detection.isActivity || (hasSignal && mlActivity > 0.68)
+
+        val trappedOnly = settingsStore.trappedOnlyMode
+        exclusionTracker.record(bearing, detection, now)
+        val movementScore = exclusionTracker.movementAt(bearing)
+        val classification = TrappedPersonFilter.classify(
+            detection = detection.copy(
+                isBreathing = isBreathing,
+                isActivity = isActivity,
+            ),
+            rubbleConf = rubbleConf,
+            movementScore = movementScore,
+            strictMode = trappedOnly,
+        )
 
         val (proximity, distance, _) = VitalSignalDetector.proximityFromVariance(
-            detection.variance, isBreathing, isActivity,
+            detection.variance, isBreathing, isActivity, rssi,
         )
 
         val bearingStrength = maxOf(
@@ -460,24 +651,53 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             rubbleConf * 0.5,
             detection.variance * 0.4,
             if (isBreathing) 0.35 else 0.0,
-            if (isActivity) 0.2 else 0.0,
+            if (isActivity && !trappedOnly) 0.2 else 0.0,
+            if (isActivity && trappedOnly && isBreathing) 0.08 else 0.0,
         ).coerceAtMost(1.0)
+        // Reduce bearing strength for surface-like signals (rescuer near router)
+        val surfaceAttenuation = 1.0 - detection.surfaceSignalLikelihood * 0.7
+        val adjustedBearingStrength = (bearingStrength * surfaceAttenuation).coerceAtLeast(0.02)
 
-        if (hasSignal || isBreathing || isActivity || rubbleConf > 0.08) {
+        val shouldUpdateTracker = when {
+            !hasSignal && !isBreathing && rubbleConf <= 0.08 -> false
+            trappedOnly && classification.isLikelyRescuer -> false
+            trappedOnly && !classification.isLikelyTrapped && !isBreathing -> false
+            trappedOnly && !exclusionTracker.isInRubbleZone(bearing) -> false
+            exclusionTracker.isExcluded(bearing) -> false
+            // High surface signal likelihood without breathing → reject
+            trappedOnly && detection.surfaceSignalLikelihood > 0.55 && !isBreathing -> false
+            else -> hasSignal || isBreathing || isActivity || rubbleConf > 0.08
+        }
+
+        val elevation = if (_uiState.value.autoElevationActive && barometer.hasSensor) {
+            barometer.relativeElevationM
+        } else {
+            _uiState.value.scanningElevationM
+        }
+
+        if (shouldUpdateTracker) {
             victimTracker.update(
                 bearingDeg = bearing,
                 distanceM = distance,
-                strength = bearingStrength,
-                detection = detection,
+                strength = if (classification.isLikelyTrapped) adjustedBearingStrength else adjustedBearingStrength * 0.45,
+                detection = detection.copy(isBreathing = isBreathing, isActivity = isActivity),
                 rubbleConf = rubbleConf,
                 proximity = proximity,
                 nowMs = now,
             )
         }
 
-        val victims = victimTracker.locateVictims(minScore = 0.025, nowMs = now)
-        maybePlayTrappedAlert(victims)
-        val primary = victims.firstOrNull()
+        val allVictims = victimTracker.locateVictims(minScore = if (trappedOnly) 0.035 else 0.025, nowMs = now)
+        val victims = if (trappedOnly) {
+            filterTrappedVictims(allVictims)
+        } else {
+            allVictims
+        }
+        // Profundidad = solo entierro bajo el suelo (Z≤0). La altura del rescatista
+        // (scanningElevationM) no se mezcla aquí: eso generaba "−X m bajo escombros".
+        val mappedVictims = victims
+        maybePlayTrappedAlert(mappedVictims)
+        val primary = mappedVictims.firstOrNull()
 
         val best = victimTracker.bestEstimate(minScore = 0.03)
         val position = best?.let { (estBearing, estDist, _) ->
@@ -520,7 +740,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         if (sessionLog.size > 500) sessionLog.removeAt(0)
 
         val prev = _uiState.value
-        val statusWithRubble = formatStatus(detection.status, rubbleConf, isBreathing, isActivity)
+        val statusWithRubble = formatStatus(
+            detection.status, rubbleConf, isBreathing, isActivity, classification, trappedOnly,
+        )
         val hintWithOffline = if (wifiWithoutInternet && mode == WifiCollectMode.CONNECTED) {
             "${detection.hint} Funciona sin internet."
         } else {
@@ -550,9 +772,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             bearingDeg = bearing,
             compassLabel = compassLabel,
             position = position,
-            victims = victims,
+            victims = mappedVictims,
             selectedVictim = prev.selectedVictim?.let { sel ->
-                victims.find { it.id == sel.id } ?: sel
+                mappedVictims.find { it.id == sel.id } ?: sel
             },
             heatmap = victimTracker.heatmapPoints(),
             recentQuality = cachedRecentQuality,
@@ -567,15 +789,36 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             },
             wifiCoverageRadiusM = wifiCoverageRadiusM,
             toastMessage = prev.toastMessage,
+            trappedOnlyMode = trappedOnly,
+            rubbleZoneLabel = exclusionTracker.rubbleZoneLabel(),
+            filterStatus = if (trappedOnly) classification.reason else null,
+            excludedRescuerCount = exclusionTracker.excludedSectorCount(),
+            scanningElevationM = elevation,
         )
     }
 
+    private fun filterTrappedVictims(all: List<TrappedVictim>): List<TrappedVictim> =
+        all.filter { victim ->
+            !exclusionTracker.isExcluded(victim.bearing) &&
+                exclusionTracker.isInRubbleZone(victim.bearing) &&
+                TrappedPersonFilter.isLikelyTrappedVictim(
+                    victim,
+                    exclusionTracker.movementAt(victim.bearing),
+                    strictMode = true,
+                )
+        }
+
     private fun isTrappedVictim(victim: TrappedVictim): Boolean =
-        victim.isBreathing ||
-            (victim.rubbleConfidence >= 0.22 && (victim.isActivity || victim.isBreathing))
+        TrappedPersonFilter.isLikelyTrappedVictim(
+            victim,
+            exclusionTracker.movementAt(victim.bearing),
+            strictMode = settingsStore.trappedOnlyMode,
+        )
 
     private fun maybePlayTrappedAlert(victims: List<TrappedVictim>) {
-        if (!settingsStore.alertSoundEnabled) return
+        val soundOn = settingsStore.alertSoundEnabled
+        val vibrateOn = settingsStore.vibrationEnabled
+        if (!soundOn && !vibrateOn) return
 
         val newlyTrapped = victims.filter { victim ->
             victim.id !in alertedVictimIds && isTrappedVictim(victim)
@@ -583,11 +826,32 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         if (newlyTrapped.isEmpty()) return
 
         newlyTrapped.forEach { alertedVictimIds.add(it.id) }
-        viewModelScope.launch {
-            repeat(3) {
-                alertPlayer.playTrappedAlert()
-                delay(450)
+        if (vibrateOn) vibrateAlert()
+        if (soundOn) {
+            viewModelScope.launch {
+                repeat(3) {
+                    alertPlayer.playTrappedAlert()
+                    delay(450)
+                }
             }
+        }
+    }
+
+    private fun vibrateAlert() {
+        try {
+            val app = getApplication<Application>()
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val manager = app.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE)
+                    as android.os.VibratorManager
+                manager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                app.getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            }
+            val pattern = longArrayOf(0, 300, 150, 300, 150, 500)
+            vibrator.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1))
+        } catch (_: Exception) {
+            // Dispositivo sin vibrador.
         }
     }
 
@@ -602,7 +866,15 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         rubbleConf: Double,
         isBreathing: Boolean,
         isActivity: Boolean,
+        classification: TrappedPersonFilter.Classification,
+        trappedOnly: Boolean,
     ): String {
+        if (trappedOnly && classification.isLikelyRescuer) {
+            return "Rescatista filtrado — ${classification.reason}"
+        }
+        if (trappedOnly && !classification.isLikelyTrapped && isActivity && !isBreathing) {
+            return "Movimiento detectado — no es víctima bajo escombros"
+        }
         if (rubbleConf <= 0.08 || isBreathing) return base
         val pct = (rubbleConf * 100).toInt()
         return when {
@@ -669,5 +941,31 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             else ->
                 "Conéctate al Wi-Fi del router (sin internet) o usa «Escaneo pasivo»."
         }
+    }
+
+    fun setAutoElevationActive(active: Boolean) {
+        val hasBar = barometer.hasSensor
+        val useAuto = active && hasBar
+        settingsStore.autoElevationActive = useAuto
+        val elev = if (useAuto) barometer.relativeElevationM else settingsStore.manualElevationM
+        _uiState.value = _uiState.value.copy(
+            autoElevationActive = useAuto,
+            scanningElevationM = elev,
+        )
+    }
+
+    fun adjustManualElevation(deltaM: Double) {
+        if (_uiState.value.autoElevationActive) return
+        val newElev = (_uiState.value.scanningElevationM + deltaM).coerceIn(-10.0, 10.0)
+        settingsStore.manualElevationM = newElev
+        _uiState.value = _uiState.value.copy(scanningElevationM = newElev)
+    }
+
+    fun resetElevation() {
+        barometer.calibrateBaseline()
+        settingsStore.manualElevationM = 0.0
+        _uiState.value = _uiState.value.copy(
+            scanningElevationM = 0.0,
+        )
     }
 }

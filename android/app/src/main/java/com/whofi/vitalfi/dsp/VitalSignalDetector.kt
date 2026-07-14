@@ -17,6 +17,8 @@ data class DetectionResult(
     val confidence: Double = 0.0,
     val periodicity: Double = 0.0,
     val spectralEnergy: Double = 0.0,
+    /** 0-1 score: high = signal likely from surface (rescuer), low = likely under rubble. */
+    val surfaceSignalLikelihood: Double = 0.0,
 )
 
 class RubbleConfidenceTracker(
@@ -80,6 +82,9 @@ class RubbleConfidenceTracker(
 }
 
 object VitalSignalDetector {
+
+    /** Umbral de "punto cero": la persona está prácticamente debajo de ti. */
+    const val PUNTO_CERO_M = 0.6
 
     fun analyze(
         signal: DoubleArray,
@@ -169,6 +174,14 @@ object VitalSignalDetector {
             }
         }
 
+        val surfaceLikelihood = computeSurfaceLikelihood(
+            variance = maxOf(diffVar, rawStd * rawStd),
+            periodicity = minOf(1.0, oscillation / 3.0),
+            snr = if (rawStd > 0) diffVar / rawStd else 0.0,
+            isActivity = isActivity,
+            isBreathing = isBreathing,
+        )
+
         return DetectionResult(
             isBreathing = isBreathing,
             isActivity = isActivity,
@@ -186,6 +199,7 @@ object VitalSignalDetector {
             confidence = confidence,
             periodicity = minOf(1.0, oscillation / 3.0),
             spectralEnergy = 0.0,
+            surfaceSignalLikelihood = surfaceLikelihood,
         )
     }
 
@@ -295,6 +309,14 @@ object VitalSignalDetector {
             }
         }
 
+        val surfaceLikelihood = computeSurfaceLikelihood(
+            variance = maxOf(variance, rawStd * rawStd * 0.5),
+            periodicity = periodicity,
+            snr = snr,
+            isActivity = isActivity,
+            isBreathing = isBreathing,
+        )
+
         return DetectionResult(
             isBreathing = isBreathing,
             isActivity = isActivity,
@@ -312,6 +334,7 @@ object VitalSignalDetector {
             confidence = confidence,
             periodicity = periodicity,
             spectralEnergy = specEnergy,
+            surfaceSignalLikelihood = surfaceLikelihood,
         )
     }
 
@@ -337,28 +360,85 @@ object VitalSignalDetector {
         return minOf(1.0, score)
     }
 
-    fun proximityFromVariance(variance: Double, isBreathing: Boolean, isActivity: Boolean): Triple<String, Double, Long> {
+    /**
+     * Estima distancia horizontal continua (metros) a partir de la amplitud de señal (varianza)
+     * y, si hay RSSI, un modelo log-distancia. Antes solo devolvía 5 valores fijos (0.8/1.5/…).
+     */
+    fun proximityFromVariance(
+        variance: Double,
+        isBreathing: Boolean,
+        isActivity: Boolean,
+        rssiDbm: Int? = null,
+    ): Triple<String, Double, Long> {
         val color = when {
             isBreathing && variance > 0.3 -> 0xFFFF3366
             isBreathing -> 0xFFFF6699
             isActivity -> 0xFFFFCC00
             else -> 0xFF444444
         }
+        val fromVariance = distanceFromVariance(variance)
+        val fromRssi = rssiDbm?.let { distanceFromRssi(it) }
+        // El RSSI mide distancia al router, no a la víctima: cuanto más fuerte es la
+        // señal vital (varianza), menos peso le damos para que la lectura sí baje al acercarte.
+        var distance = when {
+            fromRssi != null && variance >= 0.60 -> fromVariance * 0.90 + fromRssi * 0.10
+            fromRssi != null && variance >= 0.20 -> fromVariance * 0.75 + fromRssi * 0.25
+            fromRssi != null && variance >= 0.02 -> fromVariance * 0.55 + fromRssi * 0.45
+            fromRssi != null -> fromRssi * 0.65 + fromVariance * 0.35
+            else -> fromVariance
+        }
+        if (isBreathing && variance > 0.12) distance *= 0.94
+        if (isActivity && !isBreathing && variance < 0.08) distance = maxOf(distance, 2.2)
+        distance = distance.coerceIn(0.15, 8.0)
+
         val label = when {
-            variance > 0.5 -> "MUY CERCA"
-            variance > 0.2 -> "CERCA"
-            variance > 0.06 -> "MEDIA"
-            isActivity -> "LEJOS (actividad)"
+            distance < PUNTO_CERO_M && (isBreathing || variance > 0.8) -> "PUNTO CERO"
+            distance < 1.0 -> "MUY CERCA"
+            distance < 2.0 -> "CERCA"
+            distance < 3.5 -> "MEDIA"
+            isActivity || isBreathing -> "LEJOS (señal)"
             else -> "LEJOS"
         }
-        val distance = when {
-            variance > 0.5 -> 0.8
-            variance > 0.2 -> 1.5
-            variance > 0.06 -> 2.5
-            isActivity -> 3.0
-            else -> 3.5
-        }
         return Triple(label, distance, color)
+    }
+
+    /** Interpolación entre anclas empiricas: más varianza ⇒ más cerca. */
+    fun distanceFromVariance(variance: Double): Double {
+        val anchors = listOf(
+            2.20 to 0.15,
+            1.60 to 0.30,
+            1.20 to 0.50,
+            0.80 to 0.70,
+            0.50 to 0.95,
+            0.30 to 1.25,
+            0.20 to 1.55,
+            0.12 to 1.95,
+            0.06 to 2.55,
+            0.03 to 3.20,
+            0.015 to 3.90,
+            0.005 to 4.60,
+            0.0 to 5.20,
+        )
+        val v = variance.coerceAtLeast(0.0)
+        if (v >= anchors.first().first) return anchors.first().second
+        for (i in 0 until anchors.lastIndex) {
+            val (vHi, dNear) = anchors[i]
+            val (vLo, dFar) = anchors[i + 1]
+            if (v in vLo..vHi) {
+                val t = if (vHi > vLo) (vHi - v) / (vHi - vLo) else 0.0
+                return dNear + (dFar - dNear) * t
+            }
+        }
+        return anchors.last().second
+    }
+
+    /** Modelo log-distancia indoor típico (1 m ≈ -40 dBm, n ≈ 2.7). */
+    fun distanceFromRssi(rssiDbm: Int): Double {
+        val rssi = rssiDbm.coerceIn(-95, -25).toDouble()
+        val pathLossExp = 2.7
+        val txAt1m = -40.0
+        val meters = Math.pow(10.0, (txAt1m - rssi) / (10.0 * pathLossExp))
+        return meters.coerceIn(0.5, 8.0)
     }
 
     private fun estimateHeartRate(
@@ -379,5 +459,30 @@ object VitalSignalDetector {
             return (respRate * 4.2).coerceIn(48.0, 115.0)
         }
         return 0.0
+    }
+
+    /**
+     * Estimates how likely the detected signal comes from a person on the surface
+     * (rescuer) rather than someone trapped under rubble.
+     *
+     * Surface signals: high variance, low periodicity, low SNR in breathing band.
+     * Trapped signals: low variance, high periodicity, higher SNR.
+     */
+    private fun computeSurfaceLikelihood(
+        variance: Double,
+        periodicity: Double,
+        snr: Double,
+        isActivity: Boolean,
+        isBreathing: Boolean,
+    ): Double {
+        // Rescuer on surface: strong RSSI variance (close to router, no rubble attenuation),
+        // irregular pattern (walking/moving), low periodicity in breathing band.
+        var score = 0.0
+        score += (variance * 3.0).coerceAtMost(0.5)
+        score -= periodicity * 2.0
+        score -= (snr * 0.15).coerceAtMost(0.3)
+        if (isActivity && !isBreathing) score += 0.25
+        if (!isActivity) score -= 0.15
+        return score.coerceIn(0.0, 1.0)
     }
 }
