@@ -13,8 +13,7 @@ authors:
   - family-names: Mundaray
     given-names: Carlos
     affiliation: "Solvitco"
-    # Descomenta y pon tu ORCID iD real (necesario para ORCID/Zenodo):
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    orcid: "https://orcid.org/0009-0002-6152-0256"
 repository-code: "https://github.com/carlosmundaray/vitalfi"
 url: "https://github.com/carlosmundaray/vitalfi"
 license: GPL-3.0-only
@@ -36,6 +35,7 @@ preferred-citation:
     - family-names: Mundaray
       given-names: Carlos
       affiliation: "Solvitco"
+      orcid: "https://orcid.org/0009-0002-6152-0256"
   version: "1.3.20"
   year: 2026
   url: "https://github.com/carlosmundaray/vitalfi"
