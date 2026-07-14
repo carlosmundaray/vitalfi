@@ -265,23 +265,33 @@ class MultiVictimTracker(
 
     private fun mergeAdjacentPeaks(peaks: List<Int>): List<Int> {
         if (peaks.isEmpty()) return emptyList()
-        val sorted = peaks.sorted()
-        val merged = mutableListOf<Int>()
-        var group = mutableListOf(sorted.first())
-        for (i in 1 until sorted.size) {
-            val prev = sorted[i - 1]
-            val cur = sorted[i]
-            val adjacent = cur - prev <= 2 ||
-                (prev <= 1 && cur >= numBins - 2)
-            if (adjacent) {
-                group.add(cur)
-            } else {
-                merged.add(group.maxBy { scores[it] })
-                group = mutableListOf(cur)
+        val groups = peaks.map { mutableListOf(it) }.toMutableList()
+        var changed = true
+        while (changed) {
+            changed = false
+            var i = 0
+            while (i < groups.size) {
+                var j = i + 1
+                while (j < groups.size) {
+                    val adjacent = groups[i].any { p1 ->
+                        groups[j].any { p2 ->
+                            val diff = kotlin.math.abs(p1 - p2) % numBins
+                            val dist = if (diff > numBins / 2) numBins - diff else diff
+                            dist <= 2
+                        }
+                    }
+                    if (adjacent) {
+                        groups[i].addAll(groups[j])
+                        groups.removeAt(j)
+                        changed = true
+                    } else {
+                        j++
+                    }
+                }
+                i++
             }
         }
-        merged.add(group.maxBy { scores[it] })
-        return merged
+        return groups.map { group -> group.maxBy { scores[it] } }
     }
 
     private fun victimIdForBin(bin: Int): Int {

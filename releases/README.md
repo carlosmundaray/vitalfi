@@ -31,7 +31,7 @@ APK firmadas listas para instalar en Android 8.0+ (API 26).
 | 1.3.6 | [VitalFi-v1.3.6-signed.apk](VitalFi-v1.3.6-signed.apk) | Guía de uso, capas ocultables, regla de metros, mediciones mejoradas |
 | 1.3.5 | [VitalFi-v1.3.5-signed.apk](VitalFi-v1.3.5-signed.apk) | Regla de metros, capas ocultables, mediciones más exactas, radar compacto |
 | 1.3.4 | [VitalFi-v1.3.4-signed.apk](VitalFi-v1.3.4-signed.apk) | Radar 3D / escombros |
-| 1.3.2 | [VitalFi-v1.3.2-signed.apk](VitalFi-v1.3.2-signed.apk) | Licencia MIT, brújula en radar, alerta sonora, cobertura Wi-Fi |
+| 1.3.2 | [VitalFi-v1.3.2-signed.apk](VitalFi-v1.3.2-signed.apk) | Brújula en radar, alerta sonora, cobertura Wi-Fi |
 | 1.3.1 | [VitalFi-v1.3.1-signed.apk](VitalFi-v1.3.1-signed.apk) | Brújula en radar, alerta sonora, cobertura Wi-Fi |
 | 1.0.0 | [VitalFi-v1.0.0-signed.apk](VitalFi-v1.0.0-signed.apk) | Primera versión publicada |
 
@@ -42,4 +42,5 @@ https://github.com/carlosmundaray/vitalfi/raw/main/releases/VitalFi-v1.3.20-sign
 ---
 
 **Autor:** Carlos Mundaray — [Solvitco](https://solvitco.com)  
-**Licencia del código:** [MIT](../LICENSE)
+**Licencia del código:** [GNU GPL v3](../LICENSE)  
+**Cómo citar:** ver [`CITATION.cff`](../CITATION.cff) y el [README](../README.md#cómo-citar)

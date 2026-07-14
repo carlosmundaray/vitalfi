@@ -186,13 +186,6 @@ fun MainScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
-                Button(
-                    onClick = onReset,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
-                    Text("Reiniciar", fontSize = 12.sp)
-                }
                 TextButton(onClick = { showAbout = true }) {
                     Icon(Icons.Default.Info, contentDescription = null, tint = Cyan)
                     Text(stringResource(R.string.about_button), color = Cyan, fontSize = 12.sp)
@@ -239,6 +232,13 @@ fun MainScreen(
                     label = { Text(if (state.showRadar3D) "Vista 3D" else "Radar 2D") },
                     leadingIcon = { Icon(Icons.Default.ViewInAr, null) },
                 )
+                Button(
+                    onClick = onReset,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
+                    Text("Reiniciar", fontSize = 12.sp)
+                }
                 Button(onClick = onExportCsv) {
                     Icon(Icons.Default.Download, null)
                     Text(" CSV")
