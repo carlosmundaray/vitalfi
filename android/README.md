@@ -154,4 +154,4 @@ APK generado en: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Licencia
 
-Este subproyecto de Android forma parte de VitalFi y está licenciado bajo la **GNU GPL v3**. Consulta el archivo [LICENSE](file:///c:/xampp/htdocs/vitalfi/LICENSE) en la raíz del repositorio para ver los términos completos.
+Este subproyecto de Android forma parte de VitalFi y está licenciado bajo la **GNU GPL v3**. Consulta el archivo [LICENSE](../LICENSE) en la raíz del repositorio para ver los términos completos.

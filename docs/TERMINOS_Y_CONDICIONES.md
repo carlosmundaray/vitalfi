@@ -6,7 +6,7 @@ Bienvenido a **VitalFi**, un proyecto de investigación y desarrollo de software
 
 El presente documento establece los **Términos y Condiciones de Uso** y la **Política de Privacidad** que rigen el acceso y uso de la aplicación móvil VitalFi, sus herramientas complementarias en Python, sus repositorios de código y la integración con la plataforma de identificación de investigadores **ORCID** (https://orcid.org/).
 
-Al descargar, instalar, compilar o utilizar cualquier parte de este software, o al autenticarse mediante su cuenta de ORCID en nuestros servicios relacionados, usted acepta de manera expresa y sin reservas los términos descritos a continuación. Si no está de acuerdo con alguna de estas condiciones, le rogamos que no utilice el software ni asocie sus credenciales.
+Al descargar, instalar, compilar o utilizar cualquier parte de este software, usted acepta de manera expresa y sin reservas los términos descritos a continuación. Si no está de acuerdo con alguna de estas condiciones, le rogamos que no utilice el software.
 
 ---
 
@@ -22,22 +22,20 @@ Al descargar, instalar, compilar o utilizar cualquier parte de este software, o 
 
 ---
 
-## 2. Integración con ORCID (Open Researcher and Contributor ID)
+## 2. ORCID y atribución académica
 
-Para promover la transparencia científica, la atribución de contribuciones de investigación y la validación académica, VitalFi permite a los investigadores y desarrolladores vincular su identidad digital de **ORCID** (https://orcid.org/).
+VitalFi es un software de investigación. La atribución del autor principal y de futuros colaboradores se documenta en el repositorio (`README.md`, `AUTHORS.md`, `CITATION.cff`) y, cuando corresponda, en depósitos académicos con DOI (p. ej. Zenodo) enlazados al perfil **ORCID** (https://orcid.org/) del investigador.
 
-### 2.1. Alcance de la Integración y Permisos de API
-Cuando usted utiliza la opción de autenticación o vinculación con ORCID en nuestras plataformas o herramientas, solicitamos acceso a través del protocolo OAuth 2.0 de ORCID bajo los siguientes parámetros:
-* **Lectura de Información Pública (Access Public Info):** Obtenemos su **ORCID iD** único, su nombre, apellido y otros datos que usted haya configurado como públicos en su registro de ORCID.
-* **Uso del Identificador:** Su ORCID iD se utiliza exclusivamente para:
-  1. Identificar y acreditar sus contribuciones como investigador, desarrollador o validador científico del proyecto VitalFi.
-  2. Mostrar su autoría o participación académica en listados públicos relacionados con la validación del modelo o artículos científicos asociados.
-  3. Vincular publicaciones académicas derivadas de las pruebas de software con su perfil de investigador.
+### 2.1. Qué hace y qué no hace la app
+* La aplicación Android VitalFi **no implementa un inicio de sesión OAuth con ORCID**. Corre offline y no envía credenciales de ORCID a ningún servidor del proyecto.
+* ORCID se usa para **acreditar autoría** del software y de trabajos derivados (artículos, datasets, releases con DOI), no como cuenta de usuario dentro de la app.
 
-### 2.2. Gestión de Credenciales y Seguridad
-* **No Almacenamos Contraseñas:** El proceso de inicio de sesión se realiza directamente en los servidores seguros de ORCID. VitalFi nunca tiene acceso, no lee ni almacena sus contraseñas o datos de acceso a ORCID.
-* **Tokens de Acceso:** Almacenamos únicamente tokens de acceso temporales proporcionados por la API de ORCID para realizar las consultas autorizadas. Estos tokens se gestionan bajo estándares de seguridad informática para evitar su acceso no autorizado.
-* **Revocación de Acceso:** Usted puede revocar los permisos otorgados a la aplicación VitalFi en cualquier momento directamente desde la configuración de su cuenta en el sitio web oficial de ORCID (sección *Trusted organizations* o *Aplicaciones de confianza*). Al hacerlo, la integración dejará de funcionar inmediatamente.
+### 2.2. Si en el futuro se ofrece vinculación ORCID en un servicio web
+Cualquier integración futura con la API de ORCID (OAuth 2.0) se limitaría a:
+* Lectura de información que el usuario haya marcado como pública (ORCID iD, nombre).
+* Uso exclusivo para acreditar contribuciones o validaciones científicas del proyecto.
+* Sin almacenar contraseñas de ORCID; tokens solo si el usuario autoriza expresamente el flujo OAuth en servidores de ORCID.
+* Revocación en cualquier momento desde ORCID (*Trusted organizations*).
 
 ---
 
@@ -52,10 +50,11 @@ Nos tomamos muy en serio la privacidad de quienes utilizan nuestro software y co
 
 ### 3.2. Datos Compartidos con Terceros
 * No vendemos, alquilamos ni comercializamos datos de usuarios con terceros.
-* Los únicos datos compartidos son aquellos autorizados expresamente por el usuario al realizar la autenticación con ORCID, de acuerdo con los flujos de la API pública de ORCID.
+* La app offline no transmite muestras RSSI ni rumbo a servidores externos.
+* Los metadatos públicos del repositorio / DOI (autor, ORCID del autor, descripción del software) son información académica de citación, no datos de usuarios finales de la app.
 
 ### 3.3. Base Legal y Cumplimiento (GDPR / LOPD)
-El tratamiento de sus datos de ORCID y la información académica asociada se basa en su **consentimiento explícito** al iniciar la vinculación. Usted tiene derecho a solicitar la eliminación de cualquier registro académico que le asocie con este proyecto en nuestros servidores enviando una solicitud por correo electrónico.
+Si en el futuro un servicio web del proyecto tratara datos de ORCID de colaboradores, ese tratamiento se basaría en **consentimiento explícito**. Usted puede solicitar la eliminación de cualquier registro académico que le asocie indebidamente con este proyecto contactando al autor (sección 6).
 
 ---
 

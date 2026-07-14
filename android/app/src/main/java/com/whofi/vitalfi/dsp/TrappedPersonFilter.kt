@@ -76,7 +76,7 @@ object TrappedPersonFilter {
                 movementScore < 0.30 &&
                 trappedScore >= trappedThreshold &&
                 detection.surfaceSignalLikelihood < 0.50
-            else -> detection.isBreathing || (rubbleConf >= 0.22 && weakBreathing && movementScore < 0.40)
+            else -> detection.isBreathing || (rubbleConf >= 0.22 && detection.isActivity && movementScore < 0.40)
         }
 
         val reason = when {
@@ -121,7 +121,7 @@ object TrappedPersonFilter {
                 !(victim.isActivity && !victim.isBreathing)
         } else {
             victim.isBreathing ||
-                (victim.rubbleConfidence >= 0.25 && victim.isBreathing)
+                (victim.rubbleConfidence >= 0.25 && victim.isActivity)
         }
     }
 }
