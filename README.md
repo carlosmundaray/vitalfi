@@ -50,19 +50,20 @@ Si usas VitalFi en investigación, cita el software (versión concreta) así:
 
 > Mundaray, C. (2026). *VitalFi: Wi‑Fi–based life detection under rubble* (Version 1.3.20) [Computer software]. https://github.com/carlosmundaray/vitalfi
 
-**BibTeX**
+**BibTeX** (compatible con ORCID — archivo [`vitalfi.bib`](vitalfi.bib))
 
 ```bibtex
-@software{mundaray_vitalfi_2026,
+@misc{mundaray_vitalfi_2026,
   author       = {Mundaray, Carlos},
-  title        = {{VitalFi}: Wi-Fi--based life detection under rubble},
-  version      = {1.3.20},
+  title        = {{VitalFi}: Wi-Fi-based life detection under rubble},
+  howpublished = {GitHub},
   year         = {2026},
-  publisher    = {GitHub},
-  url          = {https://github.com/carlosmundaray/vitalfi},
-  license      = {GPL-3.0-only}
+  note         = {Version 1.3.20. Open-source software (GPL-3.0). ORCID: 0009-0002-6152-0256},
+  url          = {https://github.com/carlosmundaray/vitalfi}
 }
 ```
+
+Guía paso a paso si ORCID no deja guardar: [`docs/ORCID_ADD_WORK.md`](docs/ORCID_ADD_WORK.md).
 
 Tras archivar en **Zenodo**, sustituye la URL por el **DOI** (concept DOI o DOI de la versión) y actualiza [`CITATION.cff`](CITATION.cff). En GitHub, el archivo `CITATION.cff` habilita el botón **Cite this repository**.
 
