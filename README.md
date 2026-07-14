@@ -1,135 +1,29 @@
-# WhoFi / VitalFi: Detección de Vida bajo Escombros vía Wi-Fi
+# VitalFi — Detección de Vida bajo Escombros vía Wi-Fi
 
-Este repositorio contiene la implementación del sistema **WhoFi / VitalFi**, diseñado para detectar personas atrapadas bajo escombros mediante el análisis de las variaciones en las señales Wi-Fi (RSSI) causadas por la respiración humana, y estimar su posición mediante triangulación basada en el rumbo del dispositivo.
+VitalFi es un proyecto experimental de código abierto diseñado para asistir en la localización de personas atrapadas bajo escombros en zonas de desastre (como terremotos o derrumbes). Utiliza variaciones en la fuerza de la señal de red Wi-Fi (RSSI) para detectar movimientos respiratorios y estimar la ubicación/rumbo de personas sin necesidad de conexión a internet.
 
----
+## Estructura del Repositorio
 
-## ⚠️ Aviso Importante (Uso Experimental)
+El proyecto se divide en dos componentes principales:
 
-**VitalFi es una herramienta experimental de apoyo basada en análisis de señales Wi-Fi.**  
-Los resultados son estimaciones y **no son 100% confiables**.
-
-VitalFi **no reemplaza** equipos profesionales de búsqueda y rescate, protocolos oficiales de emergencia, ni el criterio de personal técnico o médico especializado.
-
-Al usar esta herramienta, aceptas que pueden existir falsos positivos/falsos negativos y que toda decisión crítica debe confirmarse con métodos profesionales adicionales.
+1. **[Android](file:///c:/xampp/htdocs/vitalfi/android/README.md)**: Una aplicación móvil nativa (Kotlin + Jetpack Compose) que corre 100% offline. Permite realizar escaneos pasivos y activos, calibrar la señal y visualizar un radar 2D/3D con el heatmap de detección de vida.
+2. **[Python](file:///c:/xampp/htdocs/vitalfi/python)**: Scripts y utilidades para PC que incluyen simuladores, procesamiento digital de señales (filtros Hampel, bandpass, FFT, autocorrelación) y entrenamiento de modelos.
 
 ---
 
-## 📥 Descargar la app (APK)
+## Licencia
 
-Instala **VitalFi** en Android 8.0+ sin Play Store:
+Este proyecto está bajo la Licencia **GNU GPL v3 (General Public License v3)**. 
 
-| Versión | Descarga |
-|---------|----------|
-| **1.3.2** (recomendada) | [VitalFi-v1.3.2-signed.apk](releases/VitalFi-v1.3.2-signed.apk) |
-| 1.3.1 | [VitalFi-v1.3.1-signed.apk](releases/VitalFi-v1.3.1-signed.apk) |
-| 1.0.0 | [VitalFi-v1.0.0-signed.apk](releases/VitalFi-v1.0.0-signed.apk) |
+Esto significa que:
+* **Libertad de uso y modificación:** Puedes usar, estudiar, modificar y adaptar este software de forma gratuita para cualquier propósito (incluyendo el ámbito académico, civil o gubernamental).
+* **Copyleft obligatorio:** Si decides distribuir versiones modificadas de esta aplicación o sus scripts, **debes liberar públicamente el código fuente modificado** bajo esta misma licencia (GPL v3).
+* **Sin garantías:** Este es un software experimental y educativo. Se distribuye con la esperanza de que sea útil, pero **sin ninguna garantía** implícita o explícita.
 
-Historial y notas de cada versión: [releases/README.md](releases/README.md)
-
----
-
-## 📂 Estructura del Repositorio
-
-El proyecto se divide en los siguientes componentes principales:
-
-```
-WhoFi/
-├── 🤖 android/         # Aplicación Android nativa (VitalFi)
-│   ├── app/           # Código fuente de la app (Kotlin, Jetpack Compose)
-│   ├── gradle/        # Configuración del sistema de construcción
-│   └── ...
-├── 🐍 python/          # Scripts, simuladores y entrenamiento en Python
-│   ├── main.py        # Punto de entrada principal para herramientas de PC
-│   ├── train.py       # Entrenamiento del modelo de red neuronal
-│   ├── simulator.py   # Generación de datos sintéticos
-│   ├── requirements.txt # Dependencias de Python
-│   └── ...
-└── 📄 docs/            # Documentación y artículos de investigación
-    └── whofi_paper.html # Documento científico explicativo del sistema WhoFi
-```
+Para más detalles, consulta el archivo completo de la licencia en **[LICENSE](file:///c:/xampp/htdocs/vitalfi/LICENSE)**.
 
 ---
 
-## 🐍 Componente Python (`python/`)
+## Términos de Uso y Privacidad
 
-El backend de Python permite generar conjuntos de datos sintéticos, entrenar modelos de aprendizaje profundo para clasificar patrones de respiración y realizar pruebas de detección en tiempo real en Windows.
-
-### Requisitos Previos
-
-- Python 3.10 o superior.
-- Recomendado: Crear un entorno virtual (`.venv`).
-
-### Configuración e Instalación
-
-1. Navega al directorio de Python:
-   ```bash
-   cd python
-   ```
-
-2. Instala las dependencias necesarias:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-### Comandos Disponibles
-
-Desde la carpeta `python/`, puedes ejecutar `main.py` con diferentes modos:
-
-* **Generación de Datos Sintéticos**:
-  ```bash
-  python main.py --mode simulate --num-samples 1000 --output ./data
-  ```
-
-* **Entrenamiento de Modelo**:
-  ```bash
-  python main.py --mode train --dataset ./data/dataset.npz --epochs 20
-  ```
-
-* **Detección en Tiempo Real (Live Windows RSSI)**:
-  ```bash
-  python main.py --mode live
-  ```
-
----
-
-## 🤖 Componente Android (`android/`)
-
-La aplicación Android nativa **VitalFi** implementa la adquisición de señales RSSI en tiempo real, filtros digitales para la extracción del ritmo respiratorio, brújula para triangulación de dirección y una interfaz interactiva con radar 2D y 3D.
-
-### Requisitos
-
-- Android 8.0 o superior (API 26+).
-- Sensor de magnetómetro (brújula) en el dispositivo físico.
-- Android Studio Jellyfish (2023.3) o superior.
-
-### Instrucciones de Compilación y Uso
-
-1. Abre **Android Studio**.
-2. Selecciona **File → Open** y elige la carpeta `android/` en la raíz de este proyecto.
-3. Espera a que se complete la sincronización de Gradle.
-4. Conecta tu teléfono Android físico con la depuración USB activada.
-5. Haz clic en **Run** (`Shift + F10`) para compilar e instalar la app.
-
-> [!IMPORTANT]
-> Para escanear redes Wi-Fi en Android, la app requiere permisos de **Ubicación**. Android exige este permiso para acceder a los identificadores y señales de red inalámbricas.
-
----
-
-## 🔬 Metodología de Detección
-
-El flujo de trabajo técnico consta de los siguientes pasos:
-1. **Captura de Señal**: Se recolecta el RSSI de paquetes Wi-Fi a una tasa constante.
-2. **Filtrado Hampel y Pasabanda**: Se eliminan valores atípicos y se aíslan las frecuencias de respiración humana típica (0.1 Hz a 0.7 Hz).
-3. **Análisis de Espectro**: Se procesa la señal en el dominio de la frecuencia mediante Transformada Rápida de Fourier (FFT) para buscar picos de frecuencia dominantes.
-4. **Triangulación y Rumbo**: Integrando lecturas del magnetómetro, se asocian picos de atenuación con rumbos específicos para estimar el vector de localización de la víctima.
-
----
-
-## 📄 Licencia
-
-**VitalFi / WhoFi** es **software libre** bajo la [Licencia MIT](LICENSE).
-
-**Copyright © 2026 Carlos Mundaray — [Solvitco](https://solvitco.com)**
-
-Puedes usar, copiar, modificar y distribuir este software siempre que conserves el aviso de copyright y la licencia. El software se proporciona «tal cual», sin garantías.
+Para la integración académica con la API de **ORCID** y el cumplimiento de las normativas de privacidad y exención de responsabilidad durante búsquedas y pruebas científicas, consulta el documento de **[Términos y Condiciones de Uso y Política de Privacidad](file:///c:/xampp/htdocs/vitalfi/docs/TERMINOS_Y_CONDICIONES.md)**.

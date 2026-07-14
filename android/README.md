@@ -84,7 +84,7 @@ Lo único que necesitas es:
 1. Coloca el **router** lo más cerca posible del montículo de escombros (no necesita internet).
 2. En el teléfono, activa **Wi-Fi** (modo conectado: únete al router; modo pasivo: no hace falta conectar).
 3. Abre **VitalFi** y concede permiso de **ubicación** (Android lo exige para leer RSSI).
-4. **Calibra 45 segundos** sin moverte ni hablar.
+4. **Calibra 30 segundos** sin moverte ni hablar.
 5. Gira el teléfono **360° lentamente** alrededor del escombro.
 6. Si detecta respiración, el radar muestra la posición estimada y las instrucciones de navegación.
 
@@ -151,3 +151,7 @@ APK generado en: `app/build/outputs/apk/debug/app-debug.apk`
 - Persistir sesiones localmente (sin servidor)
 - Sincronizar varios teléfonos como antenas vía red local (requeriría servidor en campo)
 - Radar 3D con SceneView / OpenGL
+
+## Licencia
+
+Este subproyecto de Android forma parte de VitalFi y está licenciado bajo la **GNU GPL v3**. Consulta el archivo [LICENSE](file:///c:/xampp/htdocs/vitalfi/LICENSE) en la raíz del repositorio para ver los términos completos.

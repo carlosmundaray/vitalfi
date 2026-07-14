@@ -19,8 +19,8 @@ android {
         applicationId = "com.whofi.vitalfi"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.3.2"
+        versionCode = 27
+        versionName = "1.3.20"
     }
 
     signingConfigs {
