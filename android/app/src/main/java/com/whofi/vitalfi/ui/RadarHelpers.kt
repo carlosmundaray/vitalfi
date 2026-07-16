@@ -981,10 +981,10 @@ fun DrawScope.drawRadarSweep2D(
             colorStops = arrayOf(
                 0.0f to Color.Transparent,
                 0.75f to Color.Transparent,
-                0.85f to Color(0x0200FFCC),
-                0.93f to Color(0x1000FFCC),
-                0.98f to Color(0x3500FFCC),
-                1.0f to Color(0x7F00FFCC)
+                0.85f to Color(0x0100FFCC),
+                0.93f to Color(0x0300FFCC),
+                0.98f to Color(0x0A00FFCC),
+                1.0f to Color(0x1800FFCC)
             ),
             center = Offset(cx, cy)
         )
@@ -997,10 +997,10 @@ fun DrawScope.drawRadarSweep2D(
         )
         
         drawLine(
-            color = Color(0xFF00FFCC).copy(alpha = 0.7f),
+            color = Color(0xFF00FFCC).copy(alpha = 0.10f),
             start = Offset(cx, cy),
             end = Offset(cx + radius, cy),
-            strokeWidth = 2f
+            strokeWidth = 1.5f
         )
     }
 }
