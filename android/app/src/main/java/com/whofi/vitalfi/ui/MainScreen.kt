@@ -28,8 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.RotateLeft
-import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.filled.Wifi
@@ -279,10 +279,10 @@ fun MainScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 IconButton(onClick = onBearingLeft) {
-                    Icon(Icons.Default.RotateLeft, "Girar izq", tint = Cyan)
+                    Icon(Icons.AutoMirrored.Filled.RotateLeft, "Girar izq", tint = Cyan)
                 }
                 IconButton(onClick = onBearingRight) {
-                    Icon(Icons.Default.RotateRight, "Girar der", tint = Cyan)
+                    Icon(Icons.AutoMirrored.Filled.RotateRight, "Girar der", tint = Cyan)
                 }
             }
 
@@ -1197,16 +1197,6 @@ fun RadarView(
     onViewportChange: (RadarViewport) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val breatheTransition = rememberInfiniteTransition(label = "breathe2d")
-    val breatheClock by breatheTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 60f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 60_000, easing = LinearEasing),
-        ),
-        label = "breatheClock",
-    )
-
     val sweepTransition = rememberInfiniteTransition(label = "sweep2d")
     val sweepAngle by sweepTransition.animateFloat(
         initialValue = 0f,
@@ -1263,7 +1253,7 @@ fun RadarView(
 
             if (layers.grid) {
                 drawRadarGrid2D(divisor, viewport, labelPaint)
-                drawRadarSweep2D(sweepAngle, divisor, viewport)
+                drawRadarSweep2D(sweepAngle, viewport)
             }
             if (layers.wifi) drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint)
             if (layers.heatmap) drawHeatmap2D(heatmap, bearingDeg, divisor, viewport)
@@ -1285,11 +1275,9 @@ fun RadarView(
                 divisor,
                 viewport,
                 selectedVictimId,
-                breatheClock.toDouble(),
                 labelPaint,
                 tagPaint,
                 showLabels = layers.labels,
-                showGuideLines = false,
                 colorblind = colorblind,
             )
         }

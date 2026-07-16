@@ -333,6 +333,7 @@ class WifiRssiCollector(
     }
 
     @SuppressLint("MissingPermission")
+    @Suppress("DEPRECATION")
     private fun bindToExistingWifiNetwork() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         for (network in connectivity.allNetworks) {

@@ -70,7 +70,6 @@ class MultiVictimTracker(
         strength: Double,
         detection: DetectionResult,
         rubbleConf: Double,
-        proximity: String,
         nowMs: Long,
     ) {
         val idx = binIndex(bearingDeg)
