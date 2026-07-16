@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -61,6 +63,16 @@ fun Radar3DView(
         label = "breatheClock",
     )
     val animPhase = breatheClock.toDouble()
+
+    val sweepTransition = rememberInfiniteTransition(label = "sweep3d")
+    val sweepAngle by sweepTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
+        ),
+        label = "sweepAngle",
+    )
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF050A05)),
@@ -117,7 +129,31 @@ fun Radar3DView(
             if (layers.grid) drawMilitaryHudBackground()
 
             if (layers.rubble) drawRubbleVolume3D(::project, labelPaint)
-            if (layers.grid) drawDistanceRings3D(::project, viewport, labelPaint, RADAR_DEFAULT_RANGE_M)
+            if (layers.grid) {
+                drawDistanceRings3D(::project, viewport, labelPaint, RADAR_DEFAULT_RANGE_M)
+                
+                val radius = RADAR_DEFAULT_RANGE_M.toDouble()
+                val steps = 24
+                for (step in 0..steps) {
+                    val trailAngleDeg = sweepAngle.toDouble() - (step * 1.5)
+                    val rad = Math.toRadians(trailAngleDeg)
+                    val rx = radius * cos(rad)
+                    val ry = radius * sin(rad)
+                    
+                    val pStart = project(0.0, 0.0, 0.0)
+                    val pEnd = project(rx, ry, 0.0)
+                    
+                    val alpha = (0.35f * (1.0f - (step.toFloat() / steps))).coerceAtLeast(0f)
+                    if (alpha > 0f) {
+                        drawLine(
+                            color = Color(0xFF00FFCC).copy(alpha = alpha),
+                            start = pStart,
+                            end = pEnd,
+                            strokeWidth = if (step == 0) 2.5f else 1.2f
+                        )
+                    }
+                }
+            }
 
             if (layers.wifi) drawWifiCoverage3D(wifiCoverageRadiusM, ::project, labelPaint)
             if (layers.compass) drawCompassRose3D(bearingDeg, ::project, labelPaint)
@@ -126,8 +162,28 @@ fun Radar3DView(
                 for (pt in heatmap) {
                     val (rx, ry) = rotateMapCoords(pt.x, pt.y, bearingDeg)
                     val p = project(rx, ry, -0.4)
-                    val alpha = (0.2f + 0.5f * pt.intensity.coerceIn(0.0, 1.0)).toFloat()
-                    drawCircle(Color(0xFFFF6600).copy(alpha = alpha), 5f, p)
+                    
+                    val intensity = pt.intensity.coerceIn(0.0, 1.0).toFloat()
+                    val maxAlpha = 0.2f + 0.6f * intensity
+                    val radius = (25f + 20f * intensity) * viewport.zoom
+                    
+                    if (radius > 0f) {
+                        val brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFFFF3300).copy(alpha = maxAlpha),
+                                Color(0xFFFF9900).copy(alpha = maxAlpha * 0.4f),
+                                Color.Transparent
+                            ),
+                            center = p,
+                            radius = radius
+                        )
+                        drawCircle(
+                            brush = brush,
+                            radius = radius,
+                            center = p,
+                            blendMode = BlendMode.Screen
+                        )
+                    }
                 }
             }
 

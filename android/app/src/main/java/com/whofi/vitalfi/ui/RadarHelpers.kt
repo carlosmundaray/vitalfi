@@ -6,8 +6,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import com.whofi.vitalfi.dsp.HeatPoint
@@ -467,17 +470,34 @@ private fun DrawScope.drawTreasurePathToPerson(
     )
     drawCircle(color.copy(alpha = 0.95f), 7f, to)
     val mid = Offset((from.x + to.x) / 2f, (from.y + to.y) / 2f)
+    val badgeWidth = 72f
+    val badgeHeight = 24f
+    
+    drawRoundRect(
+        color = Color.Black.copy(alpha = 0.75f),
+        topLeft = Offset(mid.x - badgeWidth / 2f, mid.y - badgeHeight / 2f),
+        size = androidx.compose.ui.geometry.Size(badgeWidth, badgeHeight),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
+    )
+    drawRoundRect(
+        color = color.copy(alpha = 0.8f),
+        topLeft = Offset(mid.x - badgeWidth / 2f, mid.y - badgeHeight / 2f),
+        size = androidx.compose.ui.geometry.Size(badgeWidth, badgeHeight),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+        style = Stroke(width = 1.2f)
+    )
+
     val paint = android.graphics.Paint().apply {
         this.color = android.graphics.Color.WHITE
-        textSize = 13f
+        textSize = 14f
         isFakeBoldText = true
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
     drawContext.canvas.nativeCanvas.drawText(
-        "→ ${"%.1f".format(distanceM)} m",
+        "${"%.1f".format(distanceM)} m",
         mid.x,
-        mid.y - 8f,
+        mid.y + 5f,
         paint,
     )
 }
@@ -921,11 +941,69 @@ fun DrawScope.drawRadarGrid2D(
         }
     }
 
-    // Origin
-    drawCircle(RadarCyan.copy(alpha = 0.35f), 4f, Offset(cx, cy))
-    drawCircle(RadarCyan, 2f, Offset(cx, cy))
+    // Origin avatar representing the rescuer ("Yo")
+    val youSize = 8f
+    val youPath = Path().apply {
+        moveTo(cx, cy - youSize * 1.3f) // top tip
+        lineTo(cx + youSize, cy + youSize * 0.8f) // bottom right
+        lineTo(cx, cy + youSize * 0.3f) // center notch
+        lineTo(cx - youSize, cy + youSize * 0.8f) // bottom left
+        close()
+    }
+    drawPath(youPath, Color(0xFF00FF88))
+    drawPath(youPath, Color.White, style = Stroke(width = 1f))
+
+    drawContext.canvas.nativeCanvas.drawText(
+        "Yo",
+        cx,
+        cy + youSize + 15f,
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 14f
+            isFakeBoldText = true
+            isAntiAlias = true
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+    )
 
     drawRadarScaleBar2D(scale, visibleRange, tickStep)
+}
+
+fun DrawScope.drawRadarSweep2D(
+    sweepAngle: Float,
+    divisor: Float,
+    viewport: RadarViewport,
+) {
+    val (cx, cy) = radarCenter(viewport)
+    val radius = minOf(size.width, size.height) * 0.5f - 8f
+    
+    rotate(degrees = sweepAngle, pivot = Offset(cx, cy)) {
+        val sweepBrush = Brush.sweepGradient(
+            colorStops = arrayOf(
+                0.0f to Color.Transparent,
+                0.75f to Color.Transparent,
+                0.85f to Color(0x0200FFCC),
+                0.93f to Color(0x1000FFCC),
+                0.98f to Color(0x3500FFCC),
+                1.0f to Color(0x7F00FFCC)
+            ),
+            center = Offset(cx, cy)
+        )
+        
+        drawCircle(
+            brush = sweepBrush,
+            radius = radius,
+            center = Offset(cx, cy),
+            blendMode = BlendMode.Screen
+        )
+        
+        drawLine(
+            color = Color(0xFF00FFCC).copy(alpha = 0.7f),
+            start = Offset(cx, cy),
+            end = Offset(cx + radius, cy),
+            strokeWidth = 2f
+        )
+    }
 }
 
 /** Corner scale bar: visual 1-unit ruler matching real meters. */
@@ -1072,7 +1150,7 @@ fun DrawScope.drawVictimRadarDot(
     label: String?,
     tagPaint: android.graphics.Paint?,
 ) {
-    val r = if (selected) 11f else 8f
+    val r = if (selected) 7.5f else 5.2f
     // Halo de selección
     if (selected) {
         drawCircle(color.copy(alpha = 0.2f), r + 8f, center)
@@ -1217,8 +1295,28 @@ fun DrawScope.drawHeatmap2D(
         val (rx, ry) = rotateMapCoords(pt.x, pt.y, bearingDeg)
         val px = cx + rx.toFloat() * scale
         val py = cy - ry.toFloat() * scale
-        val alpha = (0.15f + 0.55f * pt.intensity.coerceIn(0.0, 1.0)).toFloat()
-        drawCircle(Color(0xFFFF6600).copy(alpha = alpha), 6f, Offset(px, py))
+        
+        val intensity = pt.intensity.coerceIn(0.0, 1.0).toFloat()
+        val maxAlpha = 0.2f + 0.6f * intensity
+        val radius = (30f + 25f * intensity) * viewport.zoom
+        
+        if (radius > 0f) {
+            val brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFFF3300).copy(alpha = maxAlpha),
+                    Color(0xFFFF9900).copy(alpha = maxAlpha * 0.4f),
+                    Color.Transparent
+                ),
+                center = Offset(px, py),
+                radius = radius
+            )
+            drawCircle(
+                brush = brush,
+                radius = radius,
+                center = Offset(px, py),
+                blendMode = BlendMode.Screen
+            )
+        }
     }
 }
 

@@ -1207,6 +1207,16 @@ fun RadarView(
         label = "breatheClock",
     )
 
+    val sweepTransition = rememberInfiniteTransition(label = "sweep2d")
+    val sweepAngle by sweepTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = LinearEasing),
+        ),
+        label = "sweepAngle",
+    )
+
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF050A05)),
         modifier = modifier,
@@ -1251,7 +1261,10 @@ fun RadarView(
         ) {
             canvasSize = IntSize(size.width.toInt(), size.height.toInt())
 
-            if (layers.grid) drawRadarGrid2D(divisor, viewport, labelPaint)
+            if (layers.grid) {
+                drawRadarGrid2D(divisor, viewport, labelPaint)
+                drawRadarSweep2D(sweepAngle, divisor, viewport)
+            }
             if (layers.wifi) drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint)
             if (layers.heatmap) drawHeatmap2D(heatmap, bearingDeg, divisor, viewport)
             if (layers.compass) drawCompassRose2D(bearingDeg, divisor, viewport, labelPaint)
