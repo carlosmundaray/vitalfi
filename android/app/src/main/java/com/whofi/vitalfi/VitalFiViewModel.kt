@@ -682,7 +682,6 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 strength = if (classification.isLikelyTrapped) adjustedBearingStrength else adjustedBearingStrength * 0.45,
                 detection = detection.copy(isBreathing = isBreathing, isActivity = isActivity),
                 rubbleConf = rubbleConf,
-                proximity = proximity,
                 nowMs = now,
             )
         }

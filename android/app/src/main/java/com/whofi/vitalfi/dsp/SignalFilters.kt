@@ -143,7 +143,10 @@ object SignalFilters {
             val window = signal.slice(lo until hi).sorted()
             val median = window[window.size / 2]
             val mad = k * window.map { abs(it - median) }.sorted()[window.size / 2]
-            if (mad > 0 && abs(signal[i] - median) > threshold * mad) {
+            // MAD=0 when the window is nearly constant: any distinct sample is an outlier.
+            if (mad <= 0.0) {
+                if (abs(signal[i] - median) > 0.0) out[i] = median
+            } else if (abs(signal[i] - median) > threshold * mad) {
                 out[i] = median
             }
         }

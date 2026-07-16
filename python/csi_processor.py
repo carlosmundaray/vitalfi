@@ -39,7 +39,11 @@ def hampel_filter(signal: np.ndarray, window_size: int = 5, threshold: float = 3
         median_val = np.median(window)
         mad = k * np.median(np.abs(window - median_val))
 
-        if mad > 0 and np.abs(signal[i] - median_val) > threshold * mad:
+        # MAD=0 when the window is nearly constant: any distinct sample is an outlier.
+        if mad <= 0:
+            if np.abs(signal[i] - median_val) > 0:
+                filtered[i] = median_val
+        elif np.abs(signal[i] - median_val) > threshold * mad:
             filtered[i] = median_val
 
     return filtered

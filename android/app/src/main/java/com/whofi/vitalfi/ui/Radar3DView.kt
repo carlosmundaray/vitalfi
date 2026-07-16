@@ -53,17 +53,6 @@ fun Radar3DView(
     onViewportChange: (RadarViewport) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val breatheTransition = rememberInfiniteTransition(label = "breathe3d")
-    val breatheClock by breatheTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 60f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 60_000, easing = LinearEasing),
-        ),
-        label = "breatheClock",
-    )
-    val animPhase = breatheClock.toDouble()
-
     val sweepTransition = rememberInfiniteTransition(label = "sweep3d")
     val sweepAngle by sweepTransition.animateFloat(
         initialValue = 0f,
@@ -230,13 +219,10 @@ fun Radar3DView(
                 victims,
                 bearingDeg,
                 selectedVictimId,
-                animPhase,
                 ::project,
-                you,
                 tagPaint,
                 labelPaint,
                 showLabels = layers.labels,
-                showGuideLines = false,
                 colorblind = colorblind,
                 showDepthRays = layers.depthRays,
             )

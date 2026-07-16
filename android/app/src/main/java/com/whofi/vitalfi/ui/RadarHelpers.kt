@@ -971,7 +971,6 @@ fun DrawScope.drawRadarGrid2D(
 
 fun DrawScope.drawRadarSweep2D(
     sweepAngle: Float,
-    divisor: Float,
     viewport: RadarViewport,
 ) {
     val (cx, cy) = radarCenter(viewport)
@@ -1222,11 +1221,9 @@ fun DrawScope.drawVictims2D(
     divisor: Float,
     viewport: RadarViewport,
     selectedVictimId: Int?,
-    animPhase: Double,
     labelPaint: android.graphics.Paint,
     tagPaint: android.graphics.Paint,
     showLabels: Boolean = true,
-    showGuideLines: Boolean = true,
     colorblind: Boolean = false,
 ) {
     val (cx, cy) = radarCenter(viewport)
@@ -1251,14 +1248,6 @@ fun DrawScope.drawVictims2D(
             tagPaint = if (showLabels) tagPaint else null,
         )
 
-        if (showGuideLines) {
-            drawLine(
-                tint.copy(alpha = 0.35f),
-                Offset(cx, cy),
-                center,
-                strokeWidth = if (selected) 2.5f else 1.5f,
-            )
-        }
         if (showLabels) {
             val statusLabel = victimStatusIconLabel(kind)
             drawContext.canvas.nativeCanvas.drawText(
@@ -1388,13 +1377,10 @@ fun DrawScope.drawVictims3D(
     victims: List<TrappedVictim>,
     bearingDeg: Double,
     selectedVictimId: Int?,
-    animPhase: Double,
     project: (Double, Double, Double) -> Offset,
-    origin: Offset,
     tagPaint: android.graphics.Paint,
     labelPaint: android.graphics.Paint,
     showLabels: Boolean = true,
-    showGuideLines: Boolean = true,
     colorblind: Boolean = false,
     showDepthRays: Boolean = false,
 ) {
