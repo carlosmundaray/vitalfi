@@ -1,11 +1,11 @@
-Coloca aquí el modelo TensorFlow Lite con este nombre exacto:
+Modelo TensorFlow Lite (incluido):
 
-- `signature_model.tflite`
+- `signature_model.tflite` — generado con `python/export_signature_tflite.py`
 
 Notas:
-- Entrada esperada: ventana RSSI 1D normalizada con z-score.
-- Salida genérica:
-  - Si hay 2+ valores, el índice `1` es puntuación de actividad.
-  - Si hay 3+ valores, el índice `2` es puntuación de respiración.
-  - En otro caso se usa el primer valor.
+- Entrada: ventana RSSI 1D (64 samples) normalizada con z-score.
+- Salida (logits; la app aplica sigmoid):
+  - índice `1` → actividad
+  - índice `2` → respiración
 - Sin este archivo la app sigue funcionando solo con el detector DSP.
+- Regenerar: `C:\vf-venv\Scripts\python.exe python/export_signature_tflite.py`

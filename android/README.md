@@ -127,7 +127,7 @@ Lo único que necesitas es:
 
 ```
 android/VitalFi/
-├── app/src/main/java/com/whofi/vitalfi/
+├── app/src/main/java/com/vitalfi/
 │   ├── MainActivity.kt
 │   ├── VitalFiViewModel.kt
 │   ├── wifi/WifiRssiCollector.kt
