@@ -12,11 +12,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.whofi.vitalfi"
+    namespace = "com.vitalfi"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.whofi.vitalfi"
+        applicationId = "com.vitalfi"
         minSdk = 26
         targetSdk = 34
         versionCode = 27
