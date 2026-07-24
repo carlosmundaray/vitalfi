@@ -13,14 +13,14 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.vitalfi"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.vitalfi"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 27
-        versionName = "1.3.20"
+        targetSdk = 35
+        versionCode = 28
+        versionName = "1.3.21"
     }
 
     signingConfigs {
