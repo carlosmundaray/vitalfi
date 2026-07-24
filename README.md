@@ -108,7 +108,7 @@ Radar 2D/3D + guía de navegación + export CSV
 | [`android/`](android/README.md) | App nativa (Kotlin + Jetpack Compose), 100 % offline, radar 2D/3D, capas, guía, CSV |
 | [`python/`](python/) | Utilidades DSP/PC (filtros, FFT, simulación/entrenamiento auxiliares) |
 | [`releases/`](releases/README.md) | APK firmadas listas para instalar |
-| [`docs/`](docs/TERMINOS_Y_CONDICIONES.md) | Términos, privacidad y contexto académico |
+| [`docs/`](docs/TERMINOS_Y_CONDICIONES.md) | Términos, privacidad, trabajo relacionado y contexto académico |
 | [`CITATION.cff`](CITATION.cff) | Metadatos de citación (GitHub / Zenodo) |
 | [`LICENSE`](LICENSE) | GNU GPL v3 |
 
@@ -158,9 +158,18 @@ Código bajo **[GNU GPL v3](LICENSE)**.
 
 ---
 
+## Trabajo relacionado (investigación)
+
+VitalFi se sitúa en **device-free Wi‑Fi sensing**. Un referente cercano en micro-movimiento es **WiHear** (MobiCom 2014), que usa **CSI** y beamforming para lip reading radiométrico. La app VitalFi **no** implementa esa línea: opera con **RSSI** orientado a respiración/actividad bajo escombros.
+
+Análisis de viabilidad y cita BibTeX: [docs/TRABAJO_RELACIONADO_WIHEAR.md](docs/TRABAJO_RELACIONADO_WIHEAR.md) · entrada en [`vitalfi.bib`](vitalfi.bib).
+
+---
+
 ## Documentación relacionada
 
 - [Términos y Condiciones / Privacidad](docs/TERMINOS_Y_CONDICIONES.md)  
+- [Trabajo relacionado: WiHear y viabilidad en VitalFi](docs/TRABAJO_RELACIONADO_WIHEAR.md)  
 - [App Android — guía técnica](android/README.md)  
 - [APK firmadas](releases/README.md)  
 - [Firma de release](android/SIGNING.md)
