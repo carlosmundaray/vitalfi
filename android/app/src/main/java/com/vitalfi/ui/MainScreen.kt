@@ -1222,6 +1222,9 @@ fun RadarView(
     viewport: RadarViewport,
     layers: RadarLayers = RadarLayers(),
     colorblind: Boolean = false,
+    rubbleZoneCenterDeg: Double? = null,
+    rubbleZoneRadiusDeg: Double = 55.0,
+    environmentCells: List<com.vitalfi.dsp.EnvironmentCell> = emptyList(),
     onVictimClick: (Int) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
     modifier: Modifier = Modifier,
@@ -1284,7 +1287,16 @@ fun RadarView(
                 drawRadarGrid2D(divisor, viewport, labelPaint)
                 drawRadarSonarPulse2D(sonarPulse, viewport)
             }
-            if (layers.wifi) drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint)
+            if (layers.wifi) {
+                drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint, sonarPulse)
+                drawRfEnvironment2D(
+                    cells = environmentCells,
+                    phoneBearingDeg = bearingDeg,
+                    divisor = divisor,
+                    viewport = viewport,
+                    labelPaint = labelPaint,
+                )
+            }
             if (layers.heatmap) drawHeatmap2D(heatmap, bearingDeg, divisor, viewport)
             if (layers.compass) drawCompassRose2D(bearingDeg, divisor, viewport, labelPaint)
             if (layers.guide) {

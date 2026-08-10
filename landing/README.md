@@ -21,7 +21,7 @@ landing/
 │       └── icon_192.png
 └── releases/
     ├── VitalFi-v1.3.20-signed.apk
-    └── VitalFi-v1.3.21.aab         ← subir este a Play Store
+    └── VitalFi-v1.3.22.aab         ← subir este a Play Store
 ```
 
 ## Cómo abrir

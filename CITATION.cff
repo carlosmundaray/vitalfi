@@ -1,44 +1,21 @@
 cff-version: 1.2.0
-message: "If you use VitalFi in research, please cite it using the metadata below."
-type: software
-title: "VitalFi: Wi-Fi-based life detection under rubble"
-abstract: >-
-  VitalFi is an open-source experimental Android application and companion Python
-  tooling for research on device-free Wi-Fi sensing in search-and-rescue scenarios.
-  It monitors RSSI fluctuations from a local 2.4 GHz access point, applies digital
-  signal processing on-device, and estimates breathing-related activity with a
-  bearing/distance hypothesis shown on an offline 2D/3D radar UI. Results are
-  heuristic and must not replace professional rescue equipment or protocols.
+message: "If you use VitalFi in your research or software, please cite it as below."
 authors:
-  - family-names: Mundaray
-    given-names: Carlos
-    affiliation: "Solvitco"
+  - family-names: "Mundaray"
+    given-names: "Carlos"
     orcid: "https://orcid.org/0009-0002-6152-0256"
-repository-code: "https://github.com/carlosmundaray/vitalfi"
-url: "https://github.com/carlosmundaray/vitalfi"
-license: GPL-3.0-only
-version: "1.3.20"
-date-released: "2026-07-14"
+title: "VitalFi: Wi-Fi-based life detection under rubble"
+version: 1.0.0
+date-released: 2026-01-01
+url: "https://github.com/carlosmundaray/vitalfi_flutter"
+repository-code: "https://github.com/carlosmundaray/vitalfi_flutter"
+license: GPL-3.0
 keywords:
-  - "Wi-Fi sensing"
-  - RSSI
-  - "search and rescue"
-  - "through-rubble detection"
-  - Android
-  - "offline DSP"
-  - "disaster response"
-  - "breathing detection"
-preferred-citation:
-  type: software
-  title: "VitalFi: Wi-Fi-based life detection under rubble"
-  authors:
-    - family-names: Mundaray
-      given-names: Carlos
-      affiliation: "Solvitco"
-      orcid: "https://orcid.org/0009-0002-6152-0256"
-  year: 2026
-  url: "https://github.com/carlosmundaray/vitalfi"
-  # Tras Zenodo, añade por ejemplo:
-  # identifiers:
-  #   - type: doi
-  #     value: 10.5281/zenodo.XXXXXXX
+  - wi-fi
+  - rssi
+  - csi
+  - life-detection
+  - search-and-rescue
+  - flutter
+  - android
+  - signal-processing

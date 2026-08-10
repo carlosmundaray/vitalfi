@@ -14,8 +14,8 @@ Si ORCID muestra: **"Revise el formulario y solucione los problemas antes de gua
 | **Title** | `VitalFi: Wi-Fi-based life detection under rubble` |
 | **Publication date** | Year `2026` (mes/día opcionales) |
 | **Work identifiers → Type** | `URI` o `URL` |
-| **Work identifiers → Value** | `https://github.com/carlosmundaray/vitalfi` |
-| **URL / Link to work** (si aparece) | `https://github.com/carlosmundaray/vitalfi` |
+| **Work identifiers → Value** | `https://github.com/carlosmundaray/vitalfi_flutter` |
+| **URL / Link to work** (si aparece) | `https://github.com/carlosmundaray/vitalfi_flutter` |
 | **Citation type** (si aparece) | `BibTeX` |
 | **Citation** (si aparece) | pega el contenido de `vitalfi.bib` |
 
@@ -30,7 +30,7 @@ Si ORCID muestra: **"Revise el formulario y solucione los problemas antes de gua
 
 ## Opción B — Importar BibTeX
 
-1. Usa el archivo del repo: [`vitalfi.bib`](../vitalfi.bib) (formato `@misc`, compatible con ORCID).  
+1. Usa el archivo del repo: [`vitalfi.bib`](vitalfi.bib) (formato `@misc`, compatible con ORCID).  
 2. Works → **Add** → **Import BibTeX** → selecciona `vitalfi.bib`.  
 3. Revisa el tipo de trabajo: si queda como *Other*, cámbialo a **Software** y guarda.
 

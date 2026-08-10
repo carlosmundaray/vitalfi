@@ -1,175 +1,160 @@
-# VitalFi — Detección de vida bajo escombros vía Wi‑Fi
+<div align="center">
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.3.20-green.svg)](releases/README.md)
-[![Platform](https://img.shields.io/badge/Android-8.0%2B-brightgreen.svg)](android/README.md)
+  <img src="docs/vitalfi_logo.png" alt="VitalFi Logo" width="160" />
 
-> **Software de investigación experimental** para asistir en la localización de personas atrapadas bajo escombros mediante variaciones de la señal Wi‑Fi (RSSI). Corre 100 % offline. **No sustituye** equipos ni protocolos profesionales de búsqueda y rescate.
+  # VitalFi
 
-| Campo | Valor |
-|-------|--------|
-| **Autor** | Carlos Mundaray — [Solvitco](https://solvitco.com) |
-| **ORCID** | [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256) |
-| **Repositorio** | https://github.com/carlosmundaray/vitalfi |
-| **Licencia** | [GNU GPL v3](LICENSE) |
-| **Versión de software** | **1.3.20** |
-| **APK firmada** | [VitalFi-v1.3.20-signed.apk](releases/VitalFi-v1.3.20-signed.apk) |
-| **Cómo citar** | Ver sección [Cómo citar](#cómo-citar) y [`CITATION.cff`](CITATION.cff) |
+  ### *Detección de Signos Vitales bajo Escombros mediante Análisis de Señales Wi-Fi*
 
----
+  [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+  [![ORCID](https://img.shields.io/badge/ORCID-0009--0002--6152--0256-green.svg)](https://orcid.org/0009-0002-6152-0256)
+  [![Flutter](https://img.shields.io/badge/Flutter-%3E%3D3.0-02569B?logo=flutter)](https://flutter.dev)
+  [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Offline-brightgreen.svg)]()
+  [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+  [![Citation](https://img.shields.io/badge/Cite-CITATION.cff-orange.svg)](CITATION.cff)
 
-## Abstract (EN)
+  ---
 
-**VitalFi** is an open-source experimental Android application and companion Python tooling that explores **device-free Wi‑Fi sensing** for search-and-rescue research. Using commodity smartphones and a local 2.4 GHz access point, the system monitors **RSSI fluctuations**, applies digital signal processing (outlier rejection, band-pass filtering, spectral analysis), and estimates **breathing-related activity** and a **bearing/distance hypothesis** relative to the rescuer. A 2D/3D radar UI supports offline field trials without internet connectivity. Results are heuristic estimates and must not be used as a sole decision tool in real emergencies.
+  <img src="docs/playstore/feature_graphic_1024x500.png" alt="VitalFi Feature Graphic" width="700" />
 
-**Keywords:** Wi‑Fi sensing, RSSI, through-rubble detection, search and rescue, Android, offline DSP, disaster response
+</div>
 
-## Resumen (ES)
+## 📌 Visión General del Proyecto
 
-**VitalFi** es un proyecto experimental de código abierto (app Android + utilidades Python) orientado a investigación en **detección de vida bajo escombros** a partir de variaciones de **RSSI Wi‑Fi**. El teléfono, sin internet, analiza la señal de un router local, estima actividad respiratoria y muestra un **radar 2D/3D** con rumbo, distancia y guía tipo búsqueda hacia el punto estimado. Es una prueba de concepto científica: las mediciones son aproximadas y **no reemplazan** geófonos, perros de rescate ni protocolos oficiales.
+**VitalFi** es una aplicación experimental de investigación y prototipo de código abierto desarrollada en Flutter. Su objetivo principal es explorar el uso de las perturbaciones en el canal radioeléctrico Wi-Fi (fluctuaciones de RSSI y CSI) provocadas por micro-movimientos corporales y la frecuencia respiratoria humana, permitiendo estimar la presencia de personas atrapadas o sin conocimiento en escenarios de desastre, colapso de estructuras o escombros.
 
-**Palabras clave:** sensado Wi‑Fi, RSSI, detección bajo escombros, búsqueda y rescate, Android, DSP offline, desastres
+La aplicación opera **100% offline** directamente en dispositivos Android convencionales sin requerir servidores externos ni conexión a Internet.
+
+> ⚠️ **Aviso de Responsabilidad:** VitalFi es un proyecto experimental de investigación científica y desarrollo tecnológico. **No sustituye** equipos certificados de búsqueda y rescate (USAR) ni protocolos médicos oficiales. Su uso está orientado a pruebas de laboratorio, prototipado y validación de campo.
 
 ---
 
-## Autores y afiliación
+## ⚡ Características Principales
 
-- **Carlos Mundaray** — Solvitco ([solvitco.com](https://solvitco.com))  
-  - GitHub: [@carlosmundaray](https://github.com/carlosmundaray)  
-  - ORCID: [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256)
-
-Contacto y aviso legal: [Términos y Condiciones / Privacidad](docs/TERMINOS_Y_CONDICIONES.md).
+- 📡 **Sensado Inalámbrico Non-Invasivo:** Análisis de variaciones dinámicas del entorno Wi-Fi (2.4 GHz).
+- 📴 **Operación Offline Nativa:** Cero dependencia de servicios en la nube o infraestructura de red externa.
+- ⏱️ **Calibración Automática del Entorno:** Proceso inicial (~30 segundos) para establecer la línea base de ruido del área.
+- 🎯 **Estimación Vital Heurística:** Cálculo de un índice de confianza vital y tasa respiratoria en respiraciones por minuto (RPM).
+- 🧭 **Visualización Radar 2D/3D:** Interfaz gráfica táctil para inspeccionar detecciones, profundidad estimada y vectores de proximidad.
+- 📊 **Exportación de Datos para Análisis:** Soporte para registro de señales para validación académica.
 
 ---
 
-## Cómo citar
+## 🔬 Fundamento Científico y Algoritmo
 
-Si usas VitalFi en investigación, cita el software (versión concreta) así:
+Cuando una persona respira o realiza micro-movimientos en un área alcanzada por una señal Wi-Fi, la reflexión y dispersión de las ondas (efectos de *multipath*) sufren alteraciones periódicas.
 
-**APA (ejemplo)**
+$$\Delta \text{RSSI}(t) = f(\text{Respiración}, \text{Distancia}, \text{Estructura})$$
 
-> Mundaray, C. (2026). *VitalFi: Wi‑Fi–based life detection under rubble* (Version 1.3.20) [Computer software]. https://github.com/carlosmundaray/vitalfi
+VitalFi captura estas variaciones espectrales para:
+1. **Filtrar el ruido de fondo:** Aislación de interferencias térmicas y de canales vecinos.
+2. **Transformada de Frecuencia (FFT/STFT):** Detección de frecuencias en el rango del ritmo respiratorio humano ($0.15 \text{ Hz} - 0.40 \text{ Hz} \iff 9 - 24 \text{ RPM}$).
+3. **Estimación de Profundidad Heurística:** Atenuación de señal según la densidad estimada de los escombros.
 
-**BibTeX** (compatible con ORCID — archivo [`vitalfi.bib`](vitalfi.bib))
+Para profundizar en la base conceptual, consulta nuestro documento de [Trabajo Relacionado: WiHear (MobiCom 2014) y viabilidad en VitalFi](docs/TRABAJO_RELACIONADO_WIHEAR.md).
+
+---
+
+## 🗺️ Hoja de Ruta (Roadmap) y Áreas de Colaboración 🤝
+
+¡Buscamos científicos, ingenieros de firmware, matemáticos y desarrolladores Flutter!
+
+```mermaid
+graph LR
+    A[Módulo RSSI Android] --> B[Filtros FFT / STFT en Dart]
+    B --> C[Visualizador Radar 2D/3D]
+    D[Receptor Hardware CSI ESP32] --> B
+    C --> E[Red Mesh BLE Multi-Nodo]
+```
+
+### 🎯 Tareas abiertas para colaboradores:
+- [ ] **Integración de Hardware CSI (ESP32 / Wi-Fi CSI):** Implementar la recepción de matrices CSI completas (Amplitud y Fase) mediante microcontroladores ESP32 para superar la limitación del RSSI nativo de Android.
+- [ ] **Optimización de Procesamiento en Dart:** Implementación eficiente de transformadas de Fourier y filtros pasabanda para procesamiento en tiempo real.
+- [ ] **Renderizado de Radar 3D Avanzado:** Mejorar el motor gráfico del radar táctil usando `CustomPainter` o integración 3D.
+- [ ] **Sincronización Mesh Multi-Dispositivo:** Red de escaneo coordinado entre varios teléfonos mediante Bluetooth Low Energy (BLE).
+- [ ] **Recolección y Formateo de Datasets:** Pruebas en escenarios reales para crear un dataset abierto de variaciones Wi-Fi en colapsos.
+
+Revisa nuestra [Guía de Contribución (CONTRIBUTING.md)](CONTRIBUTING.md) para sumarte al proyecto.
+
+---
+
+## 🛠️ Requisitos de Hardware y Entorno
+
+### Hardware Recomendado
+| Elemento | Especificación / Notas |
+|----------|------------------------|
+| **Dispositivo Móvil** | Smartphone Android (Android 8.0 / API 26 o superior) |
+| **Emisor Wi-Fi** | Router o AP portátil convencional en la banda de **2.4 GHz** (mayor penetración de obstáculos) |
+| **Opcional (Fase 2)** | Módulo ESP32 habilitado para extracción de CSI |
+
+### Desarrollo con Flutter
+- [Flutter SDK](https://flutter.dev) (`>=3.0.0`)
+- Dart SDK
+- Android SDK
+
+```bash
+# Verificar la instalación del entorno Flutter
+flutter doctor
+```
+
+---
+
+## 🚀 Inicio Rápido
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/carlosmundaray/vitalfi_flutter.git
+cd vitalfi_flutter
+
+# 2. Instalar dependencias de Flutter
+flutter pub get
+
+# 3. Ejecutar en tu dispositivo Android conectado
+flutter run
+
+# 4. Compilar APK de prueba
+flutter build apk --release
+```
+
+---
+
+## 📚 Índice de Documentación Académica y Recursos
+
+Toda la documentación técnica del proyecto está disponible en la carpeta [`docs/`](docs/):
+
+- 📜 [Términos, Condiciones y Privacidad](docs/TERMINOS_Y_CONDICIONES.md)
+- 📖 [Guía para Añadir VitalFi en ORCID](docs/ORCID_ADD_WORK.md)
+- 🔬 [Ficha BibTeX para Importación Académica (`docs/vitalfi.bib`)](docs/vitalfi.bib)
+- 📐 [Fórmula y Fundamento de Detección Vital (PDF)](docs/Formula_Deteccion_VitalFi.pdf)
+- 🛠️ [Guía de Montaje de Sensores CSI (PDF)](docs/Montaje_CSI_VitalFi.pdf)
+- 🛒 [Lista de Componentes Hardware CSI 2026 (PDF)](docs/Lista_Compra_CSI_2026.pdf)
+- 📄 [Análisis del Paper WiHear MobiCom 2014 (PDF)](docs/WiHear_MobiCom14.pdf)
+
+---
+
+## 🎓 Cómo Citar este Proyecto
+
+Si utilizas VitalFi o sus conceptos en tu investigación académica o desarrollos derivados, por favor cítalo utilizando la información de [CITATION.cff](CITATION.cff) o el siguiente bloque BibTeX:
 
 ```bibtex
-@misc{mundaray_vitalfi_2026,
+@misc{vitalfi2026,
   author       = {Mundaray, Carlos},
-  title        = {{VitalFi}: Wi-Fi-based life detection under rubble},
-  howpublished = {GitHub},
+  title        = {VitalFi: Wi-Fi-based life detection under rubble},
   year         = {2026},
-  note         = {Version 1.3.20. Open-source software (GPL-3.0). ORCID: 0009-0002-6152-0256},
-  url          = {https://github.com/carlosmundaray/vitalfi}
+  publisher    = {GitHub},
+  journal      = {GitHub repository},
+  howpublished = {\url{https://github.com/carlosmundaray/vitalfi_flutter}},
+  url          = {https://github.com/carlosmundaray/vitalfi_flutter},
+  note         = {Software prototype for Wi-Fi-based life detection and RSSI variation analysis}
 }
 ```
 
-Guía paso a paso si ORCID no deja guardar: [`docs/ORCID_ADD_WORK.md`](docs/ORCID_ADD_WORK.md).
-
-Tras archivar en **Zenodo**, sustituye la URL por el **DOI** (concept DOI o DOI de la versión) y actualiza [`CITATION.cff`](CITATION.cff). En GitHub, el archivo `CITATION.cff` habilita el botón **Cite this repository**.
-
-### Publicar en ORCID (pasos recomendados)
-
-1. ORCID del autor ya está en `CITATION.cff`: [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256).
-2. Crea una cuenta en [Zenodo](https://zenodo.org) e inicia sesión con GitHub u ORCID.
-3. En Zenodo → GitHub, habilita el repositorio `carlosmundaray/vitalfi`.
-4. Publica un **Release** en GitHub (p. ej. `v1.3.20`); Zenodo generará un **DOI**.
-5. Vincula Zenodo con ORCID para que el *Software* aparezca automáticamente en tu perfil, o añade el trabajo manualmente en ORCID (tipo *Software*) con el DOI.
-
 ---
 
-## Método (pipeline)
+## 👥 Autores y Colaboradores
 
-```text
-Router Wi‑Fi 2.4 GHz (sin internet)
-        │
-        ▼
-Teléfono Android — RSSI + brújula (offline)
-        │
-        ▼
-DSP: limpieza / bandas de interés / espectral
-        │
-        ▼
-Hipótesis: respiración / actividad / rumbo–distancia
-        │
-        ▼
-Radar 2D/3D + guía de navegación + export CSV
-```
+- **Carlos Mundaray** — Autor Principal & Investigador — ORCID: [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256)
 
-- **Entrada:** intensidad RSSI del AP elegido y rumbo del magnetómetro.  
-- **Procesamiento:** local en el dispositivo (y scripts Python en PC para análisis offline).  
-- **Salida:** puntos en radar, etiquetas P1/P2…, profundidad estimada, CSV para reproducibilidad.
+Consulta [AUTHORS.md](AUTHORS.md) para ver la lista completa de colaboradores.
 
----
-
-## Estructura del repositorio
-
-| Componente | Descripción |
-|------------|-------------|
-| [`android/`](android/README.md) | App nativa (Kotlin + Jetpack Compose), 100 % offline, radar 2D/3D, capas, guía, CSV |
-| [`python/`](python/) | Utilidades DSP/PC (filtros, FFT, simulación/entrenamiento auxiliares) |
-| [`releases/`](releases/README.md) | APK firmadas listas para instalar |
-| [`docs/`](docs/TERMINOS_Y_CONDICIONES.md) | Términos, privacidad, trabajo relacionado y contexto académico |
-| [`CITATION.cff`](CITATION.cff) | Metadatos de citación (GitHub / Zenodo) |
-| [`LICENSE`](LICENSE) | GNU GPL v3 |
-
----
-
-## Descarga e instalación (APK)
-
-Versión actual: **1.3.20** — [VitalFi-v1.3.20-signed.apk](releases/VitalFi-v1.3.20-signed.apk)
-
-Enlace directo:
-
-https://github.com/carlosmundaray/vitalfi/raw/main/releases/VitalFi-v1.3.20-signed.apk
-
-Instrucciones y historial de versiones: [releases/README.md](releases/README.md).  
-Compilación desde fuente: [android/README.md](android/README.md).
-
----
-
-## Cómo reproducir un ensayo de campo
-
-1. Coloca un **router Wi‑Fi 2.4 GHz** cerca del montículo (no necesita cable de internet).  
-2. En el teléfono: Wi‑Fi activo (puede usarse modo avión + Wi‑Fi).  
-3. Abre VitalFi → **Escaneo pasivo** (o modo conectado) y elige la red del router.  
-4. Concede permiso de **ubicación** (Android lo exige para leer Wi‑Fi; la app no envía GPS a internet).  
-5. Camina/gira despacio alrededor del escombro; usa la guía del radar hacia el punto estimado.  
-6. Exporta **CSV** para análisis posterior con las herramientas en `python/`.
-
----
-
-## Limitaciones y disclaimer
-
-- Es **investigación / prueba de concepto**, no un instrumento certificado de rescate.  
-- Distancia, profundidad y “punto cero” son **estimaciones heurísticas** sujetas a multipath, ruido y hardware del teléfono.  
-- **No reemplaza** perros de rescate, geófonos, cámaras térmicas ni protocolos de protección civil.  
-- Uso bajo tu propia responsabilidad. Detalle legal: [Términos y Condiciones](docs/TERMINOS_Y_CONDICIONES.md).  
-- Sin garantía (cláusula estándar GPL).
-
----
-
-## Licencia
-
-Código bajo **[GNU GPL v3](LICENSE)**.
-
-- Puedes usar, estudiar y modificar el software.  
-- Si redistribuyes versiones modificadas, debes publicar el código fuente bajo GPL v3.  
-- Marcas y diseños de VitalFi / Solvitco no se ceden automáticamente con la licencia del código.
-
----
-
-## Trabajo relacionado (investigación)
-
-VitalFi se sitúa en **device-free Wi‑Fi sensing**. Un referente cercano en micro-movimiento es **WiHear** (MobiCom 2014), que usa **CSI** y beamforming para lip reading radiométrico. La app VitalFi **no** implementa esa línea: opera con **RSSI** orientado a respiración/actividad bajo escombros.
-
-Análisis de viabilidad y cita BibTeX: [docs/TRABAJO_RELACIONADO_WIHEAR.md](docs/TRABAJO_RELACIONADO_WIHEAR.md) · entrada en [`vitalfi.bib`](vitalfi.bib).
-
----
-
-## Documentación relacionada
-
-- [Términos y Condiciones / Privacidad](docs/TERMINOS_Y_CONDICIONES.md)  
-- [Trabajo relacionado: WiHear y viabilidad en VitalFi](docs/TRABAJO_RELACIONADO_WIHEAR.md)  
-- [App Android — guía técnica](android/README.md)  
-- [APK firmadas](releases/README.md)  
-- [Firma de release](android/SIGNING.md)
+Este proyecto se distribuye bajo la licencia **GNU General Public License v3.0** — Ver [LICENSE](LICENSE) para más detalles.

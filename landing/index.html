@@ -3,26 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>VitalFi — App experimental Android</title>
-  <meta name="description" content="VitalFi: software experimental de investigacion. Descarga la APK o instalala desde Google Play." />
+  <title>VitalFi — Sistema inalambrico para identificar vidas bajo escombros</title>
+  <meta name="description" content="VitalFi: aplicacion movil experimental de respuesta rapida para estimar signos vitales bajo escombros mediante senales Wi-Fi. Offline en Android." />
   <link rel="icon" href="assets/vitalfi_logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
+    /* Tokens from landing/DESIGN.md — Open Design */
     :root {
-      --bg: #07120e;
+      --terrain: #07120e;
       --ink: #e8f6ef;
-      --muted: #8eaea0;
+      --muted: #a8c4b6;
       --cyan: #00e6b8;
-      --cyan-dim: #00a88a;
+      --cyan-hover: #5ff0d0;
+      --cyan-deep: #00a88a;
+      --coral: #ff3d68;
       --sand: #d4c09a;
       --line: rgba(0, 230, 184, 0.18);
+      --panel: #0c1a14;
+      --cta-ink: #042018;
       --pad-x: 1.25rem;
       --pad-y: clamp(1.25rem, 4vh, 2.5rem);
       --safe-b: env(safe-area-inset-bottom, 0px);
       --safe-t: env(safe-area-inset-top, 0px);
-      --max: 1040px;
+      --max: 1080px;
+      --hero-pad: 96px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,9 +39,9 @@
     }
 
     body {
-      font-family: "Manrope", sans-serif;
+      font-family: "Manrope", system-ui, sans-serif;
       color: var(--ink);
-      background: var(--bg);
+      background: var(--terrain);
       min-height: 100vh;
       min-height: 100dvh;
       overflow-x: hidden;
@@ -44,7 +50,6 @@
     a { color: inherit; text-decoration: none; }
     img { display: block; max-width: 100%; height: auto; }
 
-    /* Misma caja de contenido en toda la pagina */
     .shell {
       width: 100%;
       max-width: var(--max);
@@ -60,8 +65,8 @@
       display: flex;
       align-items: center;
       padding-block:
-        calc(var(--pad-y) + var(--safe-t))
-        calc(var(--pad-y) + var(--safe-b));
+        calc(var(--hero-pad) * 0.55 + var(--safe-t))
+        calc(var(--hero-pad) * 0.55 + var(--safe-b));
       isolation: isolate;
     }
 
@@ -71,9 +76,9 @@
       z-index: 0;
       overflow: hidden;
       background:
-        radial-gradient(ellipse 70% 50% at 78% 42%, rgba(0, 230, 184, 0.12), transparent 58%),
-        radial-gradient(ellipse 55% 45% at 12% 85%, rgba(255, 77, 115, 0.07), transparent 55%),
-        linear-gradient(165deg, #0a1812 0%, var(--bg) 48%, #050c09 100%);
+        radial-gradient(ellipse 70% 50% at 78% 42%, rgba(0, 230, 184, 0.14), transparent 58%),
+        radial-gradient(ellipse 40% 35% at 18% 78%, rgba(255, 61, 104, 0.06), transparent 55%),
+        linear-gradient(165deg, #0a1812 0%, var(--terrain) 48%, #050c09 100%);
       pointer-events: none;
     }
 
@@ -82,8 +87,8 @@
       position: absolute;
       inset: -15%;
       background-image:
-        linear-gradient(rgba(0, 230, 184, 0.045) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 230, 184, 0.045) 1px, transparent 1px);
+        linear-gradient(rgba(0, 230, 184, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 230, 184, 0.05) 1px, transparent 1px);
       background-size: 44px 44px;
       mask-image: radial-gradient(ellipse at 70% 40%, #000 15%, transparent 68%);
       animation: gridDrift 30s linear infinite;
@@ -102,7 +107,7 @@
     .sonar i {
       position: absolute;
       inset: 12%;
-      border: 1px solid rgba(0, 230, 184, 0.2);
+      border: 1px solid rgba(0, 230, 184, 0.22);
       border-radius: 50%;
       animation: sonarPulse 4.8s ease-out infinite;
     }
@@ -141,34 +146,28 @@
       height: auto;
       aspect-ratio: 1;
       object-fit: contain;
-      object-position: center;
-      border-radius: 0;
-      background: transparent;
-      box-shadow: none;
-      image-rendering: auto;
     }
 
-    .hero-copy {
-      width: 100%;
-      max-width: 36rem;
-    }
+    .hero-copy { width: 100%; max-width: 36rem; }
 
     .tag {
       display: block;
-      font-size: 0.7rem;
+      font-size: 0.72rem;
       font-weight: 600;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--sand);
-      margin-bottom: 0.7rem;
+      margin-bottom: 0.75rem;
     }
 
     .brand {
       font-family: "Instrument Serif", Georgia, serif;
       font-size: clamp(3rem, 11vw, 5.6rem);
+      font-weight: 400;
       line-height: 0.95;
       letter-spacing: -0.03em;
-      margin-bottom: 0.85rem;
+      margin-bottom: 0.9rem;
+      color: var(--ink);
     }
 
     .brand em {
@@ -177,11 +176,12 @@
     }
 
     .lede {
-      font-size: clamp(1rem, 2.6vw, 1.2rem);
+      font-size: clamp(1.05rem, 2.6vw, 1.25rem);
+      font-weight: 500;
       line-height: 1.5;
       color: var(--muted);
-      margin-bottom: 1.5rem;
-      max-width: 30ch;
+      margin-bottom: 1.6rem;
+      max-width: 32ch;
     }
 
     .cta {
@@ -197,19 +197,24 @@
       justify-content: center;
       gap: 0.45rem;
       min-height: 3rem;
-      padding: 0.8rem 1.25rem;
-      font: 700 0.95rem/1 "Manrope", sans-serif;
+      padding: 0.8rem 1.35rem;
+      font: 700 0.95rem/1 "Manrope", system-ui, sans-serif;
       border: 0;
+      border-radius: 2px;
       cursor: pointer;
       transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
       -webkit-tap-highlight-color: transparent;
     }
 
     .btn:hover { transform: translateY(-2px); }
+    .btn:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 3px;
+    }
     .btn svg { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
 
-    .btn-primary { background: var(--cyan); color: #042018; }
-    .btn-primary:hover { background: #5ff0d0; }
+    .btn-primary { background: var(--cyan); color: var(--cta-ink); }
+    .btn-primary:hover { background: var(--cyan-hover); }
 
     .btn-secondary {
       background: transparent;
@@ -222,59 +227,106 @@
     }
 
     /* —— MAIN —— */
-    main {
-      padding-bottom: calc(2.5rem + var(--safe-b));
-    }
+    main { padding-bottom: 0; }
 
-    section {
-      padding-top: clamp(2rem, 5vw, 3rem);
-      margin-top: 0.25rem;
+    .section {
+      padding-block: clamp(2.25rem, 6vw, 3.5rem);
       border-top: 1px solid var(--line);
     }
 
-    section + section { margin-top: 0.5rem; }
-
-    section h2 {
+    .section h2 {
       font-family: "Instrument Serif", Georgia, serif;
-      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
       font-weight: 400;
       letter-spacing: -0.02em;
-      margin-bottom: 0.6rem;
+      line-height: 1.1;
+      margin-bottom: 0.75rem;
+      color: var(--ink);
     }
 
-    section p {
+    .section p {
       color: var(--muted);
-      font-size: 1rem;
-      line-height: 1.55;
+      font-size: 1.05rem;
+      line-height: 1.6;
       max-width: 42rem;
       margin-bottom: 1.15rem;
     }
+
+    .section p strong { color: var(--ink); font-weight: 700; }
 
     .links a {
       display: inline-block;
       color: var(--cyan);
       font-weight: 600;
-      font-size: 0.95rem;
-      padding: 0.2rem 0;
+      font-size: 1rem;
+      padding: 0.25rem 0;
       border-bottom: 1px solid transparent;
     }
     .links a:hover { border-bottom-color: var(--cyan); }
 
     .notice {
-      margin-top: 1rem;
-      padding-top: 1rem;
-      border-top: 1px solid rgba(212, 192, 154, 0.22);
+      margin-top: 1.1rem;
+      padding-top: 1.1rem;
+      border-top: 1px solid rgba(212, 192, 154, 0.28);
       color: var(--sand);
-      font-size: 0.88rem;
-      line-height: 1.5;
+      font-size: 0.9rem;
+      line-height: 1.55;
       max-width: 42rem;
+    }
+
+    .value-list,
+    .audience-list {
+      list-style: none;
+      display: grid;
+      gap: 0;
+      margin: 0.5rem 0 0;
+      max-width: 46rem;
+    }
+
+    .value-list li,
+    .audience-list li {
+      padding: 1.05rem 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .value-list li:last-child,
+    .audience-list li:last-child {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .value-list strong,
+    .audience-list strong {
+      display: block;
+      color: var(--ink);
+      font-size: 1.02rem;
+      font-weight: 700;
+      margin-bottom: 0.3rem;
+    }
+
+    .value-list span,
+    .audience-list span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.98rem;
+      line-height: 1.55;
+    }
+
+    .story p { max-width: 46rem; }
+
+    .split-stack {
+      display: grid;
+      gap: 0;
+    }
+
+    .split-stack .section {
+      border-top: 1px solid var(--line);
     }
 
     .team {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 1.25rem;
-      margin-top: 0.35rem;
+      gap: 0;
+      margin-top: 0.5rem;
       width: 100%;
     }
 
@@ -283,13 +335,11 @@
       grid-template-columns: auto 1fr;
       gap: 0.9rem 1rem;
       align-items: center;
-      padding: 1rem 0;
+      padding: 1.1rem 0;
       border-top: 1px solid var(--line);
     }
 
-    .member:last-child {
-      border-bottom: 1px solid var(--line);
-    }
+    .member:last-child { border-bottom: 1px solid var(--line); }
 
     .avatar {
       width: 3.25rem;
@@ -299,7 +349,7 @@
       place-items: center;
       font-family: "Instrument Serif", Georgia, serif;
       font-size: 1.15rem;
-      color: #042018;
+      color: var(--cta-ink);
       background: var(--cyan);
       flex-shrink: 0;
     }
@@ -311,8 +361,8 @@
     }
 
     .member h3 {
-      font-family: "Manrope", sans-serif;
-      font-size: 1.02rem;
+      font-family: "Manrope", system-ui, sans-serif;
+      font-size: 1.05rem;
       font-weight: 700;
       color: var(--ink);
       margin: 0 0 0.2rem;
@@ -321,66 +371,87 @@
     .member p {
       margin: 0;
       max-width: none;
-      font-size: 0.9rem;
+      font-size: 0.92rem;
       color: var(--muted);
       line-height: 1.4;
     }
 
-    .member .handle {
-      margin-top: 0.35rem;
-      font-size: 0.85rem;
-    }
-
-    .member .handle a {
-      color: var(--cyan);
-      font-weight: 600;
-    }
-
-    .member .handle a:hover {
-      border-bottom: 1px solid var(--cyan);
-    }
+    .member .handle { margin-top: 0.35rem; font-size: 0.88rem; }
+    .member .handle a { color: var(--cyan); font-weight: 600; }
+    .member .handle a:hover { border-bottom: 1px solid var(--cyan); }
 
     .team-photo {
       width: 100%;
-      margin: 0.5rem 0 1.25rem;
+      margin: 0.65rem 0 1.35rem;
       overflow: hidden;
       border: 1px solid var(--line);
-      background: #0a1612;
+      background: var(--panel);
     }
 
     .team-photo img {
       width: 100%;
       height: auto;
-      display: block;
       object-fit: cover;
       aspect-ratio: 16 / 11;
       object-position: center 28%;
     }
 
     .team-caption {
-      margin: 0.55rem 0 0;
-      font-size: 0.82rem;
+      margin: 0.6rem 0 0;
+      font-size: 0.85rem;
       color: var(--muted);
       line-height: 1.4;
       max-width: none;
     }
 
-    footer {
-      padding-block: 1.25rem calc(1.5rem + var(--safe-b));
+    /* Footer CTA band — second cyan accent moment */
+    .footer-cta {
+      background: var(--cyan);
+      color: var(--cta-ink);
+      padding-block: clamp(2rem, 5vw, 2.75rem);
+    }
+
+    .footer-cta .shell {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.25rem 2rem;
+    }
+
+    .footer-cta h2 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(1.6rem, 3.5vw, 2.1rem);
+      font-weight: 400;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      max-width: 22ch;
+    }
+
+    .footer-cta .btn-on-cyan {
+      background: var(--cta-ink);
+      color: var(--cyan);
+    }
+    .footer-cta .btn-on-cyan:hover {
+      background: #063528;
+      color: var(--cyan-hover);
+    }
+
+    footer.site-footer {
+      padding-block: 1.35rem calc(1.6rem + var(--safe-b));
       border-top: 1px solid var(--line);
       color: var(--muted);
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem 1.25rem;
       justify-content: space-between;
-      line-height: 1.4;
+      line-height: 1.45;
     }
 
-    footer a { color: var(--cyan-dim); }
-    footer a:hover { color: var(--cyan); }
+    footer.site-footer a { color: var(--cyan-deep); }
+    footer.site-footer a:hover { color: var(--cyan); }
 
-    /* Mobile */
     @media (max-width: 719px) {
       .hero {
         align-items: flex-start;
@@ -399,18 +470,11 @@
         margin: 0 auto;
       }
 
-      .hero-copy {
-        text-align: center;
-      }
-
-      .tag {
-        letter-spacing: 0.1em;
-      }
+      .hero-copy { text-align: center; }
 
       .lede {
         max-width: none;
-        margin-left: auto;
-        margin-right: auto;
+        margin-inline: auto;
       }
 
       .sonar {
@@ -431,21 +495,24 @@
         min-height: 3.15rem;
       }
 
-      .team {
-        gap: 0.35rem;
+      .footer-cta .shell {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
       }
 
-      footer {
+      .footer-cta h2 {
+        max-width: none;
+      }
+
+      footer.site-footer {
         flex-direction: column;
-        gap: 0.35rem;
+        gap: 0.4rem;
       }
     }
 
-    /* Desktop: margen lateral fijo e igual en toda la pagina */
     @media (min-width: 720px) {
-      :root {
-        --pad-x: 2.5rem;
-      }
+      :root { --pad-x: 2.5rem; }
 
       .hero-inner {
         grid-template-columns: minmax(0, 1.15fr) auto;
@@ -469,11 +536,6 @@
 
       .cta { width: auto; }
       .btn { width: auto; }
-
-      .team {
-        grid-template-columns: 1fr;
-        gap: 0;
-      }
     }
 
     @media (min-width: 900px) {
@@ -482,9 +544,7 @@
         gap: 0 1.5rem;
       }
 
-      .member {
-        border-bottom: 1px solid var(--line);
-      }
+      .member { border-bottom: 1px solid var(--line); }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -496,23 +556,32 @@
   </style>
 </head>
 <body>
-  <header class="hero">
+  <header class="hero" data-od-id="hero">
     <div class="hero-visual" aria-hidden="true">
       <div class="sonar"><i></i><i></i><i></i><i></i></div>
     </div>
 
     <div class="hero-inner shell">
-      <img class="hero-logo" src="assets/vitalfi_logo.png" width="512" height="512" alt="Logo VitalFi" decoding="async" />
+      <img
+        class="hero-logo"
+        data-od-id="hero.logo"
+        src="assets/vitalfi_logo.png"
+        width="512"
+        height="512"
+        alt="Logo VitalFi"
+        decoding="async"
+      />
       <div class="hero-copy">
-        <p class="tag">Experimental · Offline · Android</p>
-        <h1 class="brand">Vital<em>Fi</em></h1>
-        <p class="lede">
-          Investigacion con Wi-Fi para estimar posibles patrones vitales bajo escombros.
+        <p class="tag" data-od-id="hero.tag">Experimental · Offline · Android</p>
+        <h1 class="brand" data-od-id="hero.brand">Vital<em>Fi</em></h1>
+        <p class="lede" data-od-id="hero.lede">
+          Sistema inalambrico para identificar vidas bajo los escombros.
         </p>
-        <div class="cta">
+        <div class="cta" data-od-id="hero.cta">
           <a class="btn btn-primary" id="apk-link"
              href="releases/VitalFi-v1.3.20-signed.apk"
-             download>
+             download
+             data-od-id="hero.cta.apk">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M12 3v12m0 0l4-4m-4 4l-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -520,7 +589,8 @@
           </a>
           <a class="btn btn-secondary" id="play-link"
              href="https://play.google.com/store/apps/details?id=com.vitalfi"
-             target="_blank" rel="noopener noreferrer">
+             target="_blank" rel="noopener noreferrer"
+             data-od-id="hero.cta.play">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M3.6 2.9c-.4.2-.6.6-.6 1.1v16c0 .5.2.9.6 1.1l10.3-9.1L3.6 2.9zm12.1 6.8L5.2 2.1l11.4 6.5-1-.9zM5.2 21.9l10.5-6.1 1.1-.9-11.6 7zm13.2-7.5l-2.4 1.4-1.3-1.2 1.3-1.1 2.4 1.4c.6.3.6 1.1 0 1.5z"/>
             </svg>
@@ -531,40 +601,162 @@
     </div>
   </header>
 
-  <main class="shell">
-    <section>
-      <h2>Instala y prueba</h2>
-      <p>
-        Version <strong style="color:var(--ink)">1.3.20</strong> firmada.
+  <main>
+    <section class="section shell story" data-od-id="about">
+      <h2 data-od-id="about.title">Que es VitalFi</h2>
+      <p data-od-id="about.p1">
+        VitalFi es una aplicacion movil (APK) de respuesta rapida pensada para apoyar
+        la busqueda de personas en escenarios de desastre y estructuras colapsadas.
+        Mediante tecnologia inalambrica, permite a equipos de busqueda y rescate
+        estimar signos vitales —como la frecuencia respiratoria— bajo escombros,
+        incluso cuando las victimas pueden estar inmoviles o en entornos de alta
+        interferencia estructural.
+      </p>
+      <p data-od-id="about.p2">
+        Nacio durante la emergencia del terremoto del 24 de junio de 2026 en Venezuela.
+        Fue concebida y desarrollada de forma independiente por Carlos Mundaray,
+        quien unio fuerzas con James Marin y Maryolie Nelson para llevar las primeras
+        pruebas de campo en La Guaira. El objetivo: transformar un dispositivo movil
+        en una herramienta portable de apoyo cuando cada segundo cuenta.
+      </p>
+    </section>
+
+    <div class="split-stack shell" data-od-id="purpose">
+      <section class="section" data-od-id="mission">
+        <h2 data-od-id="mission.title">Mision</h2>
+        <p data-od-id="mission.body">
+          Poner al alcance de brigadas y cuerpos de rescate una tecnologia innovadora,
+          accesible y de alta efectividad, disenada para reducir los tiempos de
+          localizacion de personas atrapadas y maximizar sus posibilidades de
+          supervivencia en situaciones de desastre.
+        </p>
+      </section>
+
+      <section class="section" data-od-id="vision">
+        <h2 data-od-id="vision.title">Vision</h2>
+        <p data-od-id="vision.body">
+          Consolidarnos como solucion tecnologica de referencia a nivel nacional e
+          internacional en la gestion de emergencias y rescate en estructuras
+          colapsadas, impulsando herramientas digitales al servicio de la
+          preservacion de la vida humana.
+        </p>
+      </section>
+
+      <section class="section" data-od-id="object">
+        <h2 data-od-id="object.title">Objeto</h2>
+        <p data-od-id="object.body">
+          Proveer un sistema tecnologico inalambrico capaz de apoyar la deteccion a
+          traves de barreras fisicas densas (como concreto u estructuras metalicas)
+          para monitorear parametros biologicos estimados con la mayor fidelidad
+          posible. Asi se buscan optimizar esfuerzos de salvamento y facilitar
+          decisiones oportunas a los rescatistas en el terreno.
+        </p>
+      </section>
+    </div>
+
+    <section class="section shell" data-od-id="values">
+      <h2 data-od-id="values.title">Nuestros valores</h2>
+      <ul class="value-list" data-od-id="values.list">
+        <li data-od-id="values.faith">
+          <strong>Fe en Dios</strong>
+          <span>
+            Ponemos a Dios primero. Reconocemos que el conocimiento, el talento y
+            la inspiracion provienen de El, y encomendamos cada linea de codigo y
+            cada labor de rescate a su guia y proteccion.
+          </span>
+        </li>
+        <li data-od-id="values.service">
+          <strong>Vocacion de servicio</strong>
+          <span>
+            Nacemos con el proposito firme de poner la tecnologia y el conocimiento
+            al servicio activo del projimo.
+          </span>
+        </li>
+        <li data-od-id="values.innovation">
+          <strong>Innovacion agil</strong>
+          <span>
+            Desarrollamos soluciones de respuesta inmediata, con capacidad de
+            adaptacion ante escenarios complejos e impredecibles.
+          </span>
+        </li>
+        <li data-od-id="values.resilience">
+          <strong>Resiliencia y compromiso</strong>
+          <span>
+            Trabajamos superando limites tecnicos y fisicos en los momentos mas
+            criticos de una emergencia.
+          </span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="section shell" data-od-id="audience">
+      <h2 data-od-id="audience.title">A quien va dirigido</h2>
+      <p data-od-id="audience.intro">VitalFi esta pensado como herramienta aliada de quienes estan en la primera linea de respuesta:</p>
+      <ul class="audience-list" data-od-id="audience.list">
+        <li data-od-id="audience.usar">
+          <strong>Brigadas de busqueda y rescate (USAR / Proteccion Civil / Bomberos)</strong>
+          <span>
+            Equipos en campo que necesitan acelerar la localizacion de posibles
+            sobrevivientes bajo escombros con tecnologia portable.
+          </span>
+        </li>
+        <li data-od-id="audience.ngo">
+          <strong>ONG y organismos de emergencia</strong>
+          <span>
+            Entidades nacionales e internacionales enfocadas en la gestion de
+            desastres que buscan equipar brigadas con innovacion accesible.
+          </span>
+        </li>
+        <li data-od-id="audience.gov">
+          <strong>Gobiernos y entidades de gestion de riesgo</strong>
+          <span>
+            Instituciones publicas comprometidas con modernizar protocolos de
+            respuesta ante terremotos y colapsos estructurales.
+          </span>
+        </li>
+        <li data-od-id="audience.partners">
+          <strong>Aliados estrategicos e inversionistas sociales</strong>
+          <span>
+            Organizaciones, empresas y fondos que buscan impulsar tecnologia de
+            alto impacto humano y apoyar soluciones nacidas en medio de la emergencia.
+          </span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="section shell" data-od-id="install">
+      <h2 data-od-id="install.title">Instala y prueba</h2>
+      <p data-od-id="install.body">
+        Version <strong>1.3.20</strong> firmada.
         Funciona sin internet: solo Wi-Fi local del router y permiso de ubicacion
         (Android lo exige para leer RSSI).
       </p>
-      <div class="cta">
-        <a class="btn btn-primary" href="releases/VitalFi-v1.3.20-signed.apk" download>
+      <div class="cta" data-od-id="install.cta">
+        <a class="btn btn-primary" href="releases/VitalFi-v1.3.20-signed.apk" download data-od-id="install.apk">
           APK v1.3.20
         </a>
-        <a class="btn btn-secondary" href="https://play.google.com/store/apps/details?id=com.vitalfi" target="_blank" rel="noopener noreferrer">
+        <a class="btn btn-secondary" href="https://play.google.com/store/apps/details?id=com.vitalfi" target="_blank" rel="noopener noreferrer" data-od-id="install.play">
           Abrir en Play Store
         </a>
       </div>
-      <p class="notice">
-        Software experimental. No es equipo certificado de rescate.
-        Los resultados son estimaciones: verifica siempre el sitio.
+      <p class="notice" data-od-id="install.notice">
+        Software experimental. No es equipo certificado de rescate ni sustituye
+        protocolos USAR oficiales. Los resultados son estimaciones: verifica siempre el sitio.
       </p>
     </section>
 
-    <section>
-      <h2>Manual de uso</h2>
-      <p>Guia de instalacion y operacion de la app Android.</p>
+    <section class="section shell" data-od-id="manual">
+      <h2 data-od-id="manual.title">Manual de uso</h2>
+      <p data-od-id="manual.body">Guia de instalacion y operacion de la app Android.</p>
       <div class="links">
-        <a href="docs/Manual_Uso_VitalFi_Android.pdf">Descargar manual (PDF)</a>
+        <a href="docs/Manual_Uso_VitalFi_Android.pdf" data-od-id="manual.link">Descargar manual (PDF)</a>
       </div>
     </section>
 
-    <section>
-      <h2>Equipo</h2>
-      <p>Equipo detras de VitalFi.</p>
-      <figure class="team-photo">
+    <section class="section shell" data-od-id="team">
+      <h2 data-od-id="team.title">Equipo</h2>
+      <p data-od-id="team.intro">Equipo detras de VitalFi.</p>
+      <figure class="team-photo" data-od-id="team.photo">
         <img
           src="assets/equipo_vitalfi.jpg"
           width="768"
@@ -573,12 +765,12 @@
           loading="lazy"
           decoding="async"
         />
-        <figcaption class="team-caption">
+        <figcaption class="team-caption" data-od-id="team.caption">
           De izquierda a derecha: James Marin, Carlos Mundaray y Maryolie Nelson.
         </figcaption>
       </figure>
-      <div class="team">
-        <article class="member">
+      <div class="team" data-od-id="team.members">
+        <article class="member" data-od-id="team.james">
           <div class="avatar alt" aria-hidden="true">JM</div>
           <div>
             <h3>James Marin</h3>
@@ -586,7 +778,7 @@
             <p class="handle"><a href="https://www.tiktok.com/@James.secus" target="_blank" rel="noopener noreferrer">@James.secus</a></p>
           </div>
         </article>
-        <article class="member">
+        <article class="member" data-od-id="team.carlos">
           <div class="avatar" aria-hidden="true">CM</div>
           <div>
             <h3>Carlos Mundaray</h3>
@@ -594,7 +786,7 @@
             <p class="handle"><a href="https://www.tiktok.com/@themunda24" target="_blank" rel="noopener noreferrer">@themunda24</a></p>
           </div>
         </article>
-        <article class="member">
+        <article class="member" data-od-id="team.maryolie">
           <div class="avatar alt" aria-hidden="true">MN</div>
           <div>
             <h3>Maryolie Nelson</h3>
@@ -606,9 +798,18 @@
     </section>
   </main>
 
-  <footer class="shell">
-    <span>© 2026 Carlos Mundaray — Solvitco · GPL v3</span>
-    <span>
+  <aside class="footer-cta" data-od-id="footer-cta">
+    <div class="shell">
+      <h2 data-od-id="footer-cta.title">Prueba VitalFi en campo. Cada segundo cuenta.</h2>
+      <a class="btn btn-on-cyan" href="releases/VitalFi-v1.3.20-signed.apk" download data-od-id="footer-cta.apk">
+        Descargar APK v1.3.20
+      </a>
+    </div>
+  </aside>
+
+  <footer class="site-footer shell" data-od-id="footer">
+    <span data-od-id="footer.copy">© 2026 Carlos Mundaray — Solvitco · GPL v3</span>
+    <span data-od-id="footer.links">
       <a href="docs/TERMINOS_Y_CONDICIONES.md">Terminos</a>
       ·
       <a href="https://orcid.org/0009-0002-6152-0256" target="_blank" rel="noopener noreferrer">ORCID</a>
@@ -619,7 +820,7 @@
     const PLAY_URL = "https://play.google.com/store/apps/details?id=com.vitalfi";
     const APK_URL = "releases/VitalFi-v1.3.20-signed.apk";
 
-    document.querySelectorAll("#apk-link, a[href*='VitalFi-v1.3.20']").forEach((el) => {
+    document.querySelectorAll("#apk-link, a[href*='VitalFi-v1.3.']").forEach((el) => {
       el.href = APK_URL;
     });
 

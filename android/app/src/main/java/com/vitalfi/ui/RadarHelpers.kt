@@ -12,10 +12,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import com.vitalfi.dsp.EnvironmentCell
 import com.vitalfi.dsp.HeatPoint
 import com.vitalfi.dsp.TrappedVictim
 import com.vitalfi.dsp.describePersonPosition
 import com.vitalfi.dsp.personSphereCenter
+import com.vitalfi.dsp.polarToXY
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -48,7 +50,8 @@ data class RadarViewport(
 data class RadarLayers(
     val grid: Boolean = true,
     val compass: Boolean = true,
-    val wifi: Boolean = false,
+    /** Entorno Wi‑Fi: ondas + radio estimado; tú (el teléfono) estás en el centro. */
+    val wifi: Boolean = true,
     val heatmap: Boolean = false,
     val guide: Boolean = true,
     val rubble: Boolean = false,
@@ -70,11 +73,11 @@ data class RadarLayers(
         depthRays = false,
     )
 
-    /** Vista limpia de rescate: navegar al punto cero sin rayas que tapen. */
+    /** Vista limpia de rescate: navegar al punto cero con entorno Wi‑Fi. */
     fun modoRescate(): RadarLayers = RadarLayers(
         grid = true,
         compass = true,
-        wifi = false,
+        wifi = true,
         heatmap = false,
         guide = true,
         rubble = false,
@@ -164,31 +167,96 @@ fun Modifier.radarGestures(
         }
     }
 
+/**
+ * Entorno Wi‑Fi en el radar: ondas concéntricas desde el teléfono (centro = “Yo”).
+ * El radio estimado viene del RSSI; las ondas animadas muestran el campo RF.
+ */
 fun DrawScope.drawWifiCoverage2D(
     coverageRadiusM: Double,
     divisor: Float,
     viewport: RadarViewport,
     labelPaint: android.graphics.Paint,
+    pulsePhase: Float = 0f,
 ) {
-    if (coverageRadiusM <= 0.0) return
-
     val (cx, cy) = radarCenter(viewport)
     val scale = effectiveRadarScale(divisor, viewport)
-    val radiusPx = coverageRadiusM.toFloat() * scale
+    val center = Offset(cx, cy)
+    // Si aún no hay RSSI, dibuja un campo mínimo para orientar al usuario
+    val radiusM = if (coverageRadiusM > 0.3) coverageRadiusM else 3.5
+    val radiusPx = (radiusM * scale).toFloat().coerceAtLeast(40f)
+    val phase = ((pulsePhase % 1f) + 1f) % 1f
 
-    drawCircle(Color(0xFF0088FF).copy(alpha = 0.10f), radiusPx, Offset(cx, cy))
-    drawCircle(Color(0xFF00FFCC).copy(alpha = 0.22f), radiusPx, Offset(cx, cy))
+    // Disco de cobertura (entorno RF)
+    drawCircle(Color(0xFF0066AA).copy(alpha = 0.12f), radiusPx, center)
     drawCircle(
-        RadarCyan.copy(alpha = 0.55f),
-        radiusPx,
-        Offset(cx, cy),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(2f),
+        brush = Brush.radialGradient(
+            colors = listOf(
+                Color(0xFF00FFCC).copy(alpha = 0.16f),
+                Color(0xFF0088FF).copy(alpha = 0.06f),
+                Color.Transparent,
+            ),
+            center = center,
+            radius = radiusPx,
+        ),
+        radius = radiusPx,
+        center = center,
     )
+
+    // Anillos estáticos del entorno (25 / 50 / 75 / 100 %)
+    for (frac in listOf(0.25f, 0.5f, 0.75f, 1f)) {
+        val r = radiusPx * frac
+        drawCircle(
+            color = RadarCyan.copy(alpha = if (frac == 1f) 0.55f else 0.22f),
+            radius = r,
+            center = center,
+            style = Stroke(width = if (frac == 1f) 2.2f else 1.1f),
+        )
+    }
+
+    // Ondas Wi‑Fi animadas (3 frentes)
+    for (i in 0 until 3) {
+        val p = (phase + i * 0.28f) % 1f
+        val r = radiusPx * (0.15f + 0.85f * p)
+        val fade = 1f - p
+        val alpha = fade * 0.38f
+        if (r < 6f || alpha < 0.03f) continue
+        drawCircle(
+            color = Color(0xFF33FFDD).copy(alpha = alpha),
+            radius = r,
+            center = center,
+            style = Stroke(width = 1.6f + fade * 1.4f),
+            blendMode = BlendMode.Screen,
+        )
+    }
+
+    // Arcos estilo icono Wi‑Fi (delante del teléfono = arriba)
+    drawWifiArcSymbol2D(center, radiusPx * 0.22f)
+
+    // Marcador “tú estás aquí” (refuerzo del centro)
+    drawCircle(Color(0xFF00FF88).copy(alpha = 0.18f), 18f, center)
+    drawCircle(Color(0xFF00FF88).copy(alpha = 0.85f), 5.5f, center)
+    drawCircle(Color.White.copy(alpha = 0.9f), 5.5f, center, style = Stroke(1.2f))
+
+    val youPaint = android.graphics.Paint(labelPaint).apply {
+        color = android.graphics.Color.parseColor("#00FF88")
+        textSize = 15f
+        isFakeBoldText = true
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+    }
+    drawContext.canvas.nativeCanvas.drawText("Tú (teléfono)", cx, cy + 28f, youPaint)
+
+    val edgePaint = android.graphics.Paint(labelPaint).apply {
+        color = android.graphics.Color.parseColor("#66FFCC")
+        textSize = 14f
+        isFakeBoldText = true
+        isAntiAlias = true
+    }
     drawContext.canvas.nativeCanvas.drawText(
-        "Wi-Fi ~${"%.1f".format(coverageRadiusM)} m",
-        cx - 52f,
-        cy - radiusPx - 8f,
-        labelPaint,
+        "Wi-Fi ~${"%.1f".format(radiusM)} m",
+        (cx - radiusPx * 0.35f).coerceAtLeast(8f),
+        (cy - radiusPx - 6f).coerceAtLeast(16f),
+        edgePaint,
     )
 }
 
@@ -196,29 +264,226 @@ fun DrawScope.drawWifiCoverage3D(
     coverageRadiusM: Double,
     project: (Double, Double, Double) -> Offset,
     labelPaint: android.graphics.Paint,
+    pulsePhase: Float = 0f,
 ) {
-    if (coverageRadiusM <= 0.0) return
-
+    val radiusM = if (coverageRadiusM > 0.3) coverageRadiusM else 3.5
+    val phase = ((pulsePhase % 1f) + 1f) % 1f
     val segments = 56
-    val points = (0..segments).map { i ->
-        val t = i / segments.toDouble() * 2 * Math.PI
-        project(coverageRadiusM * cos(t), coverageRadiusM * sin(t), 0.0)
-    }
-    val path = Path().apply {
-        moveTo(points.first().x, points.first().y)
-        points.drop(1).forEach { lineTo(it.x, it.y) }
-        close()
-    }
-    drawPath(path, Color(0xFF0088FF).copy(alpha = 0.10f))
-    drawPath(path, RadarCyan.copy(alpha = 0.45f), style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
 
-    val labelPt = project(coverageRadiusM, 0.0, 0.0)
+    fun ringPath(r: Double): Path {
+        val points = (0..segments).map { i ->
+            val t = i / segments.toDouble() * 2 * Math.PI
+            project(r * cos(t), r * sin(t), 0.0)
+        }
+        return Path().apply {
+            moveTo(points.first().x, points.first().y)
+            points.drop(1).forEach { lineTo(it.x, it.y) }
+            close()
+        }
+    }
+
+    // Cobertura + anillos de entorno
+    drawPath(ringPath(radiusM), Color(0xFF0088FF).copy(alpha = 0.10f))
+    for (frac in listOf(0.25, 0.5, 0.75, 1.0)) {
+        drawPath(
+            ringPath(radiusM * frac),
+            RadarCyan.copy(alpha = if (frac == 1.0) 0.50f else 0.22f),
+            style = Stroke(if (frac == 1.0) 2.2f else 1.1f),
+        )
+    }
+
+    // Ondas animadas
+    for (i in 0 until 3) {
+        val p = (phase + i * 0.28f) % 1f
+        val r = radiusM * (0.15 + 0.85 * p)
+        val fade = 1f - p
+        val alpha = fade * 0.35f
+        if (r < 0.2 || alpha < 0.03f) continue
+        drawPath(
+            ringPath(r),
+            Color(0xFF33FFDD).copy(alpha = alpha),
+            style = Stroke(1.4f + fade),
+            blendMode = BlendMode.Screen,
+        )
+    }
+
+    val you = project(0.0, 0.0, 0.05)
+    drawCircle(Color(0xFF00FF88).copy(alpha = 0.20f), 16f, you)
+    drawCircle(Color(0xFF00FF88), 6f, you)
+    drawCircle(Color.White, 6f, you, style = Stroke(1.2f))
     drawContext.canvas.nativeCanvas.drawText(
-        "Wi-Fi ~${"%.1f".format(coverageRadiusM)} m",
+        "Tú (teléfono)",
+        you.x,
+        you.y + 22f,
+        android.graphics.Paint(labelPaint).apply {
+            color = android.graphics.Color.parseColor("#00FF88")
+            textSize = 14f
+            isFakeBoldText = true
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        },
+    )
+
+    val labelPt = project(radiusM, 0.0, 0.0)
+    drawContext.canvas.nativeCanvas.drawText(
+        "Wi-Fi ~${"%.1f".format(radiusM)} m",
         labelPt.x + 4f,
         labelPt.y - 6f,
         labelPaint,
     )
+}
+
+/**
+ * Entorno RF medido en vivo: cada sector pintado solo si hay muestras reales de RSSI+brújula.
+ * Colores = fuerza de señal; borde ámbar = atenuación relativa (sombra RF medida).
+ */
+fun DrawScope.drawRfEnvironment2D(
+    cells: List<EnvironmentCell>,
+    phoneBearingDeg: Double,
+    divisor: Float,
+    viewport: RadarViewport,
+    labelPaint: android.graphics.Paint,
+) {
+    if (cells.isEmpty()) return
+
+    val (cx, cy) = radarCenter(viewport)
+    val scale = effectiveRadarScale(divisor, viewport)
+    val outerM = viewport.visibleRangeM(divisor).toDouble().coerceAtLeast(3.0)
+    val halfWidth = (360.0 / 72.0) / 2.0
+
+    fun toScreen(distM: Double, absBearing: Double): Offset {
+        val (x, y) = polarToXY(distM, absBearing)
+        val (rx, ry) = rotateMapCoords(x, y, phoneBearingDeg)
+        return Offset(cx + (rx * scale).toFloat(), cy - (ry * scale).toFloat())
+    }
+
+    for (cell in cells) {
+        val confidence = (cell.samples / 8.0).coerceIn(0.15, 1.0)
+        val rssiNorm = ((cell.meanRssi + 90.0) / 50.0).coerceIn(0.0, 1.0) // -90..-40
+        val innerM = 0.35
+        val path = Path().apply {
+            val steps = 6
+            for (i in 0..steps) {
+                val ang = cell.bearingDeg - halfWidth + (2.0 * halfWidth) * i / steps
+                val p = toScreen(outerM, ang)
+                if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+            }
+            for (i in steps downTo 0) {
+                val ang = cell.bearingDeg - halfWidth + (2.0 * halfWidth) * i / steps
+                val p = toScreen(innerM, ang)
+                lineTo(p.x, p.y)
+            }
+            close()
+        }
+
+        // Fuerte = cian; débil/atenuado = ámbar oscuro (solo datos medidos)
+        val base = if (cell.attenuationScore >= 0.45) {
+            Color(0xFFFF8800).copy(alpha = (0.10f + 0.28f * cell.attenuationScore.toFloat()) * confidence.toFloat())
+        } else {
+            Color(
+                red = (0.05f + 0.15f * (1f - rssiNorm.toFloat())),
+                green = (0.35f + 0.45f * rssiNorm.toFloat()),
+                blue = (0.40f + 0.45f * rssiNorm.toFloat()),
+                alpha = (0.08f + 0.22f * rssiNorm.toFloat()) * confidence.toFloat(),
+            )
+        }
+        drawPath(path, base)
+
+        if (cell.attenuationScore >= 0.55 && cell.samples >= 3) {
+            val mid = toScreen(outerM * 0.72, cell.bearingDeg)
+            drawCircle(Color(0xFFFFAA44).copy(alpha = 0.55f), 3.5f, mid)
+        }
+    }
+
+    val scanned = cells.size
+    if (scanned > 0) {
+        val info = android.graphics.Paint(labelPaint).apply {
+            color = android.graphics.Color.parseColor("#88FFCC")
+            textSize = 12f
+            isAntiAlias = true
+        }
+        drawContext.canvas.nativeCanvas.drawText(
+            "Entorno RF: $scanned sectores medidos",
+            10f,
+            size.height - 10f,
+            info,
+        )
+    }
+}
+
+fun DrawScope.drawRfEnvironment3D(
+    cells: List<EnvironmentCell>,
+    phoneBearingDeg: Double,
+    project: (Double, Double, Double) -> Offset,
+    labelPaint: android.graphics.Paint,
+) {
+    if (cells.isEmpty()) return
+    val halfWidth = (360.0 / 72.0) / 2.0
+    val outerM = 5.2
+    val innerM = 0.4
+
+    fun toMap(distM: Double, absBearing: Double): Pair<Double, Double> {
+        val (x, y) = polarToXY(distM, absBearing)
+        return rotateMapCoords(x, y, phoneBearingDeg)
+    }
+
+    for (cell in cells) {
+        val confidence = (cell.samples / 8.0).coerceIn(0.15, 1.0)
+        val rssiNorm = ((cell.meanRssi + 90.0) / 50.0).coerceIn(0.0, 1.0)
+        val path = Path()
+        val steps = 5
+        for (i in 0..steps) {
+            val ang = cell.bearingDeg - halfWidth + (2.0 * halfWidth) * i / steps
+            val (rx, ry) = toMap(outerM, ang)
+            val p = project(rx, ry, 0.0)
+            if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+        }
+        for (i in steps downTo 0) {
+            val ang = cell.bearingDeg - halfWidth + (2.0 * halfWidth) * i / steps
+            val (rx, ry) = toMap(innerM, ang)
+            val p = project(rx, ry, 0.0)
+            path.lineTo(p.x, p.y)
+        }
+        path.close()
+        val color = if (cell.attenuationScore >= 0.45) {
+            Color(0xFFFF8800).copy(alpha = (0.12f + 0.25f * cell.attenuationScore.toFloat()) * confidence.toFloat())
+        } else {
+            Color(0xFF00CCAA).copy(alpha = (0.08f + 0.20f * rssiNorm.toFloat()) * confidence.toFloat())
+        }
+        drawPath(path, color)
+    }
+
+    drawContext.canvas.nativeCanvas.drawText(
+        "Entorno RF: ${cells.size} sectores",
+        8f,
+        18f,
+        android.graphics.Paint(labelPaint).apply {
+            color = android.graphics.Color.parseColor("#88FFCC")
+            textSize = 12f
+            isAntiAlias = true
+        },
+    )
+}
+
+/** Pequeños arcos tipo icono Wi‑Fi delante del usuario (arriba = frente del teléfono). */
+private fun DrawScope.drawWifiArcSymbol2D(center: Offset, baseR: Float) {
+    val stroke = Stroke(width = 2.2f)
+    val color = Color(0xFF33FFDD).copy(alpha = 0.55f)
+    // Tres arcos abiertos hacia arriba (frente)
+    for ((i, frac) in listOf(0.55f, 0.85f, 1.15f).withIndex()) {
+        val r = baseR * frac
+        val sweep = 70f + i * 8f
+        val start = -90f - sweep / 2f
+        drawArc(
+            color = color.copy(alpha = 0.35f + i * 0.1f),
+            startAngle = start,
+            sweepAngle = sweep,
+            useCenter = false,
+            topLeft = Offset(center.x - r, center.y - r),
+            size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+            style = stroke,
+        )
+    }
 }
 
 fun bearingToCardinal(bearingDeg: Double): String {

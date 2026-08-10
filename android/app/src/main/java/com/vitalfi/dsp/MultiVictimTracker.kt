@@ -92,22 +92,34 @@ class MultiVictimTracker(
 
         scores[idx] += strength
         val clampedDist = distanceM.coerceIn(0.15, 8.0)
+        val gettingCloser = distances[idx] <= 0.0 || clampedDist < distances[idx]
+        // Persona detectada: seguir rápido su distancia real; alejarse lento (anti-ruido)
+        val personHit = detection.isBreathing || detection.isActivity
         distances[idx] = if (distances[idx] > 0) {
-            // Asimétrico: al ACERCARTE la lectura baja rápido (sigue tu avance);
-            // al alejarse sube lento (evita saltos por ruido).
-            val alpha = if (clampedDist < distances[idx]) 0.60 else 0.25
+            val alpha = when {
+                gettingCloser && personHit -> 0.88
+                gettingCloser -> 0.75
+                personHit -> 0.22
+                else -> 0.12
+            }
             distances[idx] * (1 - alpha) + clampedDist * alpha
         } else {
             clampedDist
         }
+        if (gettingCloser && personHit) {
+            val left = (idx - 1 + numBins) % numBins
+            val right = (idx + 1) % numBins
+            if (distances[left] > 0) distances[left] = minOf(distances[left], distances[idx] + 0.20)
+            if (distances[right] > 0) distances[right] = minOf(distances[right], distances[idx] + 0.20)
+        }
         bearings[idx] = if (!bearings[idx].isNaN()) {
-            smoothBearing(bearings[idx], bearingDeg, 0.35)
+            smoothBearing(bearings[idx], bearingDeg, if (personHit) 0.42 else 0.28)
         } else {
             bearingDeg
         }
 
-        if (detection.isBreathing) breathing[idx] = min(1.0, breathing[idx] + 0.35)
-        if (detection.isActivity) activity[idx] = min(1.0, activity[idx] + 0.25)
+        if (detection.isBreathing) breathing[idx] = min(1.0, breathing[idx] + 0.40)
+        if (detection.isActivity) activity[idx] = min(1.0, activity[idx] + 0.35)
         confidence[idx] = min(1.0, confidence[idx] + detection.confidence * 0.3)
         if (detection.respRate > 0) {
             respRate[idx] = if (respRate[idx] > 0) {

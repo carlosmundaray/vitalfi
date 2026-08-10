@@ -13,9 +13,10 @@ class SettingsStore(context: Context) {
         }
 
     var trappedOnlyMode: Boolean
-        get() = prefs.getBoolean(KEY_TRAPPED_ONLY, true)
+        // Clave nueva: fuerza default OFF (antes el filtro anti-rescatista ocultaba personas caminando)
+        get() = prefs.getBoolean(KEY_TRAPPED_ONLY_V2, false)
         set(value) {
-            prefs.edit().putBoolean(KEY_TRAPPED_ONLY, value).apply()
+            prefs.edit().putBoolean(KEY_TRAPPED_ONLY_V2, value).apply()
         }
 
     var vibrationEnabled: Boolean
@@ -95,7 +96,7 @@ class SettingsStore(context: Context) {
     fun loadRadarLayers(): RadarLayers = RadarLayers(
         grid = prefs.getBoolean(KEY_LAYER_GRID, true),
         compass = prefs.getBoolean(KEY_LAYER_COMPASS, true),
-        wifi = prefs.getBoolean(KEY_LAYER_WIFI, false),
+        wifi = prefs.getBoolean(KEY_LAYER_WIFI, true),
         heatmap = prefs.getBoolean(KEY_LAYER_HEATMAP, false),
         guide = prefs.getBoolean(KEY_LAYER_GUIDE, true),
         rubble = prefs.getBoolean(KEY_LAYER_RUBBLE, false),
@@ -121,7 +122,7 @@ class SettingsStore(context: Context) {
     companion object {
         private const val PREFS_NAME = "vitalfi_settings"
         private const val KEY_ALERT_SOUND = "alert_sound_enabled"
-        private const val KEY_TRAPPED_ONLY = "trapped_only_mode"
+        private const val KEY_TRAPPED_ONLY_V2 = "trapped_only_mode_v2"
         private const val KEY_VIBRATION = "vibration_enabled"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_SENSITIVITY = "detection_sensitivity"
