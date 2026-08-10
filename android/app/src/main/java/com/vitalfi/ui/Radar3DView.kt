@@ -47,6 +47,9 @@ fun Radar3DView(
     wifiCoverageRadiusM: Double,
     layers: RadarLayers = RadarLayers(),
     colorblind: Boolean = false,
+    rubbleZoneCenterDeg: Double? = null,
+    rubbleZoneRadiusDeg: Double = 55.0,
+    environmentCells: List<com.vitalfi.dsp.EnvironmentCell> = emptyList(),
     onVictimClick: (Int) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
     modifier: Modifier = Modifier,
@@ -121,7 +124,15 @@ fun Radar3DView(
                 drawRadarSonarPulse3D(sonarPulse, ::project)
             }
 
-            if (layers.wifi) drawWifiCoverage3D(wifiCoverageRadiusM, ::project, labelPaint)
+            if (layers.wifi) {
+                drawWifiCoverage3D(wifiCoverageRadiusM, ::project, labelPaint, sonarPulse)
+                drawRfEnvironment3D(
+                    cells = environmentCells,
+                    phoneBearingDeg = bearingDeg,
+                    project = ::project,
+                    labelPaint = labelPaint,
+                )
+            }
             if (layers.compass) drawCompassRose3D(bearingDeg, ::project, labelPaint)
 
             if (layers.heatmap) {

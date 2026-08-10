@@ -19,10 +19,15 @@ data class DetectionResult(
     val spectralEnergy: Double = 0.0,
     /** 0-1 score: high = signal likely from surface (rescuer), low = likely under rubble. */
     val surfaceSignalLikelihood: Double = 0.0,
+    /**
+     * Varianza solo de la banda respiratoria (proxy de la onda modulada / reflejada por la persona).
+     * Se usa para estimar distancia; el RSSI absoluto mide más el router que a la víctima.
+     */
+    val reflectionVariance: Double = 0.0,
 )
 
 class RubbleConfidenceTracker(
-    private val calibSeconds: Double = 30.0,
+    private val calibSeconds: Double = 20.0,
     private val decay: Double = 0.985,
 ) {
     var score: Double = 0.0
@@ -200,6 +205,7 @@ object VitalSignalDetector {
             periodicity = minOf(1.0, oscillation / 3.0),
             spectralEnergy = 0.0,
             surfaceSignalLikelihood = surfaceLikelihood,
+            reflectionVariance = diffVar,
         )
     }
 
@@ -222,10 +228,10 @@ object VitalSignalDetector {
     ): DetectionResult {
         val uniqueValues = SignalFilters.uniqueRounded(signal, decimals = 0)
         val rawStd = kotlin.math.sqrt(SignalFilters.variance(signal))
-        val signalFlat = uniqueValues <= 1 || rawStd < 0.35
+        val signalFlat = uniqueValues <= 1 || rawStd < 0.28
 
         val combined = SignalFilters.preprocess(signal, fs, rubbleMode)
-        val calibLen = minOf(combined.size, maxOf(15, (fs * if (rubbleMode) 10 else 8).toInt()))
+        val calibLen = minOf(combined.size, maxOf(15, (fs * if (rubbleMode) 8 else 6).toInt()))
         val noiseFloor = kotlin.math.sqrt(SignalFilters.variance(combined.copyOfRange(0, calibLen))).let {
             maxOf(0.05, it)
         }
@@ -236,6 +242,7 @@ object VitalSignalDetector {
             threshold = if (rubbleMode) 3.0 else 2.5,
         )
         val detrended = cleaned.map { it - cleaned.average() }.toDoubleArray()
+        val motionVar = SignalFilters.variance(detrended)
 
         val respBand = if (rubbleMode) 0.06 to 0.65 else 0.08 to 0.55
         val filtered = if (rubbleMode && fs >= 2.0) {
@@ -247,37 +254,41 @@ object VitalSignalDetector {
         val spectral = FftUtils.spectralMetrics(filtered, fs, respBand)
         val respFreq = spectral.dominantFreq
         val respRate = respFreq * 60.0
-        val variance = SignalFilters.variance(filtered)
+        val reflectionVariance = SignalFilters.variance(filtered)
         val snr = spectral.snr
         val periodicity = SignalFilters.respiratoryPeriodicity(filtered, fs)
         val specEnergy = spectral.spectralEnergy
 
         val sens = maxOf(0.5, sensitivity)
         val varThreshold = maxOf(
-            if (rubbleMode) 0.015 else 0.05,
-            noiseFloor * noiseFloor * 0.4,
+            if (rubbleMode) 0.012 else 0.04,
+            noiseFloor * noiseFloor * 0.35,
         ) / sens
-        val snrThreshold = maxOf(if (rubbleMode) 0.1 else 0.25, 0.4 / sens)
-        val activityThreshold = maxOf(if (rubbleMode) 0.35 else 0.5, noiseFloor * 0.6) / sens
-        val periodicityThreshold = if (rubbleMode) 0.12 else 0.28
+        val snrThreshold = maxOf(if (rubbleMode) 0.08 else 0.22, 0.35 / sens)
+        val activityThreshold = maxOf(if (rubbleMode) 0.20 else 0.32, noiseFloor * 0.40) / sens
+        val periodicityThreshold = if (rubbleMode) 0.11 else 0.26
 
-        val isActivity = rawStd > activityThreshold ||
-            uniqueValues >= 2 ||
-            variance > varThreshold * 0.25 ||
-            periodicity > periodicityThreshold * 0.7
+        // Movimiento de persona (caminar): σ / ΔRSSI reales — NO basta uniqueValues=2 (ruido Wi‑Fi)
+        val isActivity = !signalFlat && (
+            rawStd > activityThreshold ||
+                motionVar > activityThreshold * 0.85 ||
+                reflectionVariance > varThreshold * 0.35 ||
+                (uniqueValues >= 4 && rawStd > activityThreshold * 0.55)
+            )
 
-        val classicBreathing = variance > varThreshold &&
+        val classicBreathing = reflectionVariance > varThreshold &&
             snr > snrThreshold &&
             respFreq >= respBand.first &&
-            (isActivity || uniqueValues >= 2)
+            respFreq <= respBand.second &&
+            periodicity >= periodicityThreshold * 0.55
 
         val periodicBreathing = rubbleMode &&
             periodicity > periodicityThreshold &&
-            (variance > varThreshold * 0.2 || specEnergy > 0.01)
+            (reflectionVariance > varThreshold * 0.15 || specEnergy > 0.008)
 
         val weakBreathing = rubbleMode &&
-            isActivity &&
-            (periodicity > periodicityThreshold * 0.75 || rawStd > activityThreshold * 1.2)
+            periodicity > periodicityThreshold * 0.70 &&
+            (reflectionVariance > varThreshold * 0.12 || isActivity)
 
         val isBreathing = classicBreathing || periodicBreathing || weakBreathing
 
@@ -285,32 +296,32 @@ object VitalSignalDetector {
         val heartBeating = heartRateBpm >= 45.0 && (isBreathing || periodicity > 0.15)
 
         val confidence = computeConfidence(
-            isBreathing, isActivity, variance, snr, periodicity, specEnergy, rubbleMode, rawStd,
+            isBreathing, isActivity, reflectionVariance, snr, periodicity, specEnergy, rubbleMode, rawStd,
         )
 
         val status: String
         val hint: String
         when {
             isBreathing -> {
-                status = "Persona detectada — verifica el sitio"
-                hint = "Patrón vital detectado. Gira 360° para triangular en el radar. Profundidad no confirmada."
+                status = "Persona detectada — patrón vital"
+                hint = "Gira para ubicarla en el radar. Camina hacia el punto. Distancia = a la persona."
             }
             isActivity -> {
-                status = "Actividad / posible movimiento"
-                hint = "Variación detectada. Gira el teléfono lentamente alrededor del escombro."
+                status = "Persona en movimiento"
+                hint = "Actividad Wi‑Fi de persona. Ubícala en el radar y acércate al punto."
             }
             signalFlat -> {
-                status = "Señal plana — sin variación"
-                hint = "Acerca el router a 0.5 m del escombro. Usa 2.4 GHz."
+                status = "Señal plana — sin persona"
+                hint = "Acerca el router 2.4 GHz. Gira 360° buscando variación."
             }
             else -> {
-                status = "Analizando escombros..."
-                hint = "σ=${"%.2f".format(rawStd)} dBm | Per=${"%.2f".format(periodicity)} | Var=${"%.3f".format(variance)}"
+                status = "Buscando persona..."
+                hint = "σ=${"%.2f".format(rawStd)} | Per=${"%.2f".format(periodicity)} | Vida=${"%.3f".format(reflectionVariance)}"
             }
         }
 
         val surfaceLikelihood = computeSurfaceLikelihood(
-            variance = maxOf(variance, rawStd * rawStd * 0.5),
+            variance = maxOf(reflectionVariance, motionVar),
             periodicity = periodicity,
             snr = snr,
             isActivity = isActivity,
@@ -324,7 +335,8 @@ object VitalSignalDetector {
             heartRateBpm = heartRateBpm,
             respFreq = respFreq,
             respRate = respRate,
-            variance = maxOf(variance, rawStd * rawStd * 0.5),
+            // Energía de persona (movimiento + vida) para distancia/tracking
+            variance = maxOf(reflectionVariance, motionVar, rawStd * rawStd * 0.35),
             snr = snr,
             noiseFloor = noiseFloor,
             uniqueValues = uniqueValues,
@@ -335,6 +347,7 @@ object VitalSignalDetector {
             periodicity = periodicity,
             spectralEnergy = specEnergy,
             surfaceSignalLikelihood = surfaceLikelihood,
+            reflectionVariance = reflectionVariance,
         )
     }
 
@@ -361,62 +374,88 @@ object VitalSignalDetector {
     }
 
     /**
-     * Estima distancia horizontal continua (metros) a partir de la amplitud de señal (varianza)
-     * y, si hay RSSI, un modelo log-distancia. Antes solo devolvía 5 valores fijos (0.8/1.5/…).
+     * Distancia a la **persona detectada** (vida o movimiento), no al router.
+     *
+     * Usa la energía de la señal vital/movimiento (reflexión + varianza de actividad).
+     * El RSSI absoluto al AP se ignora cuando hay persona: mide el router, no al sujeto.
      */
     fun proximityFromVariance(
         variance: Double,
         isBreathing: Boolean,
         isActivity: Boolean,
         rssiDbm: Int? = null,
+        reflectionVariance: Double? = null,
+        periodicity: Double = 0.0,
+        noiseFloor: Double = 0.0,
     ): Triple<String, Double, Long> {
+        val refl = (reflectionVariance ?: 0.0).coerceAtLeast(0.0)
+        val motion = variance.coerceAtLeast(0.0)
+        // Señal de la persona: vida (banda) o movimiento (varianza / σ)
+        val personSignal = when {
+            isBreathing -> maxOf(refl, motion * 0.85)
+            isActivity -> maxOf(motion, refl * 1.15, noiseFloor * noiseFloor * 0.9)
+            else -> maxOf(refl, motion * 0.5)
+        }
         val color = when {
-            isBreathing && variance > 0.3 -> 0xFFFF3366
+            isBreathing && personSignal > 0.3 -> 0xFFFF3366
             isBreathing -> 0xFFFF6699
             isActivity -> 0xFFFFCC00
             else -> 0xFF444444
         }
-        val fromVariance = distanceFromVariance(variance)
-        val fromRssi = rssiDbm?.let { distanceFromRssi(it) }
-        // El RSSI mide distancia al router, no a la víctima: cuanto más fuerte es la
-        // señal vital (varianza), menos peso le damos para que la lectura sí baje al acercarte.
-        var distance = when {
-            fromRssi != null && variance >= 0.60 -> fromVariance * 0.90 + fromRssi * 0.10
-            fromRssi != null && variance >= 0.20 -> fromVariance * 0.75 + fromRssi * 0.25
-            fromRssi != null && variance >= 0.02 -> fromVariance * 0.55 + fromRssi * 0.45
-            fromRssi != null -> fromRssi * 0.65 + fromVariance * 0.35
-            else -> fromVariance
+
+        // Solo si hay persona: distancia = f(fuerza de su señal). Más fuerte ⇒ más cerca.
+        val personDetected = isBreathing || isActivity
+        var distance = if (personDetected) {
+            val weight = when {
+                isBreathing && periodicity >= 0.18 -> 1.05
+                isBreathing -> 1.0
+                isActivity && personSignal > 0.15 -> 1.08
+                isActivity -> 0.95
+                else -> 0.9
+            }
+            distanceFromVariance(personSignal * weight)
+        } else {
+            // Sin persona: no inventar ubicación; RSSI solo como referencia débil de cobertura
+            rssiDbm?.let { distanceFromRssi(it) } ?: 5.0
         }
-        if (isBreathing && variance > 0.12) distance *= 0.94
-        if (isActivity && !isBreathing && variance < 0.08) distance = maxOf(distance, 2.2)
+
+        if (isBreathing && periodicity > 0.18 && personSignal > 0.06) {
+            distance *= 0.90
+        }
+        // Persona en movimiento fuerte ⇒ suele estar más cerca
+        if (isActivity && !isBreathing && personSignal > 0.20) {
+            distance *= 0.88
+        }
         distance = distance.coerceIn(0.15, 8.0)
 
         val label = when {
-            distance < PUNTO_CERO_M && (isBreathing || variance > 0.8) -> "MUY CERCA"
+            !personDetected -> "—"
+            distance < PUNTO_CERO_M -> "MUY CERCA"
             distance < 1.0 -> "MUY CERCA"
             distance < 2.0 -> "CERCA"
             distance < 3.5 -> "MEDIA"
-            isActivity || isBreathing -> "LEJOS (señal)"
-            else -> "LEJOS"
+            else -> "LEJOS (persona)"
         }
         return Triple(label, distance, color)
     }
 
-    /** Interpolación entre anclas empiricas: más varianza ⇒ más cerca. */
+    /** Interpolación entre anclas empiricas: más varianza de reflexión ⇒ más cerca en el radar. */
     fun distanceFromVariance(variance: Double): Double {
+        // Curva un poco más sensible en el tramo medio para que al caminar
+        // hacia la persona el punto se acerque de forma perceptible.
         val anchors = listOf(
             2.20 to 0.15,
-            1.60 to 0.30,
-            1.20 to 0.50,
-            0.80 to 0.70,
-            0.50 to 0.95,
-            0.30 to 1.25,
-            0.20 to 1.55,
-            0.12 to 1.95,
-            0.06 to 2.55,
-            0.03 to 3.20,
-            0.015 to 3.90,
-            0.005 to 4.60,
+            1.40 to 0.28,
+            0.95 to 0.48,
+            0.65 to 0.68,
+            0.42 to 0.92,
+            0.28 to 1.20,
+            0.18 to 1.50,
+            0.11 to 1.85,
+            0.06 to 2.40,
+            0.03 to 3.10,
+            0.015 to 3.80,
+            0.005 to 4.50,
             0.0 to 5.20,
         )
         val v = variance.coerceAtLeast(0.0)
@@ -475,14 +514,13 @@ object VitalSignalDetector {
         isActivity: Boolean,
         isBreathing: Boolean,
     ): Double {
-        // Rescuer on surface: strong RSSI variance (close to router, no rubble attenuation),
-        // irregular pattern (walking/moving), low periodicity in breathing band.
+        // Solo heurística suave: NO debe ocultar personas caminando en el radar.
         var score = 0.0
-        score += (variance * 3.0).coerceAtMost(0.5)
-        score -= periodicity * 2.0
-        score -= (snr * 0.15).coerceAtMost(0.3)
-        if (isActivity && !isBreathing) score += 0.25
-        if (!isActivity) score -= 0.15
+        score += (variance * 1.5).coerceAtMost(0.35)
+        score -= periodicity * 1.8
+        score -= (snr * 0.12).coerceAtMost(0.25)
+        if (isBreathing) score -= 0.25
+        if (isActivity && !isBreathing) score += 0.10
         return score.coerceIn(0.0, 1.0)
     }
 }

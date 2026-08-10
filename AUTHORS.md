@@ -1,9 +1,14 @@
-# Autores
+# Autores y Colaboradores de VitalFi 👥
 
-Criterio de autoría: contribución sustancial al diseño, implementación o documentación científica del software VitalFi.
+VitalFi es un proyecto de investigación y código abierto. Agradecemos a todas las personas que han contribuido al desarrollo, pruebas, algoritmos y documentación del software.
 
-| Nombre | Afiliación | Rol | ORCID |
-|--------|------------|-----|-------|
-| Carlos Mundaray | Solvitco ([solvitco.com](https://solvitco.com)) | Autor principal / mantenedor | [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256) |
+## Autor Principal
 
-Para citación formal usa [`CITATION.cff`](CITATION.cff) y la sección **Cómo citar** del [README](README.md).
+- **Carlos Mundaray**
+  - Roles: Creador del proyecto, Arquitectura de Software, Investigación de Señales.
+  - ORCID: [0009-0002-6152-0256](https://orcid.org/0009-0002-6152-0256)
+  - GitHub: [@carlosmundaray](https://github.com/carlosmundaray)
+
+## Colaboradores de la Comunidad
+
+¡Tú puedes aparecer aquí! Si deseas colaborar con código, documentación o datasets de prueba, consulta nuestra [Guía de Contribución](CONTRIBUTING.md).

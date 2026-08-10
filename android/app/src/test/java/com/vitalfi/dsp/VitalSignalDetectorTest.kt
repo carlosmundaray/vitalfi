@@ -66,6 +66,52 @@ class VitalSignalDetectorTest {
     }
 
     @Test
+    fun proximityFromVariance_usesPersonSignalNotRouterRssi() {
+        // Misma señal de persona, RSSI al AP muy distinto → distancia casi igual
+        val strongAp = VitalSignalDetector.proximityFromVariance(
+            variance = 0.8,
+            isBreathing = true,
+            isActivity = true,
+            rssiDbm = -42,
+            reflectionVariance = 0.55,
+            periodicity = 0.45,
+        ).second
+        val weakAp = VitalSignalDetector.proximityFromVariance(
+            variance = 0.8,
+            isBreathing = true,
+            isActivity = true,
+            rssiDbm = -78,
+            reflectionVariance = 0.55,
+            periodicity = 0.45,
+        ).second
+        assertEquals(strongAp, weakAp, 0.01)
+        assertTrue(strongAp < 2.0)
+    }
+
+    @Test
+    fun proximityFromVariance_activityPerson_getsOwnDistance() {
+        val near = VitalSignalDetector.proximityFromVariance(
+            variance = 1.2,
+            isBreathing = false,
+            isActivity = true,
+            rssiDbm = -80,
+            reflectionVariance = 0.2,
+            periodicity = 0.05,
+            noiseFloor = 0.8,
+        ).second
+        val far = VitalSignalDetector.proximityFromVariance(
+            variance = 0.04,
+            isBreathing = false,
+            isActivity = true,
+            rssiDbm = -40,
+            reflectionVariance = 0.01,
+            periodicity = 0.05,
+            noiseFloor = 0.2,
+        ).second
+        assertTrue("near=$near far=$far", near < far)
+    }
+
+    @Test
     fun rubbleConfidenceTracker_buildsScoreOnBreathing() {
         val tracker = RubbleConfidenceTracker(calibSeconds = 1.0)
         val now = 1_000L

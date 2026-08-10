@@ -148,6 +148,10 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.NEARBY_WIFI_DEVICES)
         }
+        // Pasos reales para acercar el punto del radar al caminar
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            perms.add(Manifest.permission.ACTIVITY_RECOGNITION)
+        }
         return perms.toTypedArray()
     }
 

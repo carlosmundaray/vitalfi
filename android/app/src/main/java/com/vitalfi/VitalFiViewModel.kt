@@ -4,9 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vitalfi.dsp.ApproachVictimLock
+import com.vitalfi.dsp.EnvironmentCell
 import com.vitalfi.dsp.MultiVictimTracker
 import com.vitalfi.dsp.PersonIdentityRegistry
 import com.vitalfi.dsp.RescuerExclusionTracker
+import com.vitalfi.dsp.RfEnvironmentMap
 import com.vitalfi.dsp.TrappedPersonFilter
 import com.vitalfi.dsp.TrappedVictim
 import com.vitalfi.dsp.HeatPoint
@@ -19,6 +21,7 @@ import com.vitalfi.export.CsvExporter
 import com.vitalfi.export.SessionLogEntry
 import com.vitalfi.ml.SignatureModel
 import com.vitalfi.sensor.CompassReader
+import com.vitalfi.sensor.WalkStepReader
 import com.vitalfi.settings.SettingsStore
 import com.vitalfi.ui.RadarLayers
 import com.vitalfi.ui.RadarViewport
@@ -88,7 +91,7 @@ data class VitalFiUiState(
     val keepScreenOn: Boolean = true,
     val detectionSensitivity: Double = 2.0,
     val toastMessage: String? = null,
-    val trappedOnlyMode: Boolean = true,
+    val trappedOnlyMode: Boolean = false,
     val rubbleZoneLabel: String? = null,
     val filterStatus: String? = null,
     val excludedRescuerCount: Int = 0,
@@ -96,14 +99,19 @@ data class VitalFiUiState(
     val hasBarometer: Boolean = false,
     val autoElevationActive: Boolean = true,
     val rubbleZoneRadiusDeg: Double = 55.0,
+    /** Centro absoluto (brújula) de la pared/escombros marcada; null = sin zona. */
+    val rubbleZoneCenterDeg: Double? = null,
     val defaultWifiMode: WifiCollectMode = WifiCollectMode.PASSIVE_SCAN,
     val colorblindMode: Boolean = true,
+    /** Sectores del entorno RF medidos con datos reales (RSSI + brújula). */
+    val environmentCells: List<EnvironmentCell> = emptyList(),
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
 
     private val collector = WifiRssiCollector(app, sampleRateHz = 2.0, maxSamples = 180)
     private val compass = CompassReader(app)
+    private val walkSteps = WalkStepReader(app)
     private val barometer = com.vitalfi.sensor.BarometerReader(app)
     private val victimTracker = MultiVictimTracker()
     private val rubbleTracker = RubbleConfidenceTracker()
@@ -115,6 +123,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             tracker.setRubbleZone(center, settingsStore.rubbleZoneRadiusDeg)
         }
     }
+    private val rfEnvironmentMap = RfEnvironmentMap()
     private val signatureModel = SignatureModel(app)
     private val alertPlayer = VictimAlertPlayer()
     private val sessionLog = mutableListOf<SessionLogEntry>()
@@ -132,6 +141,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             detectionSensitivity = settingsStore.detectionSensitivity,
             trappedOnlyMode = settingsStore.trappedOnlyMode,
             rubbleZoneLabel = loadRubbleZoneLabel(),
+            rubbleZoneCenterDeg = settingsStore.rubbleZoneCenterDeg,
             hasBarometer = barometer.hasSensor,
             autoElevationActive = settingsStore.autoElevationActive && barometer.hasSensor,
             scanningElevationM = if (settingsStore.autoElevationActive && barometer.hasSensor) {
@@ -166,6 +176,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         running = true
 
         compass.start()
+        walkSteps.start()
         startCompassUpdates()
         barometer.start()
         if (collector.mode == WifiCollectMode.CONNECTED || !collector.targetSsid.isNullOrBlank()) {
@@ -204,6 +215,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         compassJob?.cancel()
         collector.stop()
         compass.stop()
+        walkSteps.stop()
         barometer.stop()
     }
 
@@ -249,6 +261,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         }
         _uiState.value = _uiState.value.copy(
             rubbleZoneRadiusDeg = clamped,
+            rubbleZoneCenterDeg = settingsStore.rubbleZoneCenterDeg,
             rubbleZoneLabel = exclusionTracker.rubbleZoneLabel(),
         )
     }
@@ -276,8 +289,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         exclusionTracker.setRubbleZone(bearing, settingsStore.rubbleZoneRadiusDeg)
         settingsStore.rubbleZoneCenterDeg = bearing
         _uiState.value = _uiState.value.copy(
+            rubbleZoneCenterDeg = bearing,
             rubbleZoneLabel = exclusionTracker.rubbleZoneLabel(),
-            toastMessage = "Zona de escombros marcada hacia ${bearing.toInt()}°",
+            toastMessage = "Pared/escombros delante marcada (${bearing.toInt()}°) — se ve en el radar",
         )
     }
 
@@ -285,6 +299,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         exclusionTracker.clearRubbleZone()
         settingsStore.rubbleZoneCenterDeg = null
         _uiState.value = _uiState.value.copy(
+            rubbleZoneCenterDeg = null,
             rubbleZoneLabel = null,
             toastMessage = "Zona de escombros eliminada",
         )
@@ -321,6 +336,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         sessionLog.clear()
         positionTrail.clear()
         alertedVictimIds.clear()
+        rfEnvironmentMap.reset()
         cachedRecentQuality = emptyList()
         _uiState.value = _uiState.value.copy(
             trail = emptyList(),
@@ -330,10 +346,11 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             heartRateBpm = 0.0,
             position = null,
             heatmap = emptyList(),
+            environmentCells = emptyList(),
             isBreathing = false,
             isActivity = false,
             status = "Reiniciado",
-            hint = "Calibrando de nuevo. Permanece quieto 30 s.",
+            hint = "Calibrando de nuevo. Gira 360° para dibujar el entorno RF real.",
             recentQuality = emptyList(),
             sampleCount = 0,
             mlReady = signatureModel.isReady,
@@ -607,10 +624,12 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         if (series.size < collectMinSamples) {
+            rfEnvironmentMap.record(bearing, rssi, reflectionVariance = 0.0, nowMs = now)
             val hint = buildCollectingHint(
                 mode, ssid, series.size, collectMinSamples, monitoring, wifiWithoutInternet,
             )
             _uiState.value = _uiState.value.copy(
+                environmentCells = rfEnvironmentMap.snapshot(now),
                 ssid = ssid,
                 rssiDbm = rssi,
                 connected = connected,
@@ -655,24 +674,55 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         // Solo datos reales de Wi-Fi RSSI: el ML no inventa víctimas sin señal real.
         val hasSignal = !detection.signalFlat &&
             (detection.variance > 0.01 || detection.uniqueValues >= 2)
-        val isBreathing = detection.isBreathing || (hasSignal && mlBreathing > 0.78)
-        val isActivity = detection.isActivity || (hasSignal && mlActivity > 0.68)
+        // ML solo refuerza si ya hay señal Wi‑Fi real (no inventa personas)
+        val isBreathing = detection.isBreathing || (hasSignal && detection.periodicity > 0.10 && mlBreathing > 0.82)
+        val isActivity = detection.isActivity || (hasSignal && mlActivity > 0.75 && detection.variance > 0.03)
 
         val trappedOnly = settingsStore.trappedOnlyMode
-        val (proximity, rawDistance, _) = VitalSignalDetector.proximityFromVariance(
-            detection.variance, isBreathing, isActivity, rssi,
+        // Distancia SOLO a la persona con vida/movimiento (no al router)
+        val personDetected = isBreathing || isActivity
+        val (proximity, personDistance, _) = VitalSignalDetector.proximityFromVariance(
+            variance = detection.variance,
+            isBreathing = isBreathing,
+            isActivity = isActivity,
+            rssiDbm = rssi,
+            reflectionVariance = detection.reflectionVariance,
+            periodicity = detection.periodicity,
+            noiseFloor = detection.noiseFloor,
         )
-        var distance = rawDistance
+        // Entorno 100 % medido: cada tick acumula RSSI real en el rumbo actual
+        rfEnvironmentMap.record(
+            bearingDeg = bearing,
+            rssiDbm = rssi,
+            reflectionVariance = detection.reflectionVariance,
+            nowMs = now,
+        )
+        val environmentCells = rfEnvironmentMap.snapshot(now)
+        var distance = personDistance
+        val personSignalStrength = maxOf(
+            detection.reflectionVariance,
+            detection.variance,
+            detection.noiseFloor * detection.noiseFloor,
+        )
+        val stepsDelta = walkSteps.consumeSteps()
+        val walkingNow = walkSteps.isWalking(now) || stepsDelta > 0
         val approachTarget = approachLock.approaching(bearing, distance, now)
         val approaching = approachTarget != null
+        val headingAligned = approachTarget != null &&
+            approachLock.headingAligned(bearing, approachTarget.id, maxDeg = 40.0)
 
-        // Al acercarte: no dejes que el RSSI del router “aleje” la víctima anclada
-        if (approaching && approachTarget != null) {
-            if (distance > approachTarget.distance) {
-                distance = (approachTarget.distance * 0.70 + distance * 0.30)
-                    .coerceAtMost(approachTarget.distance)
-            }
-            approachLock.updateDistanceIfCloser(approachTarget.id, distance, bearing, now)
+        // Solo actualizar ancla/radar con distancia de persona detectada
+        if (approaching && approachTarget != null && personDetected) {
+            distance = approachLock.updateWhileApproaching(
+                id = approachTarget.id,
+                liveDistanceM = distance,
+                reflectionVar = personSignalStrength,
+                bearingDeg = bearing,
+                nowMs = now,
+                stepsDelta = stepsDelta,
+                headingAligned = headingAligned,
+                walking = walkingNow,
+            )
         }
 
         exclusionTracker.record(bearing, detection, now)
@@ -694,26 +744,24 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             rubbleConf * 0.5,
             detection.variance * 0.4,
             if (isBreathing || approaching) 0.35 else 0.0,
-            if (isActivity && !trappedOnly) 0.2 else 0.0,
-            if (isActivity && trappedOnly && isBreathing) 0.08 else 0.0,
+            // Persona caminando / movimiento: fuerza suficiente para marcar en radar
+            if (isActivity) 0.32 else 0.0,
         ).coerceAtMost(1.0)
-        // En acercamiento no atenuar por "superficie" (tu caminar cerca del router)
-        val surfaceAttenuation = if (approaching) {
-            1.0
-        } else {
-            1.0 - detection.surfaceSignalLikelihood * 0.7
+        // No atenuar actividad de persona en movimiento (antes la ocultaba como “superficie”)
+        val surfaceAttenuation = when {
+            approaching || isActivity -> 1.0
+            else -> 1.0 - detection.surfaceSignalLikelihood * 0.45
         }
         val adjustedBearingStrength = (bearingStrength * surfaceAttenuation).coerceAtLeast(0.02)
 
         val shouldUpdateTracker = when {
             approaching -> true
-            !hasSignal && !isBreathing && rubbleConf <= 0.08 -> false
+            isActivity || isBreathing -> true
+            !hasSignal && rubbleConf <= 0.08 -> false
             trappedOnly && classification.isLikelyRescuer -> false
-            trappedOnly && !classification.isLikelyTrapped && !isBreathing -> false
-            trappedOnly && !exclusionTracker.isInRubbleZone(bearing) -> false
+            trappedOnly && !exclusionTracker.isInRubbleZone(bearing) && !isActivity -> false
             !approaching && exclusionTracker.isExcluded(bearing) -> false
-            trappedOnly && detection.surfaceSignalLikelihood > 0.55 && !isBreathing && !approaching -> false
-            else -> hasSignal || isBreathing || isActivity || rubbleConf > 0.08
+            else -> hasSignal || rubbleConf > 0.08
         }
 
         val elevation = if (_uiState.value.autoElevationActive && barometer.hasSensor) {
@@ -722,15 +770,16 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value.scanningElevationM
         }
 
-        if (shouldUpdateTracker) {
+        // Solo colocar/mover el punto si hay persona (vida o movimiento) con su distancia
+        if (shouldUpdateTracker && personDetected) {
             val trackBreathing = isBreathing || (approaching && approachTarget?.wasBreathing == true)
             victimTracker.update(
                 bearingDeg = bearing,
                 distanceM = distance,
-                strength = if (classification.isLikelyTrapped || approaching) {
-                    maxOf(adjustedBearingStrength, 0.28)
+                strength = if (classification.isLikelyTrapped || approaching || isActivity) {
+                    maxOf(adjustedBearingStrength, 0.30)
                 } else {
-                    adjustedBearingStrength * 0.45
+                    adjustedBearingStrength * 0.55
                 },
                 detection = detection.copy(isBreathing = trackBreathing, isActivity = isActivity),
                 rubbleConf = maxOf(rubbleConf, approachTarget?.rubbleConf ?: 0.0),
@@ -745,15 +794,49 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             allVictims
         }
-        victims.forEach { approachLock.remember(it, now) }
-        // Profundidad = solo entierro bajo el suelo (Z≤0). La altura del rescatista
-        // (scanningElevationM) no se mezcla aquí: eso generaba "−X m bajo escombros".
-        val mappedVictims = victims
+        victims.forEach {
+            approachLock.remember(it, now, reflectionVar = detection.reflectionVariance)
+        }
+        // Radar de ubicación: al acercarte, el punto de la persona se mueve hacia “Yo”
+        // con la distancia anclada (datos reales de reflexión), no se queda fija lejos.
+        val mappedVictims = victims.map { victim ->
+            val lock = approachLock.get(victim.id) ?: return@map victim
+            val held = approachLock.isHeld(victim.id, now)
+            if (!held) return@map victim
+            val d = if (approaching && approachTarget?.id == victim.id) {
+                distance
+            } else {
+                minOf(victim.distance, lock.distance)
+            }.coerceIn(0.15, 8.0)
+            val b = if (approaching && approachTarget?.id == victim.id) {
+                lock.bearing
+            } else {
+                victim.bearing
+            }
+            val (x, y) = polarToXY(d, b)
+            val proximityLabel = when {
+                d < VitalSignalDetector.PUNTO_CERO_M -> "MUY CERCA"
+                d < 1.0 -> "MUY CERCA"
+                d < 2.0 -> "CERCA"
+                d < 3.5 -> "MEDIA"
+                else -> victim.proximity
+            }
+            victim.copy(
+                x = x,
+                y = y,
+                bearing = b,
+                distance = d,
+                proximity = proximityLabel,
+                depth = victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2)),
+            )
+        }
         maybePlayTrappedAlert(mappedVictims)
         val primary = mappedVictims.firstOrNull()
 
         val best = victimTracker.bestEstimate(minScore = 0.03)
-        val position = best?.let { (estBearing, estDist, _) ->
+        val position = primary?.let {
+            PositionEstimate(it.x, it.y, it.bearing, it.distance, it.depth)
+        } ?: best?.let { (estBearing, estDist, _) ->
             buildPosition(estBearing, estDist, rubbleConf)
         } ?: run {
             if ((isBreathing || isActivity || rubbleConf > 0.12) && hasSignal) {
@@ -761,9 +844,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 val (estBearing, estDist) = fallback ?: (bearing to distance)
                 buildPosition(estBearing, estDist, rubbleConf)
             } else {
-                primary?.let {
-                    PositionEstimate(it.x, it.y, it.bearing, it.distance, it.depth)
-                }
+                null
             }
         }
 
@@ -798,8 +879,12 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         )
         val baseHint = when {
             approaching && approachTarget != null ->
-                "Acercándote a ${personIdentities.displayLabel(approachTarget.id)} — " +
-                    "mantén el rumbo; no dejes de detectar por tu movimiento."
+                if (headingAligned) {
+                    "▲ Alineado — camina recto. Persona a ${"%.1f".format(distance)} m " +
+                        "(el punto se acerca a Ti con tus pasos)."
+                } else {
+                    "Gira hacia el punto del radar, luego camina. Distancia ${"%.1f".format(distance)} m."
+                }
             wifiWithoutInternet && mode == WifiCollectMode.CONNECTED ->
                 "${detection.hint} Funciona sin internet."
             else -> detection.hint
@@ -848,6 +933,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             toastMessage = prev.toastMessage,
             trappedOnlyMode = trappedOnly,
             rubbleZoneLabel = exclusionTracker.rubbleZoneLabel(),
+            rubbleZoneCenterDeg = exclusionTracker.rubbleZoneCenterDeg,
+            environmentCells = environmentCells,
             filterStatus = if (trappedOnly) classification.reason else null,
             excludedRescuerCount = exclusionTracker.excludedSectorCount(),
             scanningElevationM = elevation,
@@ -938,9 +1025,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         if (trappedOnly && classification.isLikelyRescuer) {
             return "Rescatista filtrado — ${classification.reason}"
         }
-        if (trappedOnly && !classification.isLikelyTrapped && isActivity && !isBreathing) {
-            return "Movimiento detectado — no es víctima bajo escombros"
-        }
+        if (isBreathing) return "Persona detectada — patrón vital"
+        if (isActivity) return "Persona en movimiento detectada"
         if (rubbleConf <= 0.08 || isBreathing) return base
         val pct = (rubbleConf * 100).toInt()
         return when {

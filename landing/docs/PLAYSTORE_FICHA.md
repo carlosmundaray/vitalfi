@@ -1,7 +1,7 @@
 # VitalFi — Ficha completa para Google Play Store
 
 Documento para copiar/pegar en [Google Play Console](https://play.google.com/console).  
-App experimental · paquete `com.vitalfi` · versión **1.3.21** (versionCode **28**) · targetSdk **35**.
+App experimental · paquete `com.vitalfi` · versión **1.3.22** (versionCode **29**) · targetSdk **36**.
 
 ---
 
@@ -26,8 +26,8 @@ Play Store **no acepta APK** para apps nuevas: sube el **Android App Bundle (.aa
 | Archivo | Ruta |
 |---------|------|
 | AAB firmado | `android/app/build/outputs/bundle/release/app-release.aab` |
-| Copia en landing | `landing/releases/VitalFi-v1.3.21.aab` |
-| APK (solo sideload / web) | `releases/VitalFi-v1.3.21-signed.apk` |
+| Copia en landing | `landing/releases/VitalFi-v1.3.22.aab` |
+| APK (solo sideload / web) | `releases/VitalFi-v1.3.22-signed.apk` |
 
 **Firma**
 
@@ -75,7 +75,7 @@ Desarrollado por Carlos Mundaray / Solvitco. Licencia GNU GPL v3.
 
 ### Lo nuevo en esta versión
 ```
-Versión 1.3.21: targetSdk 35 (requisito Play), paquete com.vitalfi, detección experimental Wi-Fi RSSI, radar 2D/3D, exportación CSV y modo offline.
+Versión 1.3.22: targetSdk 36 (requisito Play / Android 16), paquete com.vitalfi, detección experimental Wi-Fi RSSI, radar 2D/3D, exportación CSV y modo offline.
 ```
 
 ---

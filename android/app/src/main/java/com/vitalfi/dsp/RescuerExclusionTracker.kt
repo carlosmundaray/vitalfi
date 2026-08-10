@@ -90,15 +90,8 @@ class RescuerExclusionTracker(
             }
             movementScore[idx] = minOf(1.0, movementScore[idx] + boost)
 
-            // Auto-exclude solo patrones claros de rescatista SIN respiración
-            val shouldAutoExclude = when {
-                spread > 40 && detection.isActivity && !detection.isBreathing && detection.periodicity < 0.12 -> true
-                cumulativeActivity[idx] >= 14 && !detection.isBreathing && detection.periodicity < 0.10 -> true
-                else -> false
-            }
-            if (shouldAutoExclude) {
-                excludeSector(bearingDeg, spreadBins = 1)
-            }
+            // No auto-excluir: una persona caminando también genera actividad.
+            // La exclusión queda solo manual (“excluir sector rescatista”).
         }
     }
 
@@ -106,11 +99,8 @@ class RescuerExclusionTracker(
 
     fun isExcluded(bearingDeg: Double): Boolean {
         val idx = binIndex(bearingDeg)
-        if (idx in excludedBins) return true
-        if (movementScore[idx] >= 0.55) return true
-        // Sectors with high cumulative activity are very likely rescuer paths
-        if (cumulativeActivity[idx] >= 12) return true
-        return false
+        // Solo exclusión manual — no ocultar persona caminando por actividad acumulada
+        return idx in excludedBins
     }
 
     fun isInRubbleZone(bearingDeg: Double): Boolean {
