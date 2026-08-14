@@ -1,6 +1,10 @@
 # VitalFi Android — Detección de vida bajo escombros vía Wi-Fi
 
-App Android que replica el experimento de **WhoFi/VitalFi** en el teléfono: monitorea variaciones de señal Wi-Fi (RSSI) del router para detectar respiración y triangular la posición girando el dispositivo.
+[![Google Play](https://img.shields.io/badge/Google_Play-Descargar%20en%20Play%20Store-414141?logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=com.vitalfi)
+
+App Android nativa (Kotlin + Jetpack Compose) que monitorea variaciones de señal Wi-Fi (RSSI / CSI) para detectar patrones de respiración y presencia de personas bajo escombros.
+
+👉 **[Instalar desde Google Play Store](https://play.google.com/store/apps/details?id=com.vitalfi)**
 
 ## Funciona sin internet
 
