@@ -1,0 +1,21 @@
+# --- PLANTILLA DE MENSAJE DE COMMIT VITALFI ---
+# Formato: <tipo>(<módulo>): <descripción corta en presente y minúscula>
+#
+# Tipos permitidos:
+#   feat     : Nueva característica o funcionalidad
+#   fix      : Corrección de un error o bug
+#   docs     : Documentación, README, comentarios
+#   style    : Formato visual, espaciado, CSS/XML sin cambios lógicos
+#   refactor : Reorganización de código sin alterar comportamiento
+#   test     : Pruebas unitarias, instrumentadas o de integración
+#   chore    : Tareas de build, dependencias, versiones o configuración
+#
+# Módulos comunes: radar, dsp, sensor, ui, audio, landing, docs, build
+#
+# Ejemplo:
+#   feat(radar): añadir calibración automática de suelo
+#   fix(dsp): corregir cálculo de frecuencia respiratoria
+#   docs: actualizar instrucciones de instalación
+#
+# --- DESCRIPCIÓN DETALLADA (Opcional) ---
+# Explica el contexto, el por qué del cambio y consideraciones técnicas si aplica.
