@@ -2,7 +2,7 @@
 
 ¡Gracias por tu interés en colaborar con **VitalFi**! VitalFi es un proyecto experimental de código abierto enfocado en la detección de signos vitales mediante señales inalámbricas Wi-Fi (RSSI / CSI) para escenarios de búsqueda y rescate en desastres.
 
-Aceptamos contribuciones de desarrolladores móvil (Flutter/Android), ingenieros de procesamiento de señales, matemáticos, especialistas en UI/UX y entusiastas del hardware libre.
+Aceptamos contribuciones de desarrolladores Android (Kotlin / Jetpack Compose), ingenieros de procesamiento de señales, matemáticos, especialistas en UI/UX y entusiastas del hardware libre.
 
 ---
 

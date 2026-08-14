@@ -7,8 +7,8 @@ authors:
 title: "VitalFi: Wi-Fi-based life detection under rubble"
 version: 1.0.0
 date-released: 2026-01-01
-url: "https://github.com/carlosmundaray/vitalfi_flutter"
-repository-code: "https://github.com/carlosmundaray/vitalfi_flutter"
+url: "https://github.com/carlosmundaray/vitalfi"
+repository-code: "https://github.com/carlosmundaray/vitalfi"
 license: GPL-3.0
 keywords:
   - wi-fi
@@ -16,6 +16,7 @@ keywords:
   - csi
   - life-detection
   - search-and-rescue
-  - flutter
+  - kotlin
+  - jetpack-compose
   - android
   - signal-processing

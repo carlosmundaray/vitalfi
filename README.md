@@ -8,8 +8,8 @@
 
   [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
   [![ORCID](https://img.shields.io/badge/ORCID-0009--0002--6152--0256-green.svg)](https://orcid.org/0009-0002-6152-0256)
-  [![Flutter](https://img.shields.io/badge/Flutter-%3E%3D3.0-02569B?logo=flutter)](https://flutter.dev)
-  [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Offline-brightgreen.svg)]()
+  [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+  [![Android](https://img.shields.io/badge/Platform-Android%20%7C%20Compose-3DDC84?logo=android&logoColor=white)](android/)
   [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
   [![Citation](https://img.shields.io/badge/Cite-CITATION.cff-orange.svg)](CITATION.cff)
 
@@ -21,7 +21,7 @@
 
 ## 📌 Visión General del Proyecto
 
-**VitalFi** es una aplicación experimental de investigación y prototipo de código abierto desarrollada en Flutter. Su objetivo principal es explorar el uso de las perturbaciones en el canal radioeléctrico Wi-Fi (fluctuaciones de RSSI y CSI) provocadas por micro-movimientos corporales y la frecuencia respiratoria humana, permitiendo estimar la presencia de personas atrapadas o sin conocimiento en escenarios de desastre, colapso de estructuras o escombros.
+**VitalFi** es una aplicación experimental de investigación y rescate de código abierto desarrollada de forma nativa para **Android con Kotlin y Jetpack Compose**. Su objetivo principal es explorar el uso de las perturbaciones en el canal radioeléctrico Wi-Fi (fluctuaciones de RSSI y CSI) provocadas por micro-movimientos corporales y la frecuencia respiratoria humana, permitiendo estimar la presencia de personas atrapadas o sin conocimiento en escenarios de desastre, colapso de estructuras o escombros.
 
 La aplicación opera **100% offline** directamente en dispositivos Android convencionales sin requerir servidores externos ni conexión a Internet.
 
@@ -35,7 +35,7 @@ La aplicación opera **100% offline** directamente en dispositivos Android conve
 - 📴 **Operación Offline Nativa:** Cero dependencia de servicios en la nube o infraestructura de red externa.
 - ⏱️ **Calibración Automática del Entorno:** Proceso inicial (~30 segundos) para establecer la línea base de ruido del área.
 - 🎯 **Estimación Vital Heurística:** Cálculo de un índice de confianza vital y tasa respiratoria en respiraciones por minuto (RPM).
-- 🧭 **Visualización Radar 2D/3D:** Interfaz gráfica táctil para inspeccionar detecciones, profundidad estimada y vectores de proximidad.
+- 🧭 **Visualización Radar 2D/3D:** Interfaz gráfica táctil militarizada para inspeccionar detecciones, profundidad estimada y vectores de proximidad.
 - 📊 **Exportación de Datos para Análisis:** Soporte para registro de señales para validación académica.
 
 ---
@@ -47,7 +47,7 @@ Cuando una persona respira o realiza micro-movimientos en un área alcanzada por
 $$\Delta \text{RSSI}(t) = f(\text{Respiración}, \text{Distancia}, \text{Estructura})$$
 
 VitalFi captura estas variaciones espectrales para:
-1. **Filtrar el ruido de fondo:** Aislación de interferencias térmicas y de canales vecinos.
+1. **Filtrar el ruido de fondo:** Aislación de interferencias térmicas y de canales vecinos con filtros Hampel y Bandpass.
 2. **Transformada de Frecuencia (FFT/STFT):** Detección de frecuencias en el rango del ritmo respiratorio humano ($0.15 \text{ Hz} - 0.40 \text{ Hz} \iff 9 - 24 \text{ RPM}$).
 3. **Estimación de Profundidad Heurística:** Atenuación de señal según la densidad estimada de los escombros.
 
@@ -57,20 +57,20 @@ Para profundizar en la base conceptual, consulta nuestro documento de [Trabajo R
 
 ## 🗺️ Hoja de Ruta (Roadmap) y Áreas de Colaboración 🤝
 
-¡Buscamos científicos, ingenieros de firmware, matemáticos y desarrolladores Flutter!
+¡Buscamos científicos, ingenieros de firmware, matemáticos y desarrolladores Android!
 
 ```mermaid
 graph LR
-    A[Módulo RSSI Android] --> B[Filtros FFT / STFT en Dart]
-    B --> C[Visualizador Radar 2D/3D]
+    A[Módulo RSSI/CSI Android] --> B[Filtros FFT / STFT en Kotlin]
+    B --> C[Visualizador Radar Compose 2D/3D]
     D[Receptor Hardware CSI ESP32] --> B
     C --> E[Red Mesh BLE Multi-Nodo]
 ```
 
 ### 🎯 Tareas abiertas para colaboradores:
 - [ ] **Integración de Hardware CSI (ESP32 / Wi-Fi CSI):** Implementar la recepción de matrices CSI completas (Amplitud y Fase) mediante microcontroladores ESP32 para superar la limitación del RSSI nativo de Android.
-- [ ] **Optimización de Procesamiento en Dart:** Implementación eficiente de transformadas de Fourier y filtros pasabanda para procesamiento en tiempo real.
-- [ ] **Renderizado de Radar 3D Avanzado:** Mejorar el motor gráfico del radar táctil usando `CustomPainter` o integración 3D.
+- [ ] **Optimización de Procesamiento en Kotlin:** Implementación eficiente de transformadas de Fourier y filtros pasabanda para procesamiento en tiempo real.
+- [ ] **Renderizado de Radar 3D Avanzado:** Mejorar el motor gráfico del radar táctil con Canvas y shaders en Jetpack Compose.
 - [ ] **Sincronización Mesh Multi-Dispositivo:** Red de escaneo coordinado entre varios teléfonos mediante Bluetooth Low Energy (BLE).
 - [ ] **Recolección y Formateo de Datasets:** Pruebas en escenarios reales para crear un dataset abierto de variaciones Wi-Fi en colapsos.
 
@@ -87,15 +87,10 @@ Revisa nuestra [Guía de Contribución (CONTRIBUTING.md)](CONTRIBUTING.md) para 
 | **Emisor Wi-Fi** | Router o AP portátil convencional en la banda de **2.4 GHz** (mayor penetración de obstáculos) |
 | **Opcional (Fase 2)** | Módulo ESP32 habilitado para extracción de CSI |
 
-### Desarrollo con Flutter
-- [Flutter SDK](https://flutter.dev) (`>=3.0.0`)
-- Dart SDK
-- Android SDK
-
-```bash
-# Verificar la instalación del entorno Flutter
-flutter doctor
-```
+### Entorno de Desarrollo (Android Nativo)
+- [Android Studio Ladybug / Koala](https://developer.android.com/studio) con JDK 17+
+- Android SDK 34 / 35
+- Kotlin 2.0+
 
 ---
 
@@ -103,17 +98,17 @@ flutter doctor
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/carlosmundaray/vitalfi_flutter.git
-cd vitalfi_flutter
+git clone https://github.com/carlosmundaray/vitalfi.git
+cd vitalfi
 
-# 2. Instalar dependencias de Flutter
-flutter pub get
+# 2. Compilar y ejecutar pruebas unitarias
+cd android
+./gradlew testDebugUnitTest
 
-# 3. Ejecutar en tu dispositivo Android conectado
-flutter run
-
-# 4. Compilar APK de prueba
-flutter build apk --release
+# 3. Compilar APK de depuración o lanzamiento
+./gradlew assembleDebug
+# o para release:
+./gradlew assembleRelease
 ```
 
 ---
@@ -143,8 +138,8 @@ Si utilizas VitalFi o sus conceptos en tu investigación académica o desarrollo
   year         = {2026},
   publisher    = {GitHub},
   journal      = {GitHub repository},
-  howpublished = {\url{https://github.com/carlosmundaray/vitalfi_flutter}},
-  url          = {https://github.com/carlosmundaray/vitalfi_flutter},
+  howpublished = {\url{https://github.com/carlosmundaray/vitalfi}},
+  url          = {https://github.com/carlosmundaray/vitalfi},
   note         = {Software prototype for Wi-Fi-based life detection and RSSI variation analysis}
 }
 ```
@@ -158,3 +153,4 @@ Si utilizas VitalFi o sus conceptos en tu investigación académica o desarrollo
 Consulta [AUTHORS.md](AUTHORS.md) para ver la lista completa de colaboradores.
 
 Este proyecto se distribuye bajo la licencia **GNU General Public License v3.0** — Ver [LICENSE](LICENSE) para más detalles.
+
