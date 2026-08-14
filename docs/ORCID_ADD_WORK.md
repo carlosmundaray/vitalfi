@@ -14,8 +14,8 @@ Si ORCID muestra: **"Revise el formulario y solucione los problemas antes de gua
 | **Title** | `VitalFi: Wi-Fi-based life detection under rubble` |
 | **Publication date** | Year `2026` (mes/día opcionales) |
 | **Work identifiers → Type** | `URI` o `URL` |
-| **Work identifiers → Value** | `https://github.com/carlosmundaray/vitalfi_flutter` |
-| **URL / Link to work** (si aparece) | `https://github.com/carlosmundaray/vitalfi_flutter` |
+| **Work identifiers → Value** | `https://github.com/carlosmundaray/vitalfi` |
+| **URL / Link to work** (si aparece) | `https://github.com/carlosmundaray/vitalfi` |
 | **Citation type** (si aparece) | `BibTeX` |
 | **Citation** (si aparece) | pega el contenido de `vitalfi.bib` |
 
