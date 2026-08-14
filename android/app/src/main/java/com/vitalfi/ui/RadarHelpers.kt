@@ -1612,12 +1612,57 @@ fun DrawScope.drawHeatmap2D(
     }
 }
 
+fun DrawScope.drawRubbleSector2D(
+    centerDeg: Double?,
+    radiusDeg: Double,
+    phoneBearingDeg: Double,
+    viewport: RadarViewport,
+) {
+    if (centerDeg == null) return
+    val cx = size.width / 2f + viewport.panX
+    val cy = size.height / 2f + viewport.panY
+    val half = minOf(size.width, size.height) / 2f
+    val r = half * viewport.zoom
+
+    val relCenter = (centerDeg - phoneBearingDeg + 360.0) % 360.0
+    val startAngle = (relCenter - 90.0 - radiusDeg).toFloat()
+    val sweepAngle = (radiusDeg * 2.0).toFloat()
+
+    drawArc(
+        color = Color(0x22FFAA00),
+        startAngle = startAngle,
+        sweepAngle = sweepAngle,
+        useCenter = true,
+        topLeft = Offset(cx - r, cy - r),
+        size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
+    )
+}
+
 fun DrawScope.drawRubbleVolume3D(
     project: (Double, Double, Double) -> Offset,
     labelPaint: android.graphics.Paint,
+    rubbleCenterDeg: Double? = null,
+    rubbleRadiusDeg: Double = 55.0,
+    phoneBearingDeg: Double = 0.0,
 ) {
     val gridN = 5.0
     val maxDepth = -2.0
+
+    // Si hay un rumbo específico de zona de escombros, dibujar el sector en 3D
+    if (rubbleCenterDeg != null) {
+        val relCenter = Math.toRadians((rubbleCenterDeg - phoneBearingDeg + 360.0) % 360.0)
+        val radOffset = Math.toRadians(rubbleRadiusDeg)
+        val p0 = project(0.0, 0.0, 0.0)
+        val x1 = gridN * sin(relCenter - radOffset)
+        val y1 = gridN * cos(relCenter - radOffset)
+        val x2 = gridN * sin(relCenter + radOffset)
+        val y2 = gridN * cos(relCenter + radOffset)
+        val p1 = project(x1, y1, 0.0)
+        val p2 = project(x2, y2, 0.0)
+        drawLine(Color(0x55FFAA00), p0, p1, strokeWidth = 1.5f)
+        drawLine(Color(0x55FFAA00), p0, p2, strokeWidth = 1.5f)
+        drawLine(Color(0x55FFAA00), p1, p2, strokeWidth = 1.0f)
+    }
 
     // 1. Plano superior (Z = 0.0) - sutil, no tapa el PPI militar
     for (i in -5..5) {

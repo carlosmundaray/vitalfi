@@ -1298,6 +1298,14 @@ fun RadarView(
                 )
             }
             if (layers.heatmap) drawHeatmap2D(heatmap, bearingDeg, divisor, viewport)
+            if (layers.rubble && rubbleZoneCenterDeg != null) {
+                drawRubbleSector2D(
+                    centerDeg = rubbleZoneCenterDeg,
+                    radiusDeg = rubbleZoneRadiusDeg,
+                    phoneBearingDeg = bearingDeg,
+                    viewport = viewport,
+                )
+            }
             if (layers.compass) drawCompassRose2D(bearingDeg, divisor, viewport, labelPaint)
             if (layers.guide) {
                 drawNavigationGuide2D(

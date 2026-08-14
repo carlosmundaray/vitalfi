@@ -59,7 +59,10 @@ class ApproachVictimLock(
     fun approaching(bearingDeg: Double, distanceM: Double, nowMs: Long): Lock? {
         prune(nowMs)
         return locks.values
-            .filter { angularDistance(bearingDeg, it.bearing) <= bearingWindowDeg }
+            .filter {
+                angularDistance(bearingDeg, it.bearing) <= bearingWindowDeg &&
+                    (distanceM <= 0.0 || kotlin.math.abs(it.distance - distanceM) <= 15.0)
+            }
             .minByOrNull { angularDistance(bearingDeg, it.bearing) }
     }
 

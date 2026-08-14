@@ -118,7 +118,15 @@ fun Radar3DView(
             // Fondo tipo HUD solo si la regla/grid está activa
             if (layers.grid) drawMilitaryHudBackground()
 
-            if (layers.rubble) drawRubbleVolume3D(::project, labelPaint)
+            if (layers.rubble) {
+                drawRubbleVolume3D(
+                    project = ::project,
+                    labelPaint = labelPaint,
+                    rubbleCenterDeg = rubbleZoneCenterDeg,
+                    rubbleRadiusDeg = rubbleZoneRadiusDeg,
+                    phoneBearingDeg = bearingDeg,
+                )
+            }
             if (layers.grid) {
                 drawDistanceRings3D(::project, viewport, labelPaint, RADAR_DEFAULT_RANGE_M)
                 drawRadarSonarPulse3D(sonarPulse, ::project)
