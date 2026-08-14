@@ -9,40 +9,46 @@ Aceptamos contribuciones de desarrolladores móvil (Flutter/Android), ingenieros
 ## 🛠️ ¿Cómo empezar?
 
 ### 1. Requisitos previos
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) (Canal `stable`)
-- Android Studio / VS Code
+- [Android Studio Ladybug / Koala](https://developer.android.com/studio) con JDK 17+
+- Android SDK 34/35
 - Dispositivo Android físico para pruebas con Wi-Fi (los emuladores tienen restricciones en escaneo de redes).
 
 ### 2. Configurar tu entorno local
 
 ```bash
-# 1. Haz un fork del repositorio en GitHub
-# 2. Clona tu fork localmente:
-git clone https://github.com/TU_USUARIO/vitalfi_flutter.git
-cd vitalfi_flutter
+# 1. Clona el repositorio:
+git clone https://github.com/carlosmundaray/vitalfi.git
+cd vitalfi
 
-# 3. Agrega el repositorio principal como remoto 'upstream':
-git remote add upstream https://github.com/carlosmundaray/vitalfi_flutter.git
-
-# 4. Obtén las dependencias:
-flutter pub get
+# 2. Cambia a la rama de desarrollo:
+git checkout develop
 ```
 
 ---
 
-## 🌿 Convenciones de Ramas y Commits
+## 🌿 Flujo de Trabajo con Ramas (Git Flow)
 
-- **Ramas:** Crea una rama descriptiva para tu trabajo:
-  - `feature/nombre-de-la-funcion`
-  - `fix/descripcion-del-bug`
-  - `docs/mejora-documentacion`
-  - `research/algoritmo-csi`
+Para mantener la rama `main` limpia y libre de errores técnicos:
 
-- **Mensajes de Commit:** Seguimos la convención [Conventional Commits](https://www.conventionalcommits.org/):
-  - `feat: añade filtro FFT para detección de respiración`
-  - `fix: corrige error de permisos en escaneo Wi-Fi Android 13+`
-  - `docs: actualiza instrucciones de montaje hardware`
-  - `style: mejora interfaz del radar 3D`
+1. **`main` (Producción)**: Solo código validado, probado y listo para publicación en Play Store o releases oficiales.
+2. **`develop` (Desarrollo y Pruebas)**: Rama activa de integración.
+3. **Ramas de funcionalidad / corrección**:
+   - `feature/nombre-de-la-funcion`: Nuevas capacidades creadas desde `develop`.
+   - `fix/descripcion-del-bug`: Correcciones de bugs creadas desde `develop`.
+   - `test/modulo-a-probar`: Suites de pruebas y verificación.
+
+---
+
+## ✍️ Convenciones de Commits (Conventional Commits)
+
+Cada commit debe ser claro, humano y estructurado:
+
+- `feat(radar): añadir calibración automática de suelo`
+- `fix(dsp): corregir cálculo de varianza en HampelFilter`
+- `docs: actualizar guía de instalación y arquitectura`
+- `style(ui): mejorar contraste de botones en modo oscuro`
+- `test(dsp): agregar pruebas unitarias para detector de pulso`
+- `chore(gradle): actualizar dependencias y versión de APK`
 
 ---
 
@@ -50,37 +56,33 @@ flutter pub get
 
 Actualmente buscamos apoyo activo en los siguientes módulos:
 
-1. **Procesamiento de Señal (Signal Processing):**
-   - Implementación de algoritmos de filtrado (Pass-band filter, STFT, FFT) para aislar frecuencias respiratorias humanas (~0.15 - 0.4 Hz / 9-24 RPM).
+1. **Procesamiento de Señal (Signal Processing - `dsp`):**
+   - Algoritmos de filtrado (Bandpass, STFT, FFT, Hampel) para aislar frecuencias respiratorias humanas (~0.15 - 0.4 Hz / 9-24 RPM).
    - Calibración y reducción de ruido térmico/multipath en entornos con escombros.
 
-2. **Captura de Hardware y Datos CSI (Channel State Information):**
-   - Integración de módulos ESP32 / Routers compatibles con extracción de matrices CSI para mayor precisión que el RSSI estándar.
-
-3. **Renderizado de Radar (UI / Flutter):**
-   - Visualizaciones interactivas 2D/3D con `CustomPainter` o `Three.js` / `Flame` en Flutter.
+2. **Renderizado de Radar y UI (`ui`):**
+   - Visualizaciones tácticas 2D/3D con Jetpack Compose y Canvas.
    - Heatmaps de densidad de señal y vectores de proximidad.
 
-4. **Captura y Formateo de Datasets:**
-   - Pruebas en entornos controlados y generación de datasets públicos para entrenamiento de modelos heurísticos o de aprendizaje automático.
+3. **Captura de Sensores (`sensor`):**
+   - Barómetro, acelerómetro y detección de pasos para navegación inercial.
 
 ---
 
 ## 📬 Proceso de Pull Request (PR)
 
-1. Asegúrate de que el código pase el linter de Flutter:
+1. Trabaja siempre en una rama derivada de `develop`.
+2. Asegúrate de compilar y ejecutar las pruebas unitarias:
    ```bash
-   flutter analyze
+   cd android
+   ./gradlew test
    ```
-2. Ejecuta las pruebas unitarias:
-   ```bash
-   flutter test
-   ```
-3. Realiza un push a tu rama y abre un **Pull Request** hacia la rama `main` del repositorio oficial.
-4. Completa la plantilla de PR detallando los cambios realizados.
+3. Abre un **Pull Request** apuntando hacia la rama `develop`.
+4. Una vez validada la versión en `develop`, se realiza el merge a `main` con su respectiva etiqueta de versión (tag).
 
 ---
 
 ## 📄 Licencia
 
 Al contribuir a VitalFi, aceptas que tus contribuciones se distribuyan bajo la licencia **GNU General Public License v3.0 (GPLv3)**.
+
