@@ -14,8 +14,8 @@ Closes # (issue relacionado)
 
 ## Lista de Verificación (Checklist) ✅
 
-- [ ] Mi código sigue las directrices del proyecto y pasa `flutter analyze`.
+- [ ] Mi código sigue la guía de estilo y convenciones de commits del proyecto.
+- [ ] He ejecutado y pasan las pruebas unitarias (`./gradlew testDebugUnitTest` / `pytest`).
 - [ ] He realizado una auto-revisión de mi código.
-- [ ] He añadido comentarios en partes complejas del código.
 - [ ] He probado la aplicación en un dispositivo físico Android (si aplica).
 - [ ] He actualizado la documentación correspondiente.
