@@ -6,6 +6,7 @@
 
   ### *Detección de Signos Vitales bajo Escombros mediante Análisis de Señales Wi-Fi*
 
+  [![Google Play](https://img.shields.io/badge/Google_Play-Disponible-414141?logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=com.vitalfi)
   [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
   [![ORCID](https://img.shields.io/badge/ORCID-0009--0002--6152--0256-green.svg)](https://orcid.org/0009-0002-6152-0256)
   [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
@@ -15,9 +16,23 @@
 
   ---
 
+  <a href="https://play.google.com/store/apps/details?id=com.vitalfi">
+    <img src="https://play.google.com/intl/en_us/badges/static/images/badges/es_badge_web_generic.png" alt="Disponible en Google Play" height="70" />
+  </a>
+
+  <br />
+
   <img src="docs/playstore/feature_graphic_1024x500.png" alt="VitalFi Feature Graphic" width="700" />
 
 </div>
+
+## 📲 Descarga en Google Play
+
+La aplicación oficial de **VitalFi** ya está publicada y disponible para descargar e instalar directamente desde Google Play Store:
+
+👉 **[Descargar VitalFi en Google Play Store](https://play.google.com/store/apps/details?id=com.vitalfi)**
+
+---
 
 ## 📌 Visión General del Proyecto
 
