@@ -50,14 +50,14 @@ data class RadarViewport(
 data class RadarLayers(
     val grid: Boolean = true,
     val compass: Boolean = true,
-    /** Entorno Wi‑Fi: ondas + radio estimado; tú (el teléfono) estás en el centro. */
-    val wifi: Boolean = true,
+    /** Entorno Wi‑Fi: desactivado por defecto para evitar líneas y ruido de reflejo. */
+    val wifi: Boolean = false,
     val heatmap: Boolean = false,
     val guide: Boolean = true,
     val rubble: Boolean = false,
     val trail: Boolean = false,
     val labels: Boolean = true,
-    /** Rayas verticales de profundidad / esfera (la “raya” amarilla que tapa el centro). */
+    /** Rayas verticales de profundidad / esfera. */
     val depthRays: Boolean = false,
 ) {
     /** Solo la figura + guía de rumbo (para ver y seguir a la persona). */
@@ -73,11 +73,11 @@ data class RadarLayers(
         depthRays = false,
     )
 
-    /** Vista limpia de rescate: navegar al punto cero con entorno Wi‑Fi. */
+    /** Vista limpia de rescate: navegar al punto cero sin rayas de reflejo. */
     fun modoRescate(): RadarLayers = RadarLayers(
         grid = true,
         compass = true,
-        wifi = true,
+        wifi = false,
         heatmap = false,
         guide = true,
         rubble = false,
@@ -159,7 +159,7 @@ fun Modifier.radarGestures(
             }
             hit?.let { victim ->
                 val p = projectVictim(victim)
-                val hitRadius = (36f * viewport.zoom).coerceIn(28f, 56f)
+                val hitRadius = (48f * viewport.zoom).coerceIn(36f, 96f)
                 if (hypot(tap.x - p.x, tap.y - p.y) <= hitRadius) {
                     onVictimClick(victim.id)
                 }
@@ -177,6 +177,7 @@ fun DrawScope.drawWifiCoverage2D(
     viewport: RadarViewport,
     labelPaint: android.graphics.Paint,
     pulsePhase: Float = 0f,
+    context: android.content.Context? = null,
 ) {
     val (cx, cy) = radarCenter(viewport)
     val scale = effectiveRadarScale(divisor, viewport)
@@ -244,7 +245,8 @@ fun DrawScope.drawWifiCoverage2D(
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
-    drawContext.canvas.nativeCanvas.drawText("Tú (teléfono)", cx, cy + 28f, youPaint)
+    val youText = context?.getString(com.vitalfi.R.string.radar_you_phone) ?: "Tú (teléfono)"
+    drawContext.canvas.nativeCanvas.drawText(youText, cx, cy + 28f, youPaint)
 
     val edgePaint = android.graphics.Paint(labelPaint).apply {
         color = android.graphics.Color.parseColor("#66FFCC")
@@ -503,26 +505,31 @@ fun navigationTarget(victims: List<TrappedVictim>, selectedVictimId: Int?): Trap
     selectedVictimId?.let { id -> victims.find { it.id == id } } ?: victims.firstOrNull()
 
 fun buildNavigationHint(
+    context: android.content.Context,
     targetBearing: Double,
     currentBearing: Double,
     distanceM: Double,
 ): String {
     val turn = normalizedTurnDelta(targetBearing, currentBearing)
     val cardinal = bearingToCardinal(targetBearing)
-    // Estilo búsqueda del tesoro: gira hasta alinear, luego camina al punto
-    val proximity = when {
-        distanceM < 0.6 -> "◎ Señal muy cerca — verifica el sitio (profundidad no confirmada)."
-        distanceM < 1.5 -> "🔥 Muy cerca — sigue unos pasos."
-        distanceM < 3.5 -> "🟠 Cerca — estás acercándote."
-        else -> "🔵 Lejos — sigue la flecha al punto."
-    }
     val steer = when {
-        distanceM < 0.6 -> proximity
-        abs(turn) < 12 -> "↑ Camina recto hacia $cardinal · ${"%.1f".format(distanceM)} m\n$proximity"
-        turn > 0 -> "→ Gira ${turn.roundToInt()}° a la derecha hasta alinear · luego camina ${"%.1f".format(distanceM)} m\n$proximity"
-        else -> "← Gira ${(-turn).roundToInt()}° a la izquierda hasta alinear · luego camina ${"%.1f".format(distanceM)} m\n$proximity"
+        distanceM < 0.6 -> context.getString(com.vitalfi.R.string.radar_signal_very_close)
+        abs(turn) < 12 -> context.getString(
+            com.vitalfi.R.string.radar_walk_straight,
+            "%.1f".format(distanceM),
+        )
+        turn > 0 -> context.getString(
+            com.vitalfi.R.string.radar_turn_walk_right,
+            turn.roundToInt(),
+            "%.1f".format(distanceM),
+        )
+        else -> context.getString(
+            com.vitalfi.R.string.radar_turn_walk_left,
+            (-turn).roundToInt(),
+            "%.1f".format(distanceM),
+        )
     }
-    return "🗺️ Búsqueda → persona ($cardinal ${targetBearing.roundToInt()}°)\n$steer"
+    return "🗺️ ($cardinal ${targetBearing.roundToInt()}°)\n$steer"
 }
 
 fun DrawScope.drawCompassRose2D(
@@ -630,6 +637,7 @@ fun DrawScope.drawNavigationGuide2D(
     labelPaint: android.graphics.Paint,
     tagPaint: android.graphics.Paint,
     colorblind: Boolean = false,
+    context: android.content.Context? = null,
 ) {
     val (cx, cy) = radarCenter(viewport)
     val scale = effectiveRadarScale(divisor, viewport)
@@ -650,13 +658,14 @@ fun DrawScope.drawNavigationGuide2D(
             tagPaint = tagPaint,
             idle = true,
             colorblind = colorblind,
+            context = context,
         )
         return
     }
 
     // Señal muy cerca en horizontal → mira de verificación (sin orden de cavar)
     if (target.distance < 0.6) {
-        drawPointZeroMarker(cx, cy, tagPaint, colorblind)
+        drawPointZeroMarker(cx, cy, tagPaint, colorblind, context)
         drawHeadingDirectorHud(
             turnDeg = 0.0,
             targetLabel = target.label,
@@ -665,6 +674,7 @@ fun DrawScope.drawNavigationGuide2D(
             tagPaint = tagPaint,
             idle = false,
             colorblind = colorblind,
+            context = context,
         )
         return
     }
@@ -678,21 +688,13 @@ fun DrawScope.drawNavigationGuide2D(
         cy - cos(targetRad).toFloat() * targetLen,
     )
     val aligned = abs(turn) < 12.0
-    val lineColor = if (aligned) ok else turnCol
-    val you = Offset(cx, cy)
 
-    // 2) Cono / pasillo hacia el objetivo (se cierra cuando estás alineado)
-    drawSteerCone(cx, cy, frontLen, turn, aligned, ok, turnCol)
-
-    // 3) Camino tipo “tesoro”: pasillo grueso desde ti hasta la persona
-    drawTreasurePathToPerson(you, targetPoint, target.distance, lineColor, aligned)
-
-    // 4) Chevrones laterales grandes (giro claro) + texto IZQ/DER
+    // Chevrones laterales grandes (giro claro) + texto IZQ/DER
     if (abs(turn) >= 12.0) {
         drawAccessibleTurnIcon(toRight = turn > 0, color = turnCol, strength = (abs(turn) / 60.0).coerceIn(0.35, 1.0).toFloat())
     }
 
-    // 5) HUD: gira hasta alinear, luego camina al punto
+    // HUD: gira hasta alinear, luego camina al punto
     drawHeadingDirectorHud(
         turnDeg = turn,
         targetLabel = target.label,
@@ -701,6 +703,7 @@ fun DrawScope.drawNavigationGuide2D(
         tagPaint = tagPaint,
         idle = false,
         colorblind = colorblind,
+        context = context,
     )
 }
 
@@ -772,6 +775,7 @@ private fun DrawScope.drawPointZeroMarker(
     cy: Float,
     tagPaint: android.graphics.Paint,
     colorblind: Boolean = false,
+    context: android.content.Context? = null,
 ) {
     val accent = accessibleAccent(VictimStatusKind.NEARBY, colorblind)
     drawCircle(accent.copy(alpha = 0.12f), 60f, Offset(cx, cy))
@@ -789,7 +793,8 @@ private fun DrawScope.drawPointZeroMarker(
         isAntiAlias = true
         textAlign = android.graphics.Paint.Align.CENTER
     }
-    drawContext.canvas.nativeCanvas.drawText("◎ SEÑAL CERCA — verifica (no implica cavar)", cx, cy + 84f, paint)
+    val verifyText = context?.getString(com.vitalfi.R.string.radar_signal_near_verify) ?: "◎ SEÑAL CERCA — verifica (no implica cavar)"
+    drawContext.canvas.nativeCanvas.drawText(verifyText, cx, cy + 84f, paint)
 }
 
 /** Cono de dirección: indica el rumbo relativo sin línea diagonal confusa. */
@@ -926,6 +931,7 @@ private fun DrawScope.drawHeadingDirectorHud(
     tagPaint: android.graphics.Paint,
     idle: Boolean = false,
     colorblind: Boolean = false,
+    context: android.content.Context? = null,
 ) {
     val hudCx = size.width / 2f
     val hudY = 34f
@@ -983,11 +989,16 @@ private fun DrawScope.drawHeadingDirectorHud(
     }
 
     val steerText = when {
-        idle -> "Gira el teléfono — busca el punto de la persona"
-        atPointZero -> "◎ CERCA · $targetLabel — verifica sitio (prof. no confirmada)"
-        aligned -> "▲ CAMINA RECTO · $targetLabel · ${"%.2f".format(distanceM)} m"
-        turnDeg > 0 -> "→ GIRA DERECHA ${turnDeg.roundToInt()}° hasta alinear · $targetLabel"
-        else -> "← GIRA IZQUIERDA ${(-turnDeg).roundToInt()}° hasta alinear · $targetLabel"
+        idle -> context?.getString(com.vitalfi.R.string.radar_steer_idle)
+            ?: "Gira el teléfono — busca el punto de la persona"
+        atPointZero -> context?.getString(com.vitalfi.R.string.radar_steer_near, targetLabel)
+            ?: "◎ CERCA · $targetLabel — verifica sitio (prof. no confirmada)"
+        aligned -> context?.getString(com.vitalfi.R.string.radar_steer_straight, targetLabel, "%.2f".format(distanceM))
+            ?: "▲ CAMINA RECTO · $targetLabel · ${"%.2f".format(distanceM)} m"
+        turnDeg > 0 -> context?.getString(com.vitalfi.R.string.radar_steer_turn_right, turnDeg.roundToInt(), targetLabel)
+            ?: "→ GIRA DERECHA ${turnDeg.roundToInt()}° hasta alinear · $targetLabel"
+        else -> context?.getString(com.vitalfi.R.string.radar_steer_turn_left, (-turnDeg).roundToInt(), targetLabel)
+            ?: "← GIRA IZQUIERDA ${(-turnDeg).roundToInt()}° hasta alinear · $targetLabel"
     }
     val textPaint = android.graphics.Paint(tagPaint).apply {
         color = when {
@@ -1017,12 +1028,15 @@ private fun DrawScope.drawHeadingDirectorHud(
             textSize = 12f
             textAlign = android.graphics.Paint.Align.CENTER
         }
+        val legendText = if (colorblind) {
+            context?.getString(com.vitalfi.R.string.radar_steer_legend_cb)
+                ?: "▲ = frente · →← = girar · ◎ = cerca (prof. no confirmada)"
+        } else {
+            context?.getString(com.vitalfi.R.string.radar_steer_legend_normal)
+                ?: "Centra ▲ con | del frente = camino recto"
+        }
         drawContext.canvas.nativeCanvas.drawText(
-            if (colorblind) {
-                "▲ = frente · →← = girar · ◎ = cerca (prof. no confirmada)"
-            } else {
-                "Centra ▲ con | del frente = camino recto"
-            },
+            legendText,
             hudCx,
             hudY + 48f,
             hintPaint,
@@ -1738,7 +1752,6 @@ fun DrawScope.drawVictims3D(
         val victimTint = victimColor(victim, colorblind)
         val atPointZero = victim.distance < 0.6
 
-        val rel = describePersonPosition(victim.x, victim.y, victim.depth, bearingDeg)
         val (rx, ry) = rotateMapCoords(victim.x, victim.y, bearingDeg)
         val groundProj = project(rx, ry, 0.0)
         val absDepth = kotlin.math.abs(victim.depth)
@@ -1777,7 +1790,7 @@ fun DrawScope.drawVictims3D(
         }
 
         if (showLabels) {
-            val statusLabel = if (atPointZero) "◎ CERCA — verifica" else victimStatusIconLabel(kind)
+            val statusLabel = if (atPointZero) "◎" else victimStatusIconLabel(kind)
             drawContext.canvas.nativeCanvas.drawText(
                 statusLabel,
                 groundProj.x - 36f,
@@ -1789,9 +1802,9 @@ fun DrawScope.drawVictims3D(
                 },
             )
             val info = if (atPointZero) {
-                "↓ ${"%.1f".format(absDepth)} m — no camines más"
+                "↓ ${"%.1f".format(absDepth)} m"
             } else {
-                "${"%.1f".format(rel.distanceM)} m · ↓ ${"%.1f".format(absDepth)} m"
+                "${"%.1f".format(victim.distance)} m · ↓ ${"%.1f".format(absDepth)} m"
             }
             drawContext.canvas.nativeCanvas.drawText(
                 info,
@@ -1803,18 +1816,6 @@ fun DrawScope.drawVictims3D(
                     textSize = 13f
                 },
             )
-            if (selected && !atPointZero) {
-                drawContext.canvas.nativeCanvas.drawText(
-                    rel.horizontal,
-                    groundProj.x - 40f,
-                    groundProj.y - 22f,
-                    android.graphics.Paint(labelPaint).apply {
-                        color = android.graphics.Color.parseColor(if (colorblind) "#80C0FF" else "#66FF99")
-                        isFakeBoldText = true
-                        textSize = labelPaint.textSize * 0.9f
-                    },
-                )
-            }
         }
     }
 }

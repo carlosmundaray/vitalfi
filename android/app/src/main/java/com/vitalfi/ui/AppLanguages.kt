@@ -1,0 +1,40 @@
+package com.vitalfi.ui
+
+data class SupportedLanguage(
+    val code: String,
+    val nativeName: String,
+    val englishName: String,
+    val flag: String,
+)
+
+val SUPPORTED_LANGUAGES = listOf(
+    SupportedLanguage("", "Automático (Sistema)", "Auto (System)", "🌐"),
+    SupportedLanguage("es", "Español", "Spanish", "🇪🇸"),
+    SupportedLanguage("en", "English", "English", "🇺🇸"),
+    SupportedLanguage("zh", "中文 (简体)", "Chinese (Simplified)", "🇨🇳"),
+    SupportedLanguage("hi", "हिन्दी", "Hindi", "🇮🇳"),
+    SupportedLanguage("ar", "العربية", "Arabic", "🇸🇦"),
+    SupportedLanguage("fr", "Français", "French", "🇫🇷"),
+    SupportedLanguage("pt", "Português", "Portuguese", "🇧🇷"),
+    SupportedLanguage("ru", "Русский", "Russian", "🇷🇺"),
+    SupportedLanguage("ja", "日本語", "Japanese", "🇯🇵"),
+    SupportedLanguage("de", "Deutsch", "German", "🇩🇪"),
+    SupportedLanguage("tr", "Türkçe", "Turkish", "🇹🇷"),
+    SupportedLanguage("it", "Italiano", "Italian", "🇮🇹"),
+    SupportedLanguage("in", "Bahasa Indonesia", "Indonesian", "🇮🇩"),
+    SupportedLanguage("uk", "Українська", "Ukrainian", "🇺🇦"),
+    SupportedLanguage("bn", "বাংলা", "Bengali", "🇧🇩"),
+    SupportedLanguage("ko", "한국어", "Korean", "🇰🇷"),
+    SupportedLanguage("vi", "Tiếng Việt", "Vietnamese", "🇻🇳"),
+    SupportedLanguage("pl", "Polski", "Polish", "🇵🇱"),
+    SupportedLanguage("nl", "Nederlands", "Dutch", "🇳🇱"),
+    SupportedLanguage("fa", "فارسی", "Persian (Farsi)", "🇮🇷"),
+    SupportedLanguage("th", "ไทย", "Thai", "🇹🇭"),
+    SupportedLanguage("sw", "Kiswahili", "Swahili", "🇰🇪"),
+    SupportedLanguage("ro", "Română", "Romanian", "🇷🇴"),
+    SupportedLanguage("el", "Ελληνικά", "Greek", "🇬🇷"),
+    SupportedLanguage("cs", "Čeština", "Czech", "🇨🇿"),
+    SupportedLanguage("sv", "Svenska", "Swedish", "🇸🇪"),
+    SupportedLanguage("tl", "Tagalog (Filipino)", "Tagalog", "🇵🇭"),
+    SupportedLanguage("he", "עברית", "Hebrew", "🇮🇱"),
+)

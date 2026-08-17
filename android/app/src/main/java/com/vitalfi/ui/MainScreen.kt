@@ -23,11 +23,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Settings
@@ -81,6 +90,9 @@ import com.vitalfi.VitalFiUiState
 import com.vitalfi.dsp.HeatPoint
 import com.vitalfi.dsp.PositionEstimate
 import com.vitalfi.dsp.describePersonPosition
+import com.vitalfi.dsp.localizeDynamicStatus
+import com.vitalfi.dsp.localizeDynamicProximity
+import com.vitalfi.dsp.localizeDynamicHint
 import com.vitalfi.dsp.TrappedVictim
 import com.vitalfi.wifi.ScannedNetwork
 import com.vitalfi.wifi.WifiCollectMode
@@ -142,6 +154,7 @@ fun MainScreen(
     onSetRubbleZoneRadius: (Double) -> Unit,
     onSetDefaultWifiMode: (WifiCollectMode) -> Unit,
     onSetColorblindMode: (Boolean) -> Unit,
+    onSetAppLanguage: (String) -> Unit,
 ) {
     var showAbout by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -172,28 +185,58 @@ fun MainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(12.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "VitalFi — Detección bajo escombros",
-                    color = Cyan,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { showAbout = true }) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = Cyan)
-                    Text(stringResource(R.string.about_button), color = Cyan, fontSize = 12.sp)
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = "VitalFi",
+                        color = Cyan,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                    )
+                    Text(
+                        text = stringResource(R.string.app_tagline),
+                        color = Color(0xFFA0C4A0),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
                 }
-                IconButton(onClick = { showSettings = true }) {
-                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title), tint = Cyan)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = { showAbout = true },
+                        modifier = Modifier.background(Color(0xFF142418), CircleShape),
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = stringResource(R.string.about_title),
+                            tint = Cyan,
+                        )
+                    }
+                    IconButton(
+                        onClick = { showSettings = true },
+                        modifier = Modifier.background(Color(0xFF142418), CircleShape),
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.settings_title),
+                            tint = Cyan,
+                        )
+                    }
                 }
             }
 
@@ -231,7 +274,7 @@ fun MainScreen(
                 FilterChip(
                     selected = state.showRadar3D,
                     onClick = onToggleRadar3D,
-                    label = { Text(if (state.showRadar3D) "Vista 3D" else "Radar 2D") },
+                    label = { Text(if (state.showRadar3D) stringResource(R.string.action_view_3d) else stringResource(R.string.action_radar_2d)) },
                     leadingIcon = { Icon(Icons.Default.ViewInAr, null) },
                 )
                 Button(
@@ -239,11 +282,11 @@ fun MainScreen(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
-                    Text("Reiniciar", fontSize = 12.sp)
+                    Text(stringResource(R.string.action_reset), fontSize = 12.sp)
                 }
                 Button(onClick = onExportCsv) {
                     Icon(Icons.Default.Download, null)
-                    Text(" CSV")
+                    Text(" " + stringResource(R.string.action_csv))
                 }
             }
 
@@ -281,19 +324,17 @@ fun MainScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 IconButton(onClick = onBearingLeft) {
-                    Icon(Icons.AutoMirrored.Filled.RotateLeft, "Girar izq", tint = Cyan)
+                    Icon(Icons.AutoMirrored.Filled.RotateLeft, stringResource(R.string.action_rotate_left), tint = Cyan)
                 }
                 IconButton(onClick = onBearingRight) {
-                    Icon(Icons.AutoMirrored.Filled.RotateRight, "Girar der", tint = Cyan)
+                    Icon(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.action_rotate_right), tint = Cyan)
                 }
             }
 
             Text(
                 text = when (state.collectMode) {
-                    WifiCollectMode.CONNECTED ->
-                        stringResource(R.string.mode_connected_hint) + " Gira 360° alrededor del escombro."
-                    WifiCollectMode.PASSIVE_SCAN ->
-                        stringResource(R.string.mode_passive_hint) + " Gira 360° para ubicar en el radar."
+                    WifiCollectMode.CONNECTED -> stringResource(R.string.mode_connected_hint)
+                    WifiCollectMode.PASSIVE_SCAN -> stringResource(R.string.mode_passive_hint)
                 },
                 color = Color(0xFF888888),
                 fontSize = 12.sp,
@@ -304,7 +345,7 @@ fun MainScreen(
         state.toastMessage?.let { msg ->
             Snackbar(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-                action = { TextButton(onClick = onDismissToast) { Text("OK") } },
+                action = { TextButton(onClick = onDismissToast) { Text(stringResource(R.string.action_ok)) } },
             ) { Text(msg) }
             LaunchedEffect(msg) {
                 kotlinx.coroutines.delay(4000)
@@ -319,6 +360,15 @@ fun MainScreen(
             isScanning = state.isScanningNetworks,
             onSelect = onSelectNetwork,
             onDismiss = onDismissPicker,
+        )
+    }
+
+    state.forceUpdateInfo?.let { updateInfo ->
+        ForceUpdateDialog(
+            updateInfo = updateInfo,
+            onOpenUrl = { url ->
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            },
         )
     }
 
@@ -354,6 +404,7 @@ fun MainScreen(
             onToggleAutoElevation = onToggleAutoElevation,
             onAdjustElevation = onAdjustElevation,
             onResetElevation = onResetElevation,
+            onSetAppLanguage = onSetAppLanguage,
             onDismiss = { showSettings = false },
         )
     }
@@ -476,8 +527,19 @@ private fun SettingsDialog(
     onToggleAutoElevation: (Boolean) -> Unit,
     onAdjustElevation: (Double) -> Unit,
     onResetElevation: () -> Unit,
+    onSetAppLanguage: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var showLanguagePicker by remember { mutableStateOf(false) }
+
+    if (showLanguagePicker) {
+        LanguagePickerDialog(
+            currentLanguageCode = state.appLanguage,
+            onLanguageSelected = onSetAppLanguage,
+            onDismiss = { showLanguagePicker = false },
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_title)) },
@@ -486,6 +548,56 @@ private fun SettingsDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // —— Idioma ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_language))
+                Text(
+                    stringResource(R.string.settings_language_hint),
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                )
+                val currentLang = SUPPORTED_LANGUAGES.find { it.code == state.appLanguage } ?: SUPPORTED_LANGUAGES.first()
+                Card(
+                    onClick = { showLanguagePicker = true },
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF18281A)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(currentLang.flag, fontSize = 22.sp)
+                            Column {
+                                Text(
+                                    text = if (currentLang.code.isEmpty()) stringResource(R.string.settings_language_auto) else currentLang.nativeName,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                )
+                                if (currentLang.englishName != currentLang.nativeName && currentLang.code.isNotEmpty()) {
+                                    Text(
+                                        text = currentLang.englishName,
+                                        color = Color(0xFFA0C4A0),
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                        }
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = stringResource(R.string.language_picker_title),
+                            tint = Cyan,
+                        )
+                    }
+                }
+
                 // —— Detección ——
                 SettingsSectionTitle(stringResource(R.string.settings_section_detection))
                 SettingsSwitchRow(
@@ -545,7 +657,7 @@ private fun SettingsDialog(
                 }
                 if (state.excludedRescuerCount > 0) {
                     Text(
-                        "Sectores excluidos: ${state.excludedRescuerCount}",
+                        stringResource(R.string.status_excluded_sectors, state.excludedRescuerCount),
                         color = Color(0xFF888888),
                         fontSize = 11.sp,
                     )
@@ -561,7 +673,7 @@ private fun SettingsDialog(
                     }
                     if (state.rubbleZoneLabel != null) {
                         TextButton(onClick = onClearRubbleZone) {
-                            Text("Quitar zona", fontSize = 11.sp)
+                            Text(stringResource(R.string.status_remove_zone), fontSize = 11.sp)
                         }
                     }
                     Button(onClick = onExcludeRescuer) {
@@ -609,11 +721,6 @@ private fun SettingsDialog(
                     hint = stringResource(R.string.settings_colorblind_hint),
                     checked = state.colorblindMode,
                     onToggle = onSetColorblindMode,
-                )
-                Text(
-                    "Iconos: ◎ cerca · ◆ respira/viva · ▲ movimiento · ? señal · ←→ girar",
-                    color = Color(0xFFAAAAAA),
-                    fontSize = 11.sp,
                 )
 
                 // —— Alertas ——
@@ -714,9 +821,9 @@ private fun SettingsDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         listOf(
-                            "Rescate" to onRadarLayersModoRescate,
-                            "Solo persona" to onRadarLayersSoloPersona,
-                            "Todo" to onRadarLayersTodo,
+                            stringResource(R.string.radar_preset_rescue) to onRadarLayersModoRescate,
+                            stringResource(R.string.radar_preset_person_only) to onRadarLayersSoloPersona,
+                            stringResource(R.string.radar_preset_all) to onRadarLayersTodo,
                         ).forEach { (label, action) ->
                             Button(
                                 onClick = action,
@@ -739,7 +846,7 @@ private fun SettingsDialog(
                     "wifi" to (stringResource(R.string.settings_layer_wifi) to layers.wifi),
                     "heatmap" to (stringResource(R.string.settings_layer_heatmap) to layers.heatmap),
                     "guide" to (stringResource(R.string.settings_layer_guide) to layers.guide),
-                    "depthRays" to ("Rayas profundidad" to layers.depthRays),
+                    "depthRays" to (stringResource(R.string.radar_layer_depth_rays_short) to layers.depthRays),
                     "rubble" to (stringResource(R.string.settings_layer_rubble) to layers.rubble),
                     "trail" to (stringResource(R.string.settings_layer_trail) to layers.trail),
                     "labels" to (stringResource(R.string.settings_layer_labels) to layers.labels),
@@ -783,7 +890,7 @@ private fun TrappedFilterControls(
     ) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                if (state.trappedOnlyMode) "Filtro anti-rescatista activo" else "Modo detección amplia",
+                if (state.trappedOnlyMode) stringResource(R.string.status_filter_trapped_active) else stringResource(R.string.status_filter_wide_mode),
                 color = if (state.trappedOnlyMode) RadarGreen else Orange,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
@@ -796,7 +903,7 @@ private fun TrappedFilterControls(
             }
             if (state.excludedRescuerCount > 0) {
                 Text(
-                    "Sectores excluidos: ${state.excludedRescuerCount}",
+                    stringResource(R.string.status_excluded_sectors, state.excludedRescuerCount),
                     color = Color(0xFF888888),
                     fontSize = 11.sp,
                 )
@@ -812,7 +919,7 @@ private fun TrappedFilterControls(
                 }
                 if (state.rubbleZoneLabel != null) {
                     TextButton(onClick = onClearRubbleZone) {
-                        Text("Quitar zona", fontSize = 11.sp)
+                        Text(stringResource(R.string.status_remove_zone), fontSize = 11.sp)
                     }
                 }
                 Button(onClick = onExcludeRescuer) {
@@ -839,17 +946,25 @@ private fun AboutDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.about_title)) },
+        containerColor = Color(0xFF101A12),
+        title = {
+            Text(
+                stringResource(R.string.about_title),
+                color = Cyan,
+                fontWeight = FontWeight.Bold,
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
-                    color = Color.Gray,
+                    color = Color(0xFF88CC88),
                     fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
                 )
                 Text(
                     stringResource(R.string.about_developer),
-                    color = Color(0xFF888888),
+                    color = Color(0xFFAAAAAA),
                     fontSize = 12.sp,
                 )
                 Text(
@@ -860,12 +975,12 @@ private fun AboutDialog(
                 )
                 Text(
                     stringResource(R.string.about_company),
-                    color = Color(0xFFAAAAAA),
+                    color = Color(0xFFCCEEDD),
                     fontSize = 13.sp,
                 )
                 Text(
                     stringResource(R.string.about_license),
-                    color = Color(0xFF666666),
+                    color = Color(0xFF88AA88),
                     fontSize = 11.sp,
                 )
                 AboutLink(
@@ -883,8 +998,90 @@ private fun AboutDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1C2E20),
+                    contentColor = Cyan,
+                ),
+            ) {
                 Text(stringResource(R.string.about_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ForceUpdateDialog(
+    updateInfo: com.vitalfi.update.UpdateInfo,
+    onOpenUrl: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = {}, // Bloqueo total: no descartable
+        containerColor = Color(0xFF141F14),
+        title = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    tint = Cyan,
+                    modifier = Modifier.size(24.dp),
+                )
+                Text(
+                    text = updateInfo.title.ifBlank { stringResource(R.string.update_required_title) },
+                    color = Cyan,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = updateInfo.message.ifBlank { stringResource(R.string.update_required_msg) },
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0D160D)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "${stringResource(R.string.update_current_ver)}: ${BuildConfig.VERSION_NAME} (v${BuildConfig.VERSION_CODE})",
+                            color = Color.Gray,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Text(
+                            text = "${stringResource(R.string.update_new_ver)}: ${updateInfo.latestVersionName} (v${updateInfo.latestVersionCode})",
+                            color = Color(0xFF66FF99),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onOpenUrl(updateInfo.downloadUrl) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Cyan,
+                    contentColor = Color.Black,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    stringResource(R.string.action_update_now),
+                    fontWeight = FontWeight.Bold,
+                )
             }
         },
     )
@@ -911,16 +1108,150 @@ private fun ModeSelector(
         FilterChip(
             selected = state.collectMode == WifiCollectMode.CONNECTED,
             onClick = onConnected,
-            label = { Text("Conectado") },
+            label = { Text(stringResource(R.string.mode_connected)) },
             leadingIcon = { Icon(Icons.Default.Wifi, null) },
         )
         FilterChip(
             selected = state.collectMode == WifiCollectMode.PASSIVE_SCAN,
             onClick = onPassive,
-            label = { Text("Escaneo pasivo") },
+            label = { Text(stringResource(R.string.mode_passive)) },
             leadingIcon = { Icon(Icons.Default.WifiFind, null) },
         )
     }
+}
+
+@Composable
+private fun LanguagePickerDialog(
+    currentLanguageCode: String,
+    onLanguageSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredLanguages = remember(searchQuery) {
+        if (searchQuery.isBlank()) {
+            SUPPORTED_LANGUAGES
+        } else {
+            val q = searchQuery.trim().lowercase()
+            SUPPORTED_LANGUAGES.filter {
+                it.nativeName.lowercase().contains(q) ||
+                it.englishName.lowercase().contains(q) ||
+                it.code.lowercase().contains(q)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(R.string.language_picker_title),
+                fontWeight = FontWeight.Bold,
+                color = Cyan,
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(stringResource(R.string.language_search_placeholder)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Cyan) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.Gray)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (filteredLanguages.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            stringResource(R.string.language_search_no_results),
+                            color = Color.Gray,
+                            fontSize = 13.sp,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(filteredLanguages) { lang ->
+                            val isSelected = lang.code == currentLanguageCode
+                            Card(
+                                onClick = {
+                                    onLanguageSelected(lang.code)
+                                    onDismiss()
+                                },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) Color(0xFF1E3A24) else Color(0xFF141F14),
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(lang.flag, fontSize = 18.sp)
+                                        Column {
+                                            Text(
+                                                text = if (lang.code.isEmpty()) stringResource(R.string.settings_language_auto) else lang.nativeName,
+                                                color = if (isSelected) Cyan else Color.White,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 13.sp,
+                                            )
+                                            if (lang.englishName != lang.nativeName && lang.code.isNotEmpty()) {
+                                                Text(
+                                                    text = lang.englishName,
+                                                    color = Color(0xFF888888),
+                                                    fontSize = 11.sp,
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Cyan,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_close))
+            }
+        },
+    )
 }
 
 @Composable
@@ -932,11 +1263,11 @@ private fun NetworkPickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Selecciona red del router") },
+        title = { Text(stringResource(R.string.picker_select_router)) },
         text = {
             if (networks.isEmpty()) {
                 Text(
-                    if (isScanning) "Buscando redes Wi-Fi..."
+                    if (isScanning) stringResource(R.string.picker_scanning)
                     else stringResource(R.string.wifi_required),
                 )
             } else {
@@ -960,13 +1291,14 @@ private fun NetworkPickerDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
     )
 }
 
 @Composable
 private fun StatusCard(state: VitalFiUiState) {
+    val context = LocalContext.current
     val statusColor = when {
         state.isBreathing -> Red
         state.isActivity -> Orange
@@ -974,37 +1306,42 @@ private fun StatusCard(state: VitalFiUiState) {
         else -> Cyan
     }
     val modeLabel = when (state.collectMode) {
-        WifiCollectMode.CONNECTED -> "conectado"
-        WifiCollectMode.PASSIVE_SCAN -> "escaneo pasivo"
+        WifiCollectMode.CONNECTED -> stringResource(R.string.status_wifi_connected_label)
+        WifiCollectMode.PASSIVE_SCAN -> stringResource(R.string.status_wifi_passive_label)
     }
+    val wifiStateStr = if (state.wifiEnabled) stringResource(R.string.status_wifi_active) else stringResource(R.string.status_wifi_disabled)
+    val monitoringStr = if (state.monitoring) stringResource(R.string.status_monitoring_yes) else stringResource(R.string.status_monitoring_no)
+    val withoutInternetStr = if (state.wifiWithoutInternet) " " + stringResource(R.string.status_without_internet) else ""
+    val localizedStatus = localizeDynamicStatus(state.status, state.isBreathing, state.isActivity, state.wifiEnabled, context)
+    val localizedHint = localizeDynamicHint(state.hint, context)
+    val localizedProx = localizeDynamicProximity(state.proximity, context)
+    val mlStatusStr = if (state.mlReady) stringResource(R.string.ml_status_active) else stringResource(R.string.ml_status_disabled)
+
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF121A12)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Red: ${state.ssid.ifBlank { "—" }} [$modeLabel]", color = Color.White, fontSize = 13.sp)
+            Text(stringResource(R.string.status_network, state.ssid.ifBlank { "—" }, modeLabel), color = Color.White, fontSize = 13.sp)
             Text(
-                "Wi-Fi: ${if (state.wifiEnabled) "activo" else "apagado"} | " +
-                    "Monitoreo: ${if (state.monitoring) "sí" else "no"}" +
-                    (if (state.wifiWithoutInternet) " (sin internet)" else "") +
-                    " | ${state.compassLabel}",
+                "Wi-Fi: $wifiStateStr | Monitoreo: $monitoringStr$withoutInternetStr | ${state.compassLabel}",
                 color = Color(0xFF888888),
                 fontSize = 11.sp,
             )
             Text("RSSI: ${state.rssiDbm?.let { "$it dBm" } ?: "—"}", color = Color(0xFFAAAAAA), fontSize = 12.sp)
             Text(
-                state.mlStatus,
+                mlStatusStr,
                 color = if (state.mlReady) Color(0xFF66FF99) else Color(0xFF777777),
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
             )
-            Text(state.status, color = statusColor, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(localizedStatus, color = statusColor, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             if (state.calibrating) {
-                Text("Calibrando... ${state.calibRemainingSec}s", color = Color(0xFFFFCC00), fontSize = 12.sp)
+                Text(stringResource(R.string.status_calibrating, state.calibRemainingSec), color = Color(0xFFFFCC00), fontSize = 12.sp)
             }
             if (state.rubbleConfidence > 0.05 && !state.calibrating) {
                 Text(
-                    "Confianza escombros: ${"%.0f".format(state.rubbleConfidence * 100)}%",
+                    stringResource(R.string.status_rubble_confidence, (state.rubbleConfidence * 100).roundToInt()),
                     color = if (state.isBreathing) Red else Orange,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
@@ -1012,25 +1349,31 @@ private fun StatusCard(state: VitalFiUiState) {
             }
             if (state.victims.isNotEmpty()) {
                 Text(
-                    "Personas en sitio: ${state.victims.size} — toca un punto en el radar",
+                    stringResource(R.string.status_victims_count, state.victims.size),
                     color = RadarGreen,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                 )
             }
-            Text(state.hint, color = Color(0xFFAAAAAA), fontSize = 12.sp)
+            Text(localizedHint, color = Color(0xFFAAAAAA), fontSize = 12.sp)
             if (state.isBreathing || state.isActivity || state.heartBeating || state.position != null) {
                 Text(
-                    "Resp: ${if (state.isBreathing) "SÍ" else "no"} ${"%.0f".format(state.respRate)} rpm | " +
-                        "Pulso: ${if (state.heartBeating) "SÍ" else "no"} ${"%.0f".format(state.heartRateBpm)} lpm | " +
-                        "Conf: ${"%.0f".format(state.confidence * 100)}% | ${state.proximity}",
+                    stringResource(
+                        R.string.status_vitals_summary,
+                        if (state.isBreathing) stringResource(R.string.val_yes) else stringResource(R.string.val_no),
+                        "%.0f".format(state.respRate),
+                        if (state.heartBeating) stringResource(R.string.val_yes) else stringResource(R.string.val_no),
+                        "%.0f".format(state.heartRateBpm),
+                        "%.0f".format(state.confidence * 100),
+                        localizedProx,
+                    ),
                     color = Color.White,
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                 )
             }
             Text(
-                "Muestras: ${state.sampleCount}/${state.maxSamples} | Rumbo: ${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)}",
+                stringResource(R.string.status_samples_bearing, state.sampleCount, state.maxSamples, state.bearingDeg.roundToInt(), bearingToCardinal(state.bearingDeg)),
                 color = Color(0xFF666666),
                 fontSize = 11.sp,
             )
@@ -1040,13 +1383,14 @@ private fun StatusCard(state: VitalFiUiState) {
 
 @Composable
 private fun NavigationHint(state: VitalFiUiState) {
+    val context = LocalContext.current
     val pos = state.position
     val target = state.selectedVictim ?: state.victims.firstOrNull()
-            if (pos == null && target == null) {
+    if (pos == null && target == null) {
         if (state.rubbleConfidence > 0.12 && (state.isActivity || state.isBreathing)) {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218))) {
                 Text(
-                    text = "🗺️ Búsqueda: gira 360° despacio. Cuando aparezca el punto, alinea la flecha y camina hacia él (como un tesoro).",
+                    text = stringResource(R.string.status_nav_search_prompt),
                     modifier = Modifier.padding(10.dp),
                     color = Color(0xFFFFCC00),
                     fontSize = 13.sp,
@@ -1058,11 +1402,12 @@ private fun NavigationHint(state: VitalFiUiState) {
 
     val targetBearing = target?.bearing ?: pos!!.bearing
     val targetDistance = target?.distance ?: pos!!.distance
-    val steer = buildNavigationHint(targetBearing, state.bearingDeg, targetDistance)
-    val depthLine = pos?.let { " | Prof. est. ~${"%.1f".format(-it.depth)} m (no confirmada)" } ?: ""
+    val steer = buildNavigationHint(context, targetBearing, state.bearingDeg, targetDistance)
+    val depthLine = pos?.let { " | " + stringResource(R.string.pos_depth_est, "%.1f".format(-it.depth)) } ?: ""
+    val headingStr = stringResource(R.string.radar_heading, state.bearingDeg.roundToInt(), bearingToCardinal(state.bearingDeg))
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218))) {
         Text(
-            text = "$steer$depthLine\nTu rumbo: ${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)}",
+            text = "$steer$depthLine\n$headingStr",
             modifier = Modifier.padding(10.dp),
             color = Color(0xFFFFCC00),
             fontSize = 13.sp,
@@ -1081,7 +1426,7 @@ private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> U
     ) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                "Atrapadas en el sitio: ${state.victims.size}",
+                stringResource(R.string.victims_trapped_count, state.victims.size),
                 color = RadarGreen,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
@@ -1102,7 +1447,7 @@ private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> U
                 }
             }
             Text(
-                "Toca Persona A/B… para ver signos vitales o ponerle un nombre de campo.",
+                stringResource(R.string.victims_touch_hint),
                 color = Color(0xFF777777),
                 fontSize = 11.sp,
             )
@@ -1118,9 +1463,10 @@ private fun VictimDetailDialog(
     phoneBearingDeg: Double,
     colorblind: Boolean = false,
 ) {
+    val context = LocalContext.current
     val kind = victimStatusKind(victim)
     val color = victimColor(victim, colorblind)
-    val rel = describePersonPosition(victim.x, victim.y, victim.depth, phoneBearingDeg)
+    val rel = describePersonPosition(context, victim.x, victim.y, victim.depth, phoneBearingDeg)
     val horizDist = rel.distanceM
     val burialM = rel.depthM
     var nameDraft by remember(victim.id, victim.label) { mutableStateOf(victim.label) }
@@ -1135,53 +1481,54 @@ private fun VictimDetailDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(victim.status, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                val localizedVictimStatus = localizeDynamicStatus(victim.status, victim.isBreathing, victim.isActivity, true, context)
+                Text(localizedVictimStatus, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 if (victim.signatureCode.isNotBlank()) {
-                    VictimDetailRow("Firma Wi‑Fi", victim.signatureCode)
+                    VictimDetailRow(stringResource(R.string.victim_wifi_signature), victim.signatureCode)
                 }
                 OutlinedTextField(
                     value = nameDraft,
                     onValueChange = { nameDraft = it.take(28) },
-                    label = { Text("Nombre de campo") },
-                    placeholder = { Text("Ej. Niño zona norte") },
+                    label = { Text(stringResource(R.string.victim_field_name)) },
+                    placeholder = { Text(stringResource(R.string.victim_field_name_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "Etiqueta local (no identifica identidad civil). Vacío = Persona A/B.",
+                    stringResource(R.string.victim_label_hint),
                     color = Color(0xFF777777),
                     fontSize = 10.sp,
                 )
                 Text(
-                    "Mediciones Wi-Fi · iconos = estado (no solo color)",
+                    stringResource(R.string.victim_measurements_hint),
                     color = if (colorblind) Color(0xFF80C0FF) else RadarGreen,
                     fontSize = 11.sp,
                 )
-                VictimDetailRow("Desde ti", rel.horizontal)
-                VictimDetailRow("Vertical", rel.vertical)
-                VictimDetailRow("Distancia horizontal", "${"%.2f".format(horizDist)} m")
+                VictimDetailRow(stringResource(R.string.victim_from_you), rel.horizontal)
+                VictimDetailRow(stringResource(R.string.victim_vertical), rel.vertical)
+                VictimDetailRow(stringResource(R.string.victim_horizontal_distance), "${"%.2f".format(horizDist)} m")
                 VictimDetailRow(
-                    "Profundidad",
-                    if (burialM >= 0.12) "~${"%.2f".format(burialM)} m estimados — no confirmados"
-                    else "Profundidad desconocida",
+                    stringResource(R.string.victim_depth),
+                    if (burialM >= 0.12) stringResource(R.string.victim_depth_estimated, "%.2f".format(burialM))
+                    else stringResource(R.string.victim_depth_unknown),
                 )
-                VictimDetailRow("Distancia 3D (recta)", "${"%.2f".format(rel.slantRangeM)} m")
+                VictimDetailRow(stringResource(R.string.victim_distance_3d), "${"%.2f".format(rel.slantRangeM)} m")
                 VictimDetailRow(
-                    "Rumbo",
+                    stringResource(R.string.victim_heading),
                     "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}",
                 )
-                VictimDetailRow("Zona", "${victim.proximity} (~${"%.1f".format(horizDist)} m)")
+                VictimDetailRow(stringResource(R.string.victim_zone), "${victim.proximity} (~${"%.1f".format(horizDist)} m)")
                 VictimDetailRow(
-                    "Respirando",
-                    if (victim.isBreathing) "SÍ — ${"%.1f".format(victim.respRate)} rpm" else "No detectado",
+                    stringResource(R.string.victim_breathing),
+                    if (victim.isBreathing) "${stringResource(R.string.val_yes)} — ${"%.1f".format(victim.respRate)} rpm" else stringResource(R.string.val_not_detected),
                 )
                 VictimDetailRow(
-                    "Corazón latiendo",
-                    if (victim.heartBeating) "SÍ — ${"%.0f".format(victim.heartRateBpm)} lpm" else "No detectado",
+                    stringResource(R.string.victim_heart_beating),
+                    if (victim.heartBeating) "${stringResource(R.string.val_yes)} — ${"%.0f".format(victim.heartRateBpm)} lpm" else stringResource(R.string.val_not_detected),
                 )
-                VictimDetailRow("Actividad", if (victim.isActivity) "Sí" else "No")
-                VictimDetailRow("Confianza vital", "${"%.0f".format(victim.confidence * 100)}%")
-                VictimDetailRow("Confianza escombros", "${"%.0f".format(victim.rubbleConfidence * 100)}%")
+                VictimDetailRow(stringResource(R.string.victim_activity), if (victim.isActivity) stringResource(R.string.val_yes) else stringResource(R.string.val_no))
+                VictimDetailRow(stringResource(R.string.victim_vital_confidence), "${"%.0f".format(victim.confidence * 100)}%")
+                VictimDetailRow(stringResource(R.string.victim_rubble_confidence), "${"%.0f".format(victim.rubbleConfidence * 100)}%")
                 Text(
                     rel.coordsLine,
                     color = Color(0xFF666666),
@@ -1196,10 +1543,10 @@ private fun VictimDetailDialog(
                     onRename(nameDraft)
                     onDismiss()
                 },
-            ) { Text("Guardar") }
+            ) { Text(stringResource(R.string.action_save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
         },
     )
 }
@@ -1257,6 +1604,7 @@ fun RadarView(
                 isFakeBoldText = true
             }
         }
+        val context = LocalContext.current
         var canvasSize by remember { mutableStateOf(IntSize.Zero) }
         val divisor = RADAR_DEFAULT_RANGE_M
 
@@ -1288,7 +1636,7 @@ fun RadarView(
                 drawRadarSonarPulse2D(sonarPulse, viewport)
             }
             if (layers.wifi) {
-                drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint, sonarPulse)
+                drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint, sonarPulse, context)
                 drawRfEnvironment2D(
                     cells = environmentCells,
                     phoneBearingDeg = bearingDeg,
@@ -1316,6 +1664,7 @@ fun RadarView(
                     labelPaint = labelPaint,
                     tagPaint = tagPaint,
                     colorblind = colorblind,
+                    context = context,
                 )
             }
             drawVictims2D(
@@ -1338,7 +1687,7 @@ fun SignalChart(samples: List<Double>, modifier: Modifier = Modifier) {
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0D140D)), modifier = modifier) {
         if (samples.size < 2) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Esperando señal Wi-Fi (dBm)...", color = Color.Gray, fontSize = 12.sp)
+                Text(stringResource(R.string.waiting_wifi_signal), color = Color.Gray, fontSize = 12.sp)
             }
         } else {
             Canvas(Modifier.fillMaxSize().padding(8.dp)) {

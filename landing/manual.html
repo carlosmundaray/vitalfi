@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VitalFi — Manual Oficial de Operaciones en Campo</title>
+  <meta name="description" content="Manual de instalación, configuración táctica y protocolos de operación en campo para VitalFi Android." />
+  <link rel="icon" href="assets/vitalfi_logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #07120e;
+      --panel: #0d1e17;
+      --card: #11261d;
+      --ink: #e8f6ef;
+      --muted: #8eaea0;
+      --cyan: #00e6b8;
+      --cyan-hover: #33ebd0;
+      --cyan-dim: #00a88a;
+      --sand: #d4c09a;
+      --line: rgba(0, 230, 184, 0.18);
+      --danger: #ff4d6d;
+      --pad-x: 1.25rem;
+      --pad-y: clamp(1.5rem, 4vh, 2.5rem);
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-t: env(safe-area-inset-top, 0px);
+      --max: 980px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Manrope", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .shell {
+      width: 100%;
+      max-width: var(--max);
+      margin-inline: auto;
+      padding-inline: var(--pad-x);
+    }
+
+    /* —— TOP NAV —— */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(7, 18, 14, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+      padding-block: 0.75rem;
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .nav-brand {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .nav-brand span { color: var(--cyan); font-style: italic; }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .btn-back {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .btn-back:hover { color: var(--cyan); }
+
+    .lang-selector-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.4rem 0.85rem;
+      background: rgba(0, 230, 184, 0.08);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      font: 600 0.88rem/1 "Manrope", system-ui, sans-serif;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .lang-selector-btn:hover {
+      background: rgba(0, 230, 184, 0.16);
+      border-color: var(--cyan);
+    }
+
+    /* —— HEADER —— */
+    .manual-header {
+      padding-block: 3rem 2rem;
+      border-bottom: 1px solid var(--line);
+      background: radial-gradient(circle at 80% 20%, rgba(0, 230, 184, 0.08), transparent 60%);
+    }
+
+    .tag-badge {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      background: rgba(0, 230, 184, 0.1);
+      border: 1px solid rgba(0, 230, 184, 0.25);
+      padding: 0.25rem 0.65rem;
+      border-radius: 4px;
+      margin-bottom: 0.85rem;
+    }
+
+    .manual-title {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 0.75rem;
+    }
+
+    .manual-subtitle {
+      color: var(--muted);
+      font-size: 1.1rem;
+      max-width: 65ch;
+    }
+
+    /* —— CONTENT LAYOUT —— */
+    .manual-layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 2.5rem;
+      padding-block: 2.5rem 5rem;
+      align-items: start;
+    }
+
+    /* —— SIDEBAR TOC —— */
+    .toc-sticky {
+      position: sticky;
+      top: 5rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 1.25rem;
+    }
+
+    .toc-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+    }
+
+    .toc-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .toc-list a {
+      font-size: 0.9rem;
+      color: var(--muted);
+      display: block;
+      padding: 0.35rem 0.5rem;
+      border-radius: 4px;
+      transition: color 0.2s, background 0.2s;
+    }
+
+    .toc-list a:hover {
+      color: var(--cyan);
+      background: rgba(0, 230, 184, 0.08);
+    }
+
+    /* —— SECTIONS —— */
+    .chapter {
+      margin-bottom: 3rem;
+      scroll-margin-top: 5rem;
+    }
+
+    .chapter h2 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: 1.85rem;
+      font-weight: 400;
+      color: var(--cyan);
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .chapter h3 {
+      font-size: 1.2rem;
+      color: var(--ink);
+      margin-block: 1.25rem 0.5rem;
+      font-weight: 700;
+    }
+
+    .chapter p {
+      color: #cfded6;
+      margin-bottom: 1rem;
+      font-size: 0.98rem;
+    }
+
+    .chapter ul, .chapter ol {
+      margin-left: 1.25rem;
+      margin-bottom: 1rem;
+      color: #cfded6;
+    }
+
+    .chapter li {
+      margin-bottom: 0.4rem;
+    }
+
+    .callout {
+      background: rgba(0, 230, 184, 0.06);
+      border-left: 3px solid var(--cyan);
+      padding: 1rem 1.25rem;
+      border-radius: 0 4px 4px 0;
+      margin-block: 1.25rem;
+      font-size: 0.94rem;
+    }
+
+    .callout.alert {
+      background: rgba(255, 77, 109, 0.08);
+      border-left-color: var(--danger);
+    }
+
+    .key-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-block: 1rem;
+    }
+
+    .key-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1rem;
+    }
+
+    .key-card strong {
+      display: block;
+      color: var(--cyan);
+      font-size: 1.05rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .key-card span {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 768px) {
+      .manual-layout {
+        grid-template-columns: 1fr;
+      }
+      .toc-sticky {
+        display: none;
+      }
+    }
+
+    /* —— MODAL —— */
+    .lang-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      background: rgba(4, 12, 9, 0.78);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .lang-modal-overlay.open { opacity: 1; pointer-events: auto; }
+
+    .lang-modal-dialog {
+      background: var(--panel);
+      border: 1px solid var(--cyan);
+      border-radius: 8px;
+      width: 100%;
+      max-width: 580px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+    }
+
+    .lang-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .lang-modal-close-btn {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+    }
+
+    .lang-search-box {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin: 1rem 1.5rem 0.5rem;
+      padding: 0.65rem 0.9rem;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+    }
+
+    .lang-search-box input {
+      background: transparent;
+      border: 0;
+      color: var(--ink);
+      width: 100%;
+      outline: none;
+    }
+
+    .lang-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 0.5rem;
+      padding: 1rem 1.5rem 1.5rem;
+      overflow-y: auto;
+    }
+
+    .lang-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.7rem 0.9rem;
+      background: rgba(0, 230, 184, 0.03);
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: var(--ink);
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .lang-item:hover, .lang-item.active {
+      background: rgba(0, 230, 184, 0.15);
+      border-color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+  <nav class="top-nav">
+    <div class="shell nav-inner">
+      <a href="index.html" class="nav-brand">Vital<span>Fi</span></a>
+      <div class="nav-actions">
+        <a href="index.html" class="btn-back">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          <span data-i18n="manual.nav.back">Volver a la web</span>
+        </a>
+        <button id="lang-btn" class="lang-selector-btn" type="button" onclick="window.openLanguageModal(event)" aria-label="Cambiar idioma">
+          <span class="lang-flag">🇪🇸</span>
+          <span class="lang-name">Español</span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <header class="manual-header">
+    <div class="shell">
+      <span class="tag-badge" data-i18n="manual.tag">Guía Táctica Oficial</span>
+      <h1 class="manual-title" data-i18n="manual.hero.title">Manual de Operaciones y Rescate en Campo</h1>
+      <p class="manual-subtitle" data-i18n="manual.hero.desc">
+        Protocolos técnicos de instalación, calibración táctica, interpretación del radar 3D/2D y detección biológica en estructuras colapsadas.
+      </p>
+    </div>
+  </header>
+
+  <main class="shell manual-layout">
+    <aside class="toc-sticky">
+      <div class="toc-title" data-i18n="manual.toc.title">Contenido</div>
+      <ul class="toc-list">
+        <li><a href="javascript:void(0)" onclick="scrollToSection('cap1')" data-i18n="manual.toc.cap1">1. Principio Físico</a></li>
+        <li><a href="javascript:void(0)" onclick="scrollToSection('cap2')" data-i18n="manual.toc.cap2">2. Requisitos y Permisos</a></li>
+        <li><a href="javascript:void(0)" onclick="scrollToSection('cap3')" data-i18n="manual.toc.cap3">3. Calibración Inicial</a></li>
+        <li><a href="javascript:void(0)" onclick="scrollToSection('cap4')" data-i18n="manual.toc.cap4">4. Radar Polar y 3D</a></li>
+        <li><a href="javascript:void(0)" onclick="scrollToSection('cap5')" data-i18n="manual.toc.cap5">5. Alerta de Excavación</a></li>
+        <li><a href="javascript:void(0)" onclick="scrollToSection('cap6')" data-i18n="manual.toc.cap6">6. Seguridad y Protocolos</a></li>
+      </ul>
+    </aside>
+
+    <div class="manual-content">
+      <!-- CAPITULO 1 -->
+      <section id="cap1" class="chapter">
+        <h2 data-i18n="manual.cap1.title">1. Principio Físico y Procesamiento DSP</h2>
+        <p data-i18n="manual.cap1.p1">
+          VitalFi utiliza fluctuaciones de micro-potencia y cambios de fase en las señales de radiofrecuencia (RF) del espectro inalámbrico causados por movimientos micrométricos en el tórax de seres vivos.
+        </p>
+        <div class="key-grid">
+          <div class="key-card">
+            <strong data-i18n="manual.cap1.resp.title">Filtro de Respiración</strong>
+            <span data-i18n="manual.cap1.resp.desc">0.10 Hz a 0.60 Hz (6 a 36 respiraciones por minuto).</span>
+          </div>
+          <div class="key-card">
+            <strong data-i18n="manual.cap1.card.title">Filtro Cardíaco</strong>
+            <span data-i18n="manual.cap1.card.desc">0.80 Hz a 2.50 Hz (48 a 150 latidos por minuto).</span>
+          </div>
+          <div class="key-card">
+            <strong data-i18n="manual.cap1.mov.title">Filtro de Movimiento</strong>
+            <span data-i18n="manual.cap1.mov.desc">Exclusión del movimiento del propio rescatista mediante sensores inerciales.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- CAPITULO 2 -->
+      <section id="cap2" class="chapter">
+        <h2 data-i18n="manual.cap2.title">2. Requisitos de Hardware y Permisos</h2>
+        <p data-i18n="manual.cap2.p1">
+          La aplicación funciona en dispositivos con <strong>Android 5.0 (Lollipop, API 21) hasta Android 16</strong>. No requiere conexión a Internet ni infraestructura de red externa.
+        </p>
+        <h3 data-i18n="manual.cap2.perm.title">Permisos requeridos en la app:</h3>
+        <ul>
+          <li data-i18n="manual.cap2.perm.1"><strong>Ubicación precisa:</strong> Requerido por el sistema Android para acceder al subsistema de escaneo de radio.</li>
+          <li data-i18n="manual.cap2.perm.2"><strong>Sensores de movimiento y brújula:</strong> Necesarios para la orientación del radar en 360° y la proyección de pasos.</li>
+          <li data-i18n="manual.cap2.perm.3"><strong>Almacenamiento / Exportación:</strong> Para guardar la bitácora de rescate en formato CSV forense.</li>
+        </ul>
+      </section>
+
+      <!-- CAPITULO 3 -->
+      <section id="cap3" class="chapter">
+        <h2 data-i18n="manual.cap3.title">3. Calibración en Terreno</h2>
+        <p data-i18n="manual.cap3.p1">
+          Antes de ingresar a la zona de escombros, mantenga el dispositivo firme durante 5 segundos para calibrar el piso de ruido ambiental (Noise Floor Calibration).
+        </p>
+        <div class="callout" data-i18n="manual.cap3.callout">
+          <strong>Consejo de campo:</strong> Realice la calibración apuntando hacia la estructura colapsada a una distancia de seguridad de 2 a 3 metros.
+        </div>
+      </section>
+
+      <!-- CAPITULO 4 -->
+      <section id="cap4" class="chapter">
+        <h2 data-i18n="manual.cap4.title">4. Interpretación del Radar Táctico (2D y 3D)</h2>
+        <p data-i18n="manual.cap4.p1">
+          La interfaz de radar táctico muestra la posición estimada de la víctima con respecto al eje de avance del rescatista.
+        </p>
+        <ul>
+          <li data-i18n="manual.cap4.li1"><strong>Punto Cian / Verde:</strong> Detección de patrón respiratorio estable (> 75% confianza).</li>
+          <li data-i18n="manual.cap4.li2"><strong>Banner de Telemetría Superior:</strong> Indica los metros restantes y la corrección angular (ej. <em>↑ Recto 1.8 m</em> o <em>↻ 25° der</em>).</li>
+          <li data-i18n="manual.cap4.li3"><strong>Modo 3D:</strong> Proyecta la profundidad estimada bajo el plano del suelo o la altura de los escombros.</li>
+        </ul>
+      </section>
+
+      <!-- CAPITULO 5 -->
+      <section id="cap5" class="chapter">
+        <h2 data-i18n="manual.cap5.title">5. Alerta de Punto Cero de Excavación</h2>
+        <p data-i18n="manual.cap5.p1">
+          Cuando el rescatista se aproxima a menos de <strong>1.0 metro</strong> de la víctima detectada, la aplicación activa automáticamente la alarma visual y háptica de <strong>PUNTO CERO</strong>.
+        </p>
+        <div class="callout alert" data-i18n="manual.cap5.callout">
+          <strong>Alerta de Excavación:</strong> Detenga la marcha. Verifique la estabilidad estructural antes de realizar intervenciones o remoción de escombros con herramientas pesadas.
+        </div>
+      </section>
+
+      <!-- CAPITULO 6 -->
+      <section id="cap6" class="chapter">
+        <h2 data-i18n="manual.cap6.title">6. Protocolos de Seguridad USAR</h2>
+        <p data-i18n="manual.cap6.p1">
+          VitalFi es una herramienta complementaria de respuesta rápida. No sustituye los protocolos oficiales del Grupo Asesor Internacional de Operaciones de Búsqueda y Rescate (INSARAG) ni los equipos geofónicos homologados.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <!-- MODAL SELECTOR DE IDIOMA CON BUSCADOR EN VIVO -->
+  <div id="lang-modal" class="lang-modal-overlay" aria-hidden="true" role="dialog">
+    <div class="lang-modal-dialog">
+      <div class="lang-modal-header">
+        <h3 data-i18n="modal.lang.title">Seleccionar idioma</h3>
+        <button id="lang-modal-close" class="lang-modal-close-btn" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="lang-search-box">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="lang-search" placeholder="Buscar idioma..." autocomplete="off" />
+      </div>
+      <div id="lang-list" class="lang-grid">
+        <!-- Renderizado dinámicamente por i18n.js -->
+      </div>
+    </div>
+  </div>
+
+  <script src="i18n.js?v=1.3.35"></script>
+
+  <script>
+    function scrollToSection(id) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    if (window.location.protocol === 'file:' && window.location.hash) {
+      const hashId = window.location.hash.substring(1);
+      try {
+        history.replaceState(null, '', window.location.pathname);
+      } catch (_) {}
+      setTimeout(() => scrollToSection(hashId), 150);
+    }
+  </script>
+
+</body>
+</html>
