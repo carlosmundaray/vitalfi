@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.vitalfi.dsp.HeatPoint
@@ -84,6 +85,7 @@ fun Radar3DView(
                 isAntiAlias = true
             }
         }
+        val context = androidx.compose.ui.platform.LocalContext.current
         var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
         fun project(x: Double, y: Double, z: Double): Offset =
@@ -102,12 +104,13 @@ fun Radar3DView(
             Modifier
                 .fillMaxSize()
                 .padding(6.dp)
+                .onSizeChanged { canvasSize = it }
                 .radarGestures(
                     viewport = viewport,
                     victims = victims,
                     projectVictim = { victim ->
                         val (rx, ry) = rotateMapCoords(victim.x, victim.y, bearingDeg)
-                        project(rx, ry, victim.depth)
+                        project(rx, ry, 0.0)
                     },
                     onVictimClick = onVictimClick,
                     onViewportChange = onViewportChange,
@@ -196,12 +199,6 @@ fun Radar3DView(
             }
 
             if (layers.guide) {
-                if (target != null && !atZero) {
-                    // Camino claro hacia el punto cero (dónde cavar)
-                    val (rx, ry) = rotateMapCoords(target.x, target.y, bearingDeg)
-                    val digSpot = project(rx, ry, 0.0)
-                    drawPathToDigSpot(you, digSpot, target.distance, colorblind)
-                }
                 drawHeadingDirector3D(
                     bearingDeg = bearingDeg,
                     target = target,
@@ -231,55 +228,14 @@ fun Radar3DView(
                     victimCount = victims.size,
                     tagPaint = tagPaint,
                     labelPaint = labelPaint,
+                    context = context,
                 )
             }
         }
     }
 }
 
-/** Camino grueso hacia el punto de excavación (navegación clara). */
-private fun DrawScope.drawPathToDigSpot(
-    from: Offset,
-    digSpot: Offset,
-    distanceM: Double,
-    colorblind: Boolean,
-) {
-    val color = if (colorblind) Color(0xFFFFEE00) else Color(0xFFFFAA00)
-    // Pasillo ancho (no una raya fina confusa)
-    drawLine(color.copy(alpha = 0.18f), from, digSpot, strokeWidth = 22f)
-    drawLine(color.copy(alpha = 0.85f), from, digSpot, strokeWidth = 4f)
-    // Flecha en el extremo (punto cero / cavar)
-    val dx = digSpot.x - from.x
-    val dy = digSpot.y - from.y
-    val len = hypot(dx, dy).coerceAtLeast(1f)
-    val ux = dx / len
-    val uy = dy / len
-    val tip = digSpot
-    val back = Offset(tip.x - ux * 18f, tip.y - uy * 18f)
-    val left = Offset(back.x - uy * 10f, back.y + ux * 10f)
-    val right = Offset(back.x + uy * 10f, back.y - ux * 10f)
-    val path = Path().apply {
-        moveTo(tip.x, tip.y)
-        lineTo(left.x, left.y)
-        lineTo(right.x, right.y)
-        close()
-    }
-    drawPath(path, color)
-    val paint = android.graphics.Paint().apply {
-        this.color = android.graphics.Color.WHITE
-        textSize = 14f
-        isFakeBoldText = true
-        textAlign = android.graphics.Paint.Align.CENTER
-        isAntiAlias = true
-    }
-    val mid = Offset((from.x + digSpot.x) / 2f, (from.y + digSpot.y) / 2f)
-    drawContext.canvas.nativeCanvas.drawText(
-        "→ señal ${"%.1f".format(distanceM)} m",
-        mid.x,
-        mid.y - 10f,
-        paint,
-    )
-}
+
 
 /** Cuadrícula fina de fondo estilo pantalla táctica. */
 private fun DrawScope.drawMilitaryHudBackground() {
@@ -307,6 +263,7 @@ private fun DrawScope.drawMilitaryTelemetryHud(
     victimCount: Int,
     tagPaint: android.graphics.Paint,
     labelPaint: android.graphics.Paint,
+    context: android.content.Context? = null,
 ) {
     val green = android.graphics.Color.parseColor("#66FF99")
     val dim = android.graphics.Color.parseColor("#448866")
@@ -325,8 +282,9 @@ private fun DrawScope.drawMilitaryTelemetryHud(
     val alertPaint = android.graphics.Paint(valuePaint).apply { color = alert }
 
     // Superior izquierda — estado
+    val rescueModeText = context?.getString(com.vitalfi.R.string.radar_mode_rescue) ?: "MODO RESCATE"
     drawContext.canvas.nativeCanvas.drawText("VITALFI PPI", 10f, 18f, valuePaint)
-    drawContext.canvas.nativeCanvas.drawText("MODO RESCATE", 10f, 34f, leftPaint)
+    drawContext.canvas.nativeCanvas.drawText(rescueModeText, 10f, 34f, leftPaint)
     drawContext.canvas.nativeCanvas.drawText(
         "OBJETIVOS $victimCount",
         10f,
@@ -383,8 +341,9 @@ private fun DrawScope.drawMilitaryTelemetryHud(
             },
         )
     } else {
+        val searchingText = context?.getString(com.vitalfi.R.string.radar_status_searching) ?: "BUSCANDO…"
         drawContext.canvas.nativeCanvas.drawText("RNG —", rx, 36f, rightDim)
-        drawContext.canvas.nativeCanvas.drawText("BUSCANDO…", rx, 54f, rightDim)
+        drawContext.canvas.nativeCanvas.drawText(searchingText, rx, 54f, rightDim)
     }
 
     // Inferior derecha — modo

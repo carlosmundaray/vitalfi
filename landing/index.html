@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>VitalFi — Sistema inalambrico para identificar vidas bajo escombros</title>
-  <meta name="description" content="VitalFi: aplicacion movil experimental de respuesta rapida para estimar signos vitales bajo escombros mediante senales Wi-Fi. Offline en Android." />
+  <meta name="description"
+    content="VitalFi: aplicacion movil experimental de respuesta rapida para estimar signos vitales bajo escombros mediante senales Wi-Fi. Offline en Android." />
   <link rel="icon" href="assets/vitalfi_logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
   <style>
     /* Tokens from landing/DESIGN.md — Open Design */
     :root {
@@ -31,7 +35,11 @@
       --hero-pad: 96px;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     html {
       scroll-behavior: smooth;
@@ -47,8 +55,16 @@
       overflow-x: hidden;
     }
 
-    a { color: inherit; text-decoration: none; }
-    img { display: block; max-width: 100%; height: auto; }
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
 
     .shell {
       width: 100%;
@@ -65,8 +81,7 @@
       display: flex;
       align-items: center;
       padding-block:
-        calc(var(--hero-pad) * 0.55 + var(--safe-t))
-        calc(var(--hero-pad) * 0.55 + var(--safe-b));
+        calc(var(--hero-pad) * 0.55 + var(--safe-t)) calc(var(--hero-pad) * 0.55 + var(--safe-b));
       isolation: isolate;
     }
 
@@ -111,18 +126,42 @@
       border-radius: 50%;
       animation: sonarPulse 4.8s ease-out infinite;
     }
-    .sonar i:nth-child(2) { inset: 24%; animation-delay: 1s; }
-    .sonar i:nth-child(3) { inset: 36%; animation-delay: 2s; }
-    .sonar i:nth-child(4) { inset: 48%; animation-delay: 3s; }
+
+    .sonar i:nth-child(2) {
+      inset: 24%;
+      animation-delay: 1s;
+    }
+
+    .sonar i:nth-child(3) {
+      inset: 36%;
+      animation-delay: 2s;
+    }
+
+    .sonar i:nth-child(4) {
+      inset: 48%;
+      animation-delay: 3s;
+    }
 
     @keyframes gridDrift {
-      from { transform: translate(0, 0); }
-      to { transform: translate(44px, 44px); }
+      from {
+        transform: translate(0, 0);
+      }
+
+      to {
+        transform: translate(44px, 44px);
+      }
     }
 
     @keyframes sonarPulse {
-      0% { transform: scale(0.85); opacity: 0.5; }
-      100% { transform: scale(1.2); opacity: 0; }
+      0% {
+        transform: scale(0.85);
+        opacity: 0.5;
+      }
+
+      100% {
+        transform: scale(1.2);
+        opacity: 0;
+      }
     }
 
     .hero-inner {
@@ -137,8 +176,15 @@
     }
 
     @keyframes riseIn {
-      from { opacity: 0; transform: translateY(14px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .hero-logo {
@@ -148,7 +194,10 @@
       object-fit: contain;
     }
 
-    .hero-copy { width: 100%; max-width: 36rem; }
+    .hero-copy {
+      width: 100%;
+      max-width: 36rem;
+    }
 
     .tag {
       display: block;
@@ -206,28 +255,45 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    .btn:hover { transform: translateY(-2px); }
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
     .btn:focus-visible {
       outline: 2px solid var(--cyan);
       outline-offset: 3px;
     }
-    .btn svg { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
 
-    .btn-primary { background: var(--cyan); color: var(--cta-ink); }
-    .btn-primary:hover { background: var(--cyan-hover); }
+    .btn svg {
+      width: 1.1rem;
+      height: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    .btn-primary {
+      background: var(--cyan);
+      color: var(--cta-ink);
+    }
+
+    .btn-primary:hover {
+      background: var(--cyan-hover);
+    }
 
     .btn-secondary {
       background: transparent;
       color: var(--ink);
       border: 1px solid var(--line);
     }
+
     .btn-secondary:hover {
       border-color: var(--cyan);
       color: var(--cyan);
     }
 
     /* —— MAIN —— */
-    main { padding-bottom: 0; }
+    main {
+      padding-bottom: 0;
+    }
 
     .section {
       padding-block: clamp(2.25rem, 6vw, 3.5rem);
@@ -252,7 +318,10 @@
       margin-bottom: 1.15rem;
     }
 
-    .section p strong { color: var(--ink); font-weight: 700; }
+    .section p strong {
+      color: var(--ink);
+      font-weight: 700;
+    }
 
     .links a {
       display: inline-block;
@@ -262,7 +331,10 @@
       padding: 0.25rem 0;
       border-bottom: 1px solid transparent;
     }
-    .links a:hover { border-bottom-color: var(--cyan); }
+
+    .links a:hover {
+      border-bottom-color: var(--cyan);
+    }
 
     .notice {
       margin-top: 1.1rem;
@@ -311,7 +383,9 @@
       line-height: 1.55;
     }
 
-    .story p { max-width: 46rem; }
+    .story p {
+      max-width: 46rem;
+    }
 
     .split-stack {
       display: grid;
@@ -339,7 +413,9 @@
       border-top: 1px solid var(--line);
     }
 
-    .member:last-child { border-bottom: 1px solid var(--line); }
+    .member:last-child {
+      border-bottom: 1px solid var(--line);
+    }
 
     .avatar {
       width: 3.25rem;
@@ -376,9 +452,19 @@
       line-height: 1.4;
     }
 
-    .member .handle { margin-top: 0.35rem; font-size: 0.88rem; }
-    .member .handle a { color: var(--cyan); font-weight: 600; }
-    .member .handle a:hover { border-bottom: 1px solid var(--cyan); }
+    .member .handle {
+      margin-top: 0.35rem;
+      font-size: 0.88rem;
+    }
+
+    .member .handle a {
+      color: var(--cyan);
+      font-weight: 600;
+    }
+
+    .member .handle a:hover {
+      border-bottom: 1px solid var(--cyan);
+    }
 
     .team-photo {
       width: 100%;
@@ -432,6 +518,7 @@
       background: var(--cta-ink);
       color: var(--cyan);
     }
+
     .footer-cta .btn-on-cyan:hover {
       background: #063528;
       color: var(--cyan-hover);
@@ -449,80 +536,228 @@
       line-height: 1.45;
     }
 
-    footer.site-footer a { color: var(--cyan-deep); }
-    footer.site-footer a:hover { color: var(--cyan); }
+    footer.site-footer a {
+      color: var(--cyan-deep);
+    }
 
-    @media (max-width: 719px) {
+    footer.site-footer a:hover {
+      color: var(--cyan);
+    }
+
+    /* ===================================================
+       RESPONSIVE DESIGN SYSTEM (MOBILE, TABLET & DESKTOP)
+       =================================================== */
+
+    /* —— MOBILE BASE (max-width: 639px) —— */
+    @media (max-width: 639px) {
+      :root {
+        --pad-x: 1rem;
+        --pad-y: 1.25rem;
+      }
+
+      .nav-link {
+        display: none; /* Barra superior limpia y tactil */
+      }
+
+      .nav-actions {
+        gap: 0.5rem;
+      }
+
+      .lang-selector-btn {
+        padding: 0.35rem 0.65rem;
+        font-size: 0.82rem;
+      }
+
       .hero {
+        min-height: auto;
+        padding-top: calc(1rem + var(--safe-t));
+        padding-bottom: 2rem;
         align-items: flex-start;
-        padding-top: calc(1.5rem + var(--safe-t));
       }
 
       .hero-inner {
-        gap: 1.35rem;
-        padding-top: 0.5rem;
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
         justify-items: center;
         text-align: center;
       }
 
       .hero-logo {
-        width: min(48vw, 180px);
+        width: min(44vw, 150px);
         margin: 0 auto;
       }
 
-      .hero-copy { text-align: center; }
+      .hero-copy {
+        text-align: center;
+      }
+
+      .hero-title {
+        font-size: clamp(2.1rem, 9vw, 2.75rem);
+        line-height: 1.1;
+      }
 
       .lede {
-        max-width: none;
+        font-size: 1rem;
+        max-width: 100%;
         margin-inline: auto;
       }
 
       .sonar {
-        width: min(100vw, 400px);
-        opacity: 0.28;
-        right: -35%;
-        top: 18%;
+        width: min(90vw, 320px);
+        opacity: 0.22;
+        right: -30%;
+        top: 15%;
         transform: none;
       }
 
       .cta {
         flex-direction: column;
         align-items: stretch;
+        width: 100%;
+        gap: 0.65rem;
       }
 
       .btn {
         width: 100%;
-        min-height: 3.15rem;
+        min-height: 3rem;
+        justify-content: center;
+        font-size: 0.94rem;
+        padding: 0.75rem 1rem;
+      }
+
+      .release-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.4rem;
+      }
+
+      .featured-release {
+        padding: 1.15rem 1rem;
+      }
+
+      .featured-release .cta {
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .feature-pills {
+        gap: 0.35rem;
+      }
+
+      .pill {
+        font-size: 0.78rem;
+        padding: 0.3rem 0.55rem;
+      }
+
+      .team {
+        grid-template-columns: 1fr;
+      }
+
+      .contact-grid {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+      }
+
+      .contact-card {
+        padding: 1.15rem 1rem;
+      }
+
+      .footer-cta {
+        padding-block: 2rem;
       }
 
       .footer-cta .shell {
         flex-direction: column;
         align-items: stretch;
         text-align: center;
+        gap: 1.25rem;
       }
 
       .footer-cta h2 {
-        max-width: none;
+        max-width: 100%;
+        font-size: 1.6rem;
+      }
+
+      .footer-cta .btn {
+        width: 100%;
       }
 
       footer.site-footer {
         flex-direction: column;
-        gap: 0.4rem;
+        align-items: flex-start;
+        gap: 0.75rem;
+        font-size: 0.8rem;
+      }
+
+      .lang-modal-dialog {
+        width: calc(100vw - 1.5rem);
+        max-height: 88vh;
+      }
+
+      .lang-grid {
+        grid-template-columns: 1fr;
+        padding: 0.75rem 1rem 1.25rem;
       }
     }
 
-    @media (min-width: 720px) {
-      :root { --pad-x: 2.5rem; }
+    /* —— TABLET (640px to 899px) —— */
+    @media (min-width: 640px) and (max-width: 899px) {
+      :root {
+        --pad-x: 1.75rem;
+      }
+
+      .nav-link {
+        font-size: 0.88rem;
+      }
+
+      .nav-actions {
+        gap: 0.85rem;
+      }
 
       .hero-inner {
-        grid-template-columns: minmax(0, 1.15fr) auto;
-        gap: clamp(2rem, 5vw, 4rem);
-        justify-items: start;
+        grid-template-columns: 1.2fr auto;
+        gap: 2rem;
+        align-items: center;
         text-align: left;
       }
 
       .hero-logo {
-        width: clamp(180px, 24vw, 260px);
+        width: 180px;
+        grid-column: 2;
+        grid-row: 1;
+      }
+
+      .hero-copy {
+        grid-column: 1;
+        grid-row: 1;
+        text-align: left;
+      }
+
+      .team {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+
+      .contact-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    /* —— DESKTOP (min-width: 900px) —— */
+    @media (min-width: 900px) {
+      :root {
+        --pad-x: 2.5rem;
+      }
+
+      .hero-inner {
+        grid-template-columns: minmax(0, 1.2fr) auto;
+        gap: 3.5rem;
+        align-items: center;
+        text-align: left;
+      }
+
+      .hero-logo {
+        width: clamp(200px, 24vw, 270px);
         grid-column: 2;
         grid-row: 1;
         justify-self: end;
@@ -534,67 +769,523 @@
         text-align: left;
       }
 
-      .cta { width: auto; }
-      .btn { width: auto; }
-    }
+      .cta {
+        width: auto;
+      }
 
-    @media (min-width: 900px) {
+      .btn {
+        width: auto;
+      }
+
       .team {
         grid-template-columns: 1fr 1fr 1fr;
         gap: 0 1.5rem;
       }
 
-      .member { border-bottom: 1px solid var(--line); }
+      .member {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .contact-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    /* —— RELEASES & VERSIONS —— */
+    .featured-release {
+      background: var(--panel);
+      border: 1px solid var(--cyan);
+      border-radius: 6px;
+      padding: clamp(1.25rem, 3vw, 2rem);
+      margin-block: 1.5rem;
+      box-shadow: 0 0 30px rgba(0, 230, 184, 0.08);
+    }
+
+    .release-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .badge-current {
+      background: rgba(0, 230, 184, 0.15);
+      color: var(--cyan);
+      border: 1px solid var(--cyan);
+    }
+
+    .badge-legacy {
+      background: rgba(168, 196, 182, 0.1);
+      color: var(--muted);
+      border: 1px solid rgba(168, 196, 182, 0.2);
+    }
+
+    .feature-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 1.25rem 0;
+    }
+
+    .pill {
+      background: rgba(0, 230, 184, 0.06);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.85rem;
+      color: var(--ink);
+    }
+
+    .releases-table-container {
+      margin-top: 2rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--panel);
+    }
+
+    .releases-table {
+      width: 100%;
+      min-width: 580px;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.92rem;
+    }
+
+    .releases-table th,
+    .releases-table td {
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid rgba(0, 230, 184, 0.1);
+    }
+
+    .releases-table th {
+      background: rgba(0, 230, 184, 0.06);
+      color: var(--cyan);
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .releases-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .releases-table tr:hover td {
+      background: rgba(0, 230, 184, 0.03);
+    }
+
+    .action-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .btn-sm {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      border-radius: 3px;
+      border: 1px solid var(--line);
+      color: var(--cyan);
+      background: rgba(0, 230, 184, 0.08);
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .btn-sm:hover {
+      background: var(--cyan);
+      color: var(--cta-ink);
+      transform: translateY(-1px);
+    }
+
+    .btn-sm-aab {
+      color: var(--sand);
+      border-color: rgba(212, 192, 154, 0.3);
+      background: rgba(212, 192, 154, 0.08);
+    }
+
+    .btn-sm-aab:hover {
+      background: var(--sand);
+      color: var(--cta-ink);
+    }
+
+    /* —— CONTACTO —— */
+    .contact-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.25rem;
+    }
+
+    .contact-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .contact-card:hover {
+      border-color: var(--cyan);
+      transform: translateY(-2px);
+    }
+
+    .contact-icon {
+      width: 2rem;
+      height: 2rem;
+      color: var(--cyan);
+      margin-bottom: 0.2rem;
+    }
+
+    .contact-card h3 {
+      font-size: 1.15rem;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .contact-card p {
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.5;
+      margin-bottom: 0.25rem;
+    }
+
+    .contact-link {
+      font-weight: 700;
+      color: var(--cyan);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 1rem;
+      word-break: break-all;
+    }
+
+    .contact-link:hover {
+      color: var(--cyan-hover);
+      text-decoration: underline;
+    }
+
+    /* —— TOP NAV & LANGUAGE PICKER —— */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(7, 18, 14, 0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+      padding-block: 0.75rem;
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .nav-brand {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+    }
+
+    .nav-brand span {
+      color: var(--cyan);
+      font-style: italic;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .nav-link {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--muted);
+      transition: color 0.2s ease;
+    }
+
+    .nav-link:hover {
+      color: var(--cyan);
+    }
+
+    .lang-selector-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.4rem 0.85rem;
+      background: rgba(0, 230, 184, 0.08);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      font: 600 0.88rem/1 "Manrope", system-ui, sans-serif;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .lang-selector-btn:hover {
+      background: rgba(0, 230, 184, 0.16);
+      border-color: var(--cyan);
+      transform: translateY(-1px);
+    }
+
+    .lang-flag {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    /* —— LANGUAGE MODAL —— */
+    .lang-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      background: rgba(4, 12, 9, 0.78);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .lang-modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .lang-modal-dialog {
+      background: var(--panel);
+      border: 1px solid var(--cyan);
+      border-radius: 8px;
+      width: 100%;
+      max-width: 580px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 32px rgba(0, 230, 184, 0.15);
+      animation: modalSlide 0.25s ease-out;
+    }
+
+    @keyframes modalSlide {
+      from { transform: translateY(12px) scale(0.97); }
+      to { transform: translateY(0) scale(1); }
+    }
+
+    .lang-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .lang-modal-header h3 {
+      font-size: 1.2rem;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .lang-modal-close-btn {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+      padding: 0.35rem;
+      line-height: 1;
+      border-radius: 4px;
+      transition: color 0.2s, background 0.2s;
+    }
+
+    .lang-modal-close-btn:hover {
+      color: var(--cyan);
+      background: rgba(0, 230, 184, 0.1);
+    }
+
+    .lang-search-box {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin: 1rem 1.5rem 0.5rem;
+      padding: 0.65rem 0.9rem;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+    }
+
+    .lang-search-box svg {
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .lang-search-box input {
+      background: transparent;
+      border: 0;
+      color: var(--ink);
+      font: 500 0.95rem/1.2 "Manrope", system-ui, sans-serif;
+      width: 100%;
+      outline: none;
+    }
+
+    .lang-search-box input::placeholder {
+      color: rgba(168, 196, 182, 0.5);
+    }
+
+    .lang-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 0.5rem;
+      padding: 1rem 1.5rem 1.5rem;
+      overflow-y: auto;
+      max-height: 52vh;
+    }
+
+    .lang-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.7rem 0.9rem;
+      background: rgba(0, 230, 184, 0.03);
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+      font-family: inherit;
+    }
+
+    .lang-item:hover {
+      background: rgba(0, 230, 184, 0.12);
+      border-color: rgba(0, 230, 184, 0.3);
+    }
+
+    .lang-item.active {
+      background: rgba(0, 230, 184, 0.18);
+      border-color: var(--cyan);
+    }
+
+    .lang-item-flag {
+      font-size: 1.35rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .lang-item-text {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      flex-grow: 1;
+    }
+
+    .lang-item-text strong {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .lang-item-text span {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .lang-check {
+      color: var(--cyan);
+      font-weight: 700;
+      font-size: 1.05rem;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
+
+      *,
+      *::before,
+      *::after {
         animation: none !important;
         transition: none !important;
       }
     }
   </style>
 </head>
+
 <body>
+  <!-- TOP NAVIGATION BAR WITH LANGUAGE SELECTOR -->
+  <nav class="top-nav">
+    <div class="shell nav-inner">
+      <a href="javascript:void(0)" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" class="nav-brand">Vital<span>Fi</span></a>
+      <div class="nav-actions">
+        <a href="javascript:void(0)" onclick="scrollToSection('about')" class="nav-link" data-i18n="nav.about">Qué es</a>
+        <a href="javascript:void(0)" onclick="scrollToSection('versions')" class="nav-link" data-i18n="nav.versions">Versiones</a>
+        <a href="javascript:void(0)" onclick="scrollToSection('contact')" class="nav-link" data-i18n="nav.contact">Contacto</a>
+        <button id="lang-btn" class="lang-selector-btn" type="button" onclick="window.openLanguageModal(event)" aria-label="Seleccionar idioma">
+          <span class="lang-flag">🇪🇸</span>
+          <span class="lang-name">Español</span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
   <header class="hero" data-od-id="hero">
     <div class="hero-visual" aria-hidden="true">
       <div class="sonar"><i></i><i></i><i></i><i></i></div>
     </div>
 
     <div class="hero-inner shell">
-      <img
-        class="hero-logo"
-        data-od-id="hero.logo"
-        src="assets/vitalfi_logo.png"
-        width="512"
-        height="512"
-        alt="Logo VitalFi"
-        decoding="async"
-      />
+      <img class="hero-logo" data-od-id="hero.logo" src="assets/vitalfi_logo.png" width="512" height="512"
+        alt="Logo VitalFi" decoding="async" />
       <div class="hero-copy">
-        <p class="tag" data-od-id="hero.tag">Experimental · Offline · Android</p>
+        <p class="tag" data-od-id="hero.tag" data-i18n="hero.tag">Experimental · Offline · Android</p>
         <h1 class="brand" data-od-id="hero.brand">Vital<em>Fi</em></h1>
-        <p class="lede" data-od-id="hero.lede">
+        <p class="lede" data-od-id="hero.lede" data-i18n="hero.lede">
           Sistema inalambrico para identificar vidas bajo los escombros.
         </p>
         <div class="cta" data-od-id="hero.cta">
-          <a class="btn btn-primary" id="apk-link"
-             href="releases/VitalFi-v1.3.20-signed.apk"
-             download
-             data-od-id="hero.cta.apk">
+          <a class="btn btn-primary" id="apk-link" href="releases/VitalFi-v1.3.35-signed.apk" download
+            data-od-id="hero.cta.apk">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path d="M12 3v12m0 0l4-4m-4 4l-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12 3v12m0 0l4-4m-4 4l-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            Descargar APK
+            <span data-i18n="hero.cta.apk">Descargar APK v1.3.35</span>
           </a>
-          <a class="btn btn-secondary" id="play-link"
-             href="https://play.google.com/store/apps/details?id=com.vitalfi"
-             target="_blank" rel="noopener noreferrer"
-             data-od-id="hero.cta.play">
+          <a class="btn btn-secondary" href="javascript:void(0)" onclick="scrollToSection('versions')" data-od-id="hero.cta.versions" data-i18n="hero.cta.versions">
+            Todas las versiones
+          </a>
+          <a class="btn btn-secondary" id="play-link" href="https://play.google.com/store/apps/details?id=com.vitalfi"
+            target="_blank" rel="noopener noreferrer" data-od-id="hero.cta.play">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M3.6 2.9c-.4.2-.6.6-.6 1.1v16c0 .5.2.9.6 1.1l10.3-9.1L3.6 2.9zm12.1 6.8L5.2 2.1l11.4 6.5-1-.9zM5.2 21.9l10.5-6.1 1.1-.9-11.6 7zm13.2-7.5l-2.4 1.4-1.3-1.2 1.3-1.1 2.4 1.4c.6.3.6 1.1 0 1.5z"/>
+              <path
+                d="M3.6 2.9c-.4.2-.6.6-.6 1.1v16c0 .5.2.9.6 1.1l10.3-9.1L3.6 2.9zm12.1 6.8L5.2 2.1l11.4 6.5-1-.9zM5.2 21.9l10.5-6.1 1.1-.9-11.6 7zm13.2-7.5l-2.4 1.4-1.3-1.2 1.3-1.1 2.4 1.4c.6.3.6 1.1 0 1.5z" />
             </svg>
-            Google Play
+            <span data-i18n="hero.cta.play">Google Play Store</span>
           </a>
         </div>
       </div>
@@ -602,9 +1293,9 @@
   </header>
 
   <main>
-    <section class="section shell story" data-od-id="about">
-      <h2 data-od-id="about.title">Que es VitalFi</h2>
-      <p data-od-id="about.p1">
+    <section class="section shell story" data-od-id="about" id="about">
+      <h2 data-od-id="about.title" data-i18n="about.title">Que es VitalFi</h2>
+      <p data-od-id="about.p1" data-i18n="about.p1">
         VitalFi es una aplicacion movil (APK) de respuesta rapida pensada para apoyar
         la busqueda de personas en escenarios de desastre y estructuras colapsadas.
         Mediante tecnologia inalambrica, permite a equipos de busqueda y rescate
@@ -612,7 +1303,7 @@
         incluso cuando las victimas pueden estar inmoviles o en entornos de alta
         interferencia estructural.
       </p>
-      <p data-od-id="about.p2">
+      <p data-od-id="about.p2" data-i18n="about.p2">
         Nacio durante la emergencia del terremoto del 24 de junio de 2026 en Venezuela.
         Fue concebida y desarrollada de forma independiente por Carlos Mundaray,
         quien unio fuerzas con James Marin y Maryolie Nelson para llevar las primeras
@@ -623,28 +1314,30 @@
 
     <div class="split-stack shell" data-od-id="purpose">
       <section class="section" data-od-id="mission">
-        <h2 data-od-id="mission.title">Mision</h2>
-        <p data-od-id="mission.body">
-          Poner al alcance de brigadas y cuerpos de rescate una tecnologia innovadora,
-          accesible y de alta efectividad, disenada para reducir los tiempos de
-          localizacion de personas atrapadas y maximizar sus posibilidades de
-          supervivencia en situaciones de desastre.
+        <h2 data-od-id="mission.title" data-i18n="mission.title">Mision</h2>
+        <p data-od-id="mission.body" data-i18n="mission.body">
+          Desarrollar soluciones tecnologicas accesibles y de rapida implementacion
+          para salvar vidas en situaciones de emergencia, facilitando la deteccion
+          temprana de personas atrapadas bajo estructuras colapsadas a traves de
+          senales inalambricas procesadas en el dispositivo, sin depender de redes
+          externas ni infraestructura previa.
         </p>
       </section>
 
       <section class="section" data-od-id="vision">
-        <h2 data-od-id="vision.title">Vision</h2>
-        <p data-od-id="vision.body">
-          Consolidarnos como solucion tecnologica de referencia a nivel nacional e
-          internacional en la gestion de emergencias y rescate en estructuras
-          colapsadas, impulsando herramientas digitales al servicio de la
-          preservacion de la vida humana.
+        <h2 data-od-id="vision.title" data-i18n="vision.title">Vision</h2>
+        <p data-od-id="vision.body" data-i18n="vision.body">
+          Consolidarnos como un referente en innovacion aplicada al rescate en
+          estructuras colapsadas (USAR), integrando procesamiento de senal e inteligencia
+          para monitorear parametros biologicos estimados con la mayor fidelidad
+          posible. Asi se buscan optimizar esfuerzos de salvamento y facilitar
+          decisiones oportunas a los rescatistas en el terreno.
         </p>
       </section>
 
       <section class="section" data-od-id="object">
-        <h2 data-od-id="object.title">Objeto</h2>
-        <p data-od-id="object.body">
+        <h2 data-od-id="object.title" data-i18n="object.title">Objeto</h2>
+        <p data-od-id="object.body" data-i18n="object.body">
           Proveer un sistema tecnologico inalambrico capaz de apoyar la deteccion a
           traves de barreras fisicas densas (como concreto u estructuras metalicas)
           para monitorear parametros biologicos estimados con la mayor fidelidad
@@ -655,33 +1348,33 @@
     </div>
 
     <section class="section shell" data-od-id="values">
-      <h2 data-od-id="values.title">Nuestros valores</h2>
+      <h2 data-od-id="values.title" data-i18n="values.title">Nuestros valores</h2>
       <ul class="value-list" data-od-id="values.list">
         <li data-od-id="values.faith">
-          <strong>Fe en Dios</strong>
-          <span>
+          <strong data-i18n="values.faith.title">Fe en Dios</strong>
+          <span data-i18n="values.faith.desc">
             Ponemos a Dios primero. Reconocemos que el conocimiento, el talento y
             la inspiracion provienen de El, y encomendamos cada linea de codigo y
             cada labor de rescate a su guia y proteccion.
           </span>
         </li>
         <li data-od-id="values.service">
-          <strong>Vocacion de servicio</strong>
-          <span>
+          <strong data-i18n="values.service.title">Vocacion de servicio</strong>
+          <span data-i18n="values.service.desc">
             Nacemos con el proposito firme de poner la tecnologia y el conocimiento
             al servicio activo del projimo.
           </span>
         </li>
         <li data-od-id="values.innovation">
-          <strong>Innovacion agil</strong>
-          <span>
+          <strong data-i18n="values.innovation.title">Innovacion agil</strong>
+          <span data-i18n="values.innovation.desc">
             Desarrollamos soluciones de respuesta inmediata, con capacidad de
             adaptacion ante escenarios complejos e impredecibles.
           </span>
         </li>
         <li data-od-id="values.resilience">
-          <strong>Resiliencia y compromiso</strong>
-          <span>
+          <strong data-i18n="values.resilience.title">Resiliencia y compromiso</strong>
+          <span data-i18n="values.resilience.desc">
             Trabajamos superando limites tecnicos y fisicos en los momentos mas
             criticos de una emergencia.
           </span>
@@ -690,33 +1383,34 @@
     </section>
 
     <section class="section shell" data-od-id="audience">
-      <h2 data-od-id="audience.title">A quien va dirigido</h2>
-      <p data-od-id="audience.intro">VitalFi esta pensado como herramienta aliada de quienes estan en la primera linea de respuesta:</p>
+      <h2 data-od-id="audience.title" data-i18n="audience.title">A quien va dirigido</h2>
+      <p data-od-id="audience.intro" data-i18n="audience.intro">VitalFi esta pensado como herramienta aliada de quienes estan en la primera linea
+        de respuesta:</p>
       <ul class="audience-list" data-od-id="audience.list">
         <li data-od-id="audience.usar">
-          <strong>Brigadas de busqueda y rescate (USAR / Proteccion Civil / Bomberos)</strong>
-          <span>
+          <strong data-i18n="audience.usar.title">Brigadas de busqueda y rescate (USAR / Proteccion Civil / Bomberos)</strong>
+          <span data-i18n="audience.usar.desc">
             Equipos en campo que necesitan acelerar la localizacion de posibles
             sobrevivientes bajo escombros con tecnologia portable.
           </span>
         </li>
         <li data-od-id="audience.ngo">
-          <strong>ONG y organismos de emergencia</strong>
-          <span>
+          <strong data-i18n="audience.ngo.title">ONG y organismos de emergencia</strong>
+          <span data-i18n="audience.ngo.desc">
             Entidades nacionales e internacionales enfocadas en la gestion de
             desastres que buscan equipar brigadas con innovacion accesible.
           </span>
         </li>
         <li data-od-id="audience.gov">
-          <strong>Gobiernos y entidades de gestion de riesgo</strong>
-          <span>
+          <strong data-i18n="audience.gov.title">Gobiernos y entidades de gestion de riesgo</strong>
+          <span data-i18n="audience.gov.desc">
             Instituciones publicas comprometidas con modernizar protocolos de
             respuesta ante terremotos y colapsos estructurales.
           </span>
         </li>
         <li data-od-id="audience.partners">
-          <strong>Aliados estrategicos e inversionistas sociales</strong>
-          <span>
+          <strong data-i18n="audience.partners.title">Aliados estrategicos e inversionistas sociales</strong>
+          <span data-i18n="audience.partners.desc">
             Organizaciones, empresas y fondos que buscan impulsar tecnologia de
             alto impacto humano y apoyar soluciones nacidas en medio de la emergencia.
           </span>
@@ -724,75 +1418,332 @@
       </ul>
     </section>
 
-    <section class="section shell" data-od-id="install">
-      <h2 data-od-id="install.title">Instala y prueba</h2>
-      <p data-od-id="install.body">
-        Version <strong>1.3.20</strong> firmada.
-        Funciona sin internet: solo Wi-Fi local del router y permiso de ubicacion
-        (Android lo exige para leer RSSI).
+    <section class="section shell" id="versions" data-od-id="install">
+      <h2 data-od-id="install.title" data-i18n="install.title">Centro de Descargas y Versiones</h2>
+      <p data-od-id="install.body" data-i18n="install.body">
+        Descarga la version oficial recomendada o accede al archivo historico de versiones anteriores de VitalFi.
       </p>
-      <div class="cta" data-od-id="install.cta">
-        <a class="btn btn-primary" href="releases/VitalFi-v1.3.20-signed.apk" download data-od-id="install.apk">
-          APK v1.3.20
-        </a>
-        <a class="btn btn-secondary" href="https://play.google.com/store/apps/details?id=com.vitalfi" target="_blank" rel="noopener noreferrer" data-od-id="install.play">
-          Abrir en Play Store
-        </a>
+
+      <!-- VERSION ACTUAL DESTACADA -->
+      <div class="featured-release">
+        <div class="release-header">
+          <div>
+            <span class="badge badge-current" data-i18n="featured.badge">✓ Versión Actual Recomendada (Obligatoria)</span>
+            <h3 style="font-size: 1.5rem; margin-top: 0.35rem; color: var(--ink);">VitalFi v1.3.35 (Build 42)</h3>
+          </div>
+          <span style="color: var(--muted); font-size: 0.88rem; font-family: monospace;" data-i18n="featured.date">Publicada: 15 Agosto 2026</span>
+        </div>
+        <p style="margin-bottom: 0.5rem; font-size: 0.98rem;" data-i18n="featured.desc">
+          Versión oficial de producción con compatibilidad de páginas de memoria de 16 KB para Google Play, optimización R8/ProGuard, archivo de desofuscación mapping.txt, actualización obligatoria integrada y soporte completo para 30+ idiomas globales con radar táctico limpio.
+        </p>
+
+        <div class="feature-pills">
+          <span class="pill" data-i18n="pill.update">🔄 Actualización Forzosa Integrada</span>
+          <span class="pill" data-i18n="pill.languages">🌍 30 Idiomas Globales</span>
+          <span class="pill" data-i18n="pill.android">📱 Android 5.0+ (99.9% cobertura)</span>
+          <span class="pill" data-i18n="pill.radar">🧭 Navegación Táctica 3D/2D</span>
+          <span class="pill" data-i18n="pill.offline">📴 100% Offline (Sin Internet)</span>
+          <span class="pill" data-i18n="pill.desugar">⚡ Desugaring Java/Kotlin</span>
+          <span class="pill" data-i18n="pill.sign">🛡️ Firma SHA-256 Oficial</span>
+        </div>
+
+        <div class="cta" style="margin-top: 1.25rem;">
+          <a class="btn btn-primary" href="releases/VitalFi-v1.3.35-signed.apk" download data-od-id="install.apk">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M12 3v12m0 0l4-4m-4 4l-4-4M5 21h14" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span data-i18n="btn.download.apk">Descargar APK v1.3.35 (1.8 MB)</span>
+          </a>
+          <a class="btn btn-secondary" href="releases/VitalFi-v1.3.35-signed.aab" download data-od-id="install.aab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path
+                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            </svg>
+            <span data-i18n="btn.download.aab">Descargar AAB v1.3.35 (3.1 MB)</span>
+          </a>
+          <a class="btn btn-secondary" href="https://play.google.com/store/apps/details?id=com.vitalfi" target="_blank"
+            rel="noopener noreferrer" data-od-id="install.play">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path
+                d="M3.6 2.9c-.4.2-.6.6-.6 1.1v16c0 .5.2.9.6 1.1l10.3-9.1L3.6 2.9zm12.1 6.8L5.2 2.1l11.4 6.5-1-.9zM5.2 21.9l10.5-6.1 1.1-.9-11.6 7zm13.2-7.5l-2.4 1.4-1.3-1.2 1.3-1.1 2.4 1.4c.6.3.6 1.1 0 1.5z" />
+            </svg>
+            <span data-i18n="hero.cta.play">Google Play Store</span>
+          </a>
+        </div>
       </div>
-      <p class="notice" data-od-id="install.notice">
-        Software experimental. No es equipo certificado de rescate ni sustituye
-        protocolos USAR oficiales. Los resultados son estimaciones: verifica siempre el sitio.
+
+      <!-- TABLA DE VERSIONES ANTERIORES -->
+      <h3
+        style="margin-top: 2.5rem; font-size: 1.25rem; color: var(--ink); display: flex; align-items: center; gap: 0.5rem;">
+        <span data-i18n="history.title">Historial de Versiones Anteriores</span>
+        <span class="badge badge-legacy" data-i18n="history.badge">Archivo</span>
+      </h3>
+      <p style="font-size: 0.92rem; color: var(--muted); margin-top: 0.25rem;" data-i18n="history.desc">
+        Si necesitas compatibilidad con pruebas históricas o dispositivos específicos, puedes descargar cualquiera de
+        las compilaciones previas:
+      </p>
+
+      <div class="releases-table-container">
+        <table class="releases-table">
+          <thead>
+            <tr>
+              <th data-i18n="th.version">Versión</th>
+              <th data-i18n="th.date">Fecha</th>
+              <th data-i18n="th.changes">Novedades y Cambios</th>
+              <th data-i18n="th.download">Formatos de Descarga</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.34</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;">15 Ago 2026</td>
+              <td>Internacionalización i18n completa en 30 idiomas y soporte Android 13+ locales_config.xml.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.34-signed.apk" download>APK (1.8 MB)</a>
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.34-signed.aab" download>AAB (3.1 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.33</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;">15 Ago 2026</td>
+              <td>100% puro Kotlin (0 dependencias .so), compatibilidad total de 16 KB de memoria para Google Play.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.33-signed.apk" download>APK (2.1 MB)</a>
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.33-signed.aab" download>AAB (3.2 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.31</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.aug15">15 Ago 2026</td>
+              <td data-i18n="history.v31.desc">Alineación de páginas de 16 KB, exclusión de AD_ID y archivo de desofuscación R8.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.31-signed.apk" download>APK (1.8 MB)</a>
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.31-signed.aab" download>AAB (3.1 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.30</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.aug15">15 Ago 2026</td>
+              <td data-i18n="history.v30.desc">Eliminación de rayas de reflejo Wi-Fi, optimización de hit detection 3D y Android 5.0+.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.30-signed.apk" download>APK (17.4 MB)</a>
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.30-signed.aab" download>AAB (23.0 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.29</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.aug15">15 Ago 2026</td>
+              <td data-i18n="history.v29.desc">Multi-idioma (30 idiomas con buscador), insets de barra de estado y padding.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.29-signed.apk" download>APK (25.6 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.28</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.aug04">04 Ago 2026</td>
+              <td data-i18n="history.v28.desc">Filtro de atenuación de escombros y estabilidad del sensor barométrico.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.28-signed.apk" download>APK (25.3 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.26</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.aug04">04 Ago 2026</td>
+              <td data-i18n="history.v26.desc">Calibración de sensor barométrico y detección de altura física en 3D.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.26-signed.apk" download>APK (25.3 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.25</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.aug04">04 Ago 2026</td>
+              <td data-i18n="history.v25.desc">Optimización en el detector de frecuencia cardíaca y respiratoria.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.25-signed.apk" download>APK (25.3 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.24</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.aug04">04 Ago 2026</td>
+              <td data-i18n="history.v24.desc">Mejoras de rendimiento en CPUs de baja potencia y ahorro de batería.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.24-signed.apk" download>APK (25.3 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.23</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.jul24">24 Jul 2026</td>
+              <td data-i18n="history.v23.desc">Inferencia on-device con TensorFlow Lite y firmas espectrales.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.23-signed.apk" download>APK (25.3 MB)</a>
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.23.aab" download>AAB (26.3 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.22</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.jul24">24 Jul 2026</td>
+              <td data-i18n="history.v22.desc">Compilación App Bundle de producción para Google Play Console.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.22.aab" download>AAB (22.6 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.21</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.jul23">23 Jul 2026</td>
+              <td data-i18n="history.v21.desc">Integración de brújula con vector de rotación y filtrado polar.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.21.aab" download>AAB (22.6 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.3.20</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;" data-i18n="history.date.jul23">23 Jul 2026</td>
+              <td data-i18n="history.v20.desc">Primera versión con motor de radar 3D y telemetría de campo.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.3.20-signed.apk" download>APK (25.3 MB)</a>
+                  <a class="btn-sm btn-sm-aab" href="releases/VitalFi-v1.3.20.aab" download>AAB (22.6 MB)</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--ink);">v1.0.0</strong></td>
+              <td style="color: var(--muted); white-space: nowrap;">13 Jul 2026</td>
+              <td>Versión inicial experimental probada en campo en La Guaira, Venezuela.</td>
+              <td>
+                <div class="action-group">
+                  <a class="btn-sm" href="releases/VitalFi-v1.0.0-signed.apk" download>APK (10.4 MB)</a>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="notice" data-od-id="install.notice" data-i18n="notice">
+        Software experimental de respuesta rápida. No es equipo certificado de rescate ni sustituye protocolos USAR
+        oficiales. Los resultados son estimaciones: verifica siempre el sitio antes de intervenir estructuras
+        inestables.
       </p>
     </section>
 
     <section class="section shell" data-od-id="manual">
-      <h2 data-od-id="manual.title">Manual de uso</h2>
-      <p data-od-id="manual.body">Guia de instalacion y operacion de la app Android.</p>
-      <div class="links">
-        <a href="docs/Manual_Uso_VitalFi_Android.pdf" data-od-id="manual.link">Descargar manual (PDF)</a>
+      <h2 data-od-id="manual.title" data-i18n="manual.title">Manual de uso</h2>
+      <p data-od-id="manual.body" data-i18n="manual.body">Guia de instalacion y operacion de la app Android.</p>
+      <div class="links" style="display: flex; flex-wrap: wrap; gap: 0.85rem; margin-top: 0.75rem;">
+        <a class="btn-sm" href="manual.html" style="padding: 0.5rem 1rem; font-size: 0.92rem;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span data-i18n="manual.web.link">Ver Manual Interactivo en Línea</span>
+        </a>
+        <a class="btn-sm btn-sm-aab" href="docs/Manual_Uso_VitalFi_Android.pdf" data-od-id="manual.link" style="padding: 0.5rem 1rem; font-size: 0.92rem;" download>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17l.62 2.48A2 2 0 0 0 4.56 21h14.88a2 2 0 0 0 1.94-1.52L22 17"/></svg>
+          <span data-i18n="manual.link">Descargar manual (PDF)</span>
+        </a>
       </div>
     </section>
 
     <section class="section shell" data-od-id="team">
-      <h2 data-od-id="team.title">Equipo</h2>
-      <p data-od-id="team.intro">Equipo detras de VitalFi.</p>
+      <h2 data-od-id="team.title" data-i18n="team.title">Equipo de desarrollo y operaciones</h2>
+      <p data-od-id="team.intro" data-i18n="team.intro">Especialistas en ingeniería, telecomunicaciones y respuesta en el terreno detrás de
+        VitalFi.</p>
       <figure class="team-photo" data-od-id="team.photo">
-        <img
-          src="assets/equipo_vitalfi.jpg"
-          width="768"
-          height="696"
-          alt="James Marin, Carlos Mundaray y Maryolie Nelson con equipamiento VitalFi"
-          loading="lazy"
-          decoding="async"
-        />
-        <figcaption class="team-caption" data-od-id="team.caption">
+        <img src="assets/equipo_vitalfi.jpg" width="768" height="696"
+          alt="James Marin, Carlos Mundaray y Maryolie Nelson con equipamiento VitalFi" loading="lazy"
+          decoding="async" />
+        <figcaption class="team-caption" data-od-id="team.caption" data-i18n="team.caption">
           De izquierda a derecha: James Marin, Carlos Mundaray y Maryolie Nelson.
         </figcaption>
       </figure>
       <div class="team" data-od-id="team.members">
-        <article class="member" data-od-id="team.james">
-          <div class="avatar alt" aria-hidden="true">JM</div>
-          <div>
-            <h3>James Marin</h3>
-            <p>Ingeniero en Telecomunicaciones</p>
-            <p class="handle"><a href="https://www.tiktok.com/@James.secus" target="_blank" rel="noopener noreferrer">@James.secus</a></p>
-          </div>
-        </article>
         <article class="member" data-od-id="team.carlos">
           <div class="avatar" aria-hidden="true">CM</div>
           <div>
             <h3>Carlos Mundaray</h3>
-            <p>Ingeniero en Informatica</p>
-            <p class="handle"><a href="https://www.tiktok.com/@themunda24" target="_blank" rel="noopener noreferrer">@themunda24</a></p>
+            <p data-i18n="team.carlos.role">Ingeniero en Informatica · Creador</p>
+            <p class="handle">
+              <a href="https://www.tiktok.com/@themunda24" target="_blank" rel="noopener noreferrer">@themunda24</a>
+            </p>
           </div>
         </article>
+        <article class="member" data-od-id="team.james">
+          <div class="avatar alt" aria-hidden="true">JM</div>
+          <div>
+            <h3>James Marin</h3>
+            <p data-i18n="team.james.role">Ingeniero en Telecomunicaciones</p>
+            <p class="handle"><a href="https://www.tiktok.com/@James.secus" target="_blank"
+                rel="noopener noreferrer">@James.secus</a></p>
+          </div>
+        </article>
+
         <article class="member" data-od-id="team.maryolie">
           <div class="avatar alt" aria-hidden="true">MN</div>
           <div>
             <h3>Maryolie Nelson</h3>
-            <p>Ejecucion, Aplicacion y Logistica</p>
-            <p class="handle"><a href="https://www.tiktok.com/@Espaciosdemitierra" target="_blank" rel="noopener noreferrer">@Espaciosdemitierra</a></p>
+            <p data-i18n="team.maryolie.role">Ejecucion, Aplicacion y Logistica</p>
+            <p class="handle"><a href="https://www.tiktok.com/@Espaciosdemitierra" target="_blank"
+                rel="noopener noreferrer">@Espaciosdemitierra</a></p>
           </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- SECCION CONTACTANOS -->
+    <section class="section shell" id="contact" data-od-id="contact">
+      <h2 data-od-id="contact.title" data-i18n="contact.title">Contáctanos</h2>
+      <p data-od-id="contact.intro" data-i18n="contact.intro">
+        Ponte en contacto directo con nosotros para alianzas estratégicas, pruebas de campo con brigadas de rescate
+        (USAR) o consultas técnicas oficiales.
+      </p>
+
+      <div class="contact-grid" data-od-id="contact.grid">
+        <article class="contact-card" data-od-id="contact.email">
+          <svg class="contact-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect width="20" height="16" x="2" y="4" rx="2" />
+            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+          </svg>
+          <h3 data-i18n="contact.email.title">Correo Electrónico</h3>
+          <p data-i18n="contact.email.desc">Para consultas institucionales, colaboraciones, convenios y soporte:</p>
+          <a class="contact-link" href="mailto:softwaresolvit@gmail.com">
+            softwaresolvit@gmail.com
+          </a>
+        </article>
+
+        <article class="contact-card" data-od-id="contact.whatsapp">
+          <svg class="contact-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path
+              d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
+          <h3 data-i18n="contact.whatsapp.title">WhatsApp Directo</h3>
+          <p data-i18n="contact.whatsapp.desc">Canal de comunicación ágil para emergencias y coordinación rápida:</p>
+          <a class="contact-link" href="https://wa.me/584243513857" target="_blank" rel="noopener noreferrer">
+            +58 424-3513857
+          </a>
         </article>
       </div>
     </section>
@@ -800,27 +1751,49 @@
 
   <aside class="footer-cta" data-od-id="footer-cta">
     <div class="shell">
-      <h2 data-od-id="footer-cta.title">Prueba VitalFi en campo. Cada segundo cuenta.</h2>
-      <a class="btn btn-on-cyan" href="releases/VitalFi-v1.3.20-signed.apk" download data-od-id="footer-cta.apk">
-        Descargar APK v1.3.20
+      <h2 data-od-id="footer-cta.title" data-i18n="footer.cta.title">Prueba VitalFi en campo. Cada segundo cuenta.</h2>
+      <a class="btn btn-on-cyan" href="releases/VitalFi-v1.3.35-signed.apk" download data-od-id="footer-cta.apk">
+        <span data-i18n="footer.cta.btn">Descargar APK v1.3.35</span>
       </a>
     </div>
   </aside>
 
   <footer class="site-footer shell" data-od-id="footer">
-    <span data-od-id="footer.copy">© 2026 Carlos Mundaray — Solvitco · GPL v3</span>
+    <span data-od-id="footer.copy" data-i18n="footer.copy">© 2026 Carlos Mundaray — Solvitco · GPL v3</span>
     <span data-od-id="footer.links">
-      <a href="docs/TERMINOS_Y_CONDICIONES.md">Terminos</a>
+      <a href="mailto:softwaresolvit@gmail.com">softwaresolvit@gmail.com</a>
+      ·
+      <a href="https://wa.me/584243513857" target="_blank" rel="noopener noreferrer">WhatsApp: +58 424-3513857</a>
+      ·
+      <a href="docs/TERMINOS_Y_CONDICIONES.md" data-i18n="footer.terms">Terminos</a>
       ·
       <a href="https://orcid.org/0009-0002-6152-0256" target="_blank" rel="noopener noreferrer">ORCID</a>
     </span>
   </footer>
 
+  <!-- MODAL SELECTOR DE IDIOMA CON BUSCADOR EN VIVO -->
+  <div id="lang-modal" class="lang-modal-overlay" aria-hidden="true" role="dialog">
+    <div class="lang-modal-dialog">
+      <div class="lang-modal-header">
+        <h3 data-i18n="modal.lang.title">Seleccionar idioma</h3>
+        <button id="lang-modal-close" class="lang-modal-close-btn" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="lang-search-box">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="lang-search" placeholder="Buscar idioma..." autocomplete="off" />
+      </div>
+      <div id="lang-list" class="lang-grid">
+        <!-- Renderizado dinámicamente por i18n.js -->
+      </div>
+    </div>
+  </div>
+
+  <script src="i18n.js?v=1.3.35"></script>
   <script>
     const PLAY_URL = "https://play.google.com/store/apps/details?id=com.vitalfi";
-    const APK_URL = "releases/VitalFi-v1.3.20-signed.apk";
+    const APK_URL = "releases/VitalFi-v1.3.35-signed.apk";
 
-    document.querySelectorAll("#apk-link, a[href*='VitalFi-v1.3.']").forEach((el) => {
+    document.querySelectorAll("#apk-link").forEach((el) => {
       el.href = APK_URL;
     });
 
@@ -828,6 +1801,39 @@
       if (!PLAY_URL) el.style.display = "none";
       else el.href = PLAY_URL;
     });
+
+    // Smooth scroll for anchor navigation (safe for file:/// and http://)
+    document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+      anchor.addEventListener("click", function(e) {
+        const targetId = this.getAttribute("href");
+        if (targetId && targetId.length > 1) {
+          const target = document.querySelector(targetId);
+          if (target) {
+            e.preventDefault();
+            target.scrollIntoView({ behavior: "smooth" });
+          }
+        }
+      });
+    });
   </script>
+
+  <script>
+    function scrollToSection(id) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    // Clean hash in file:/// protocol to prevent Chromium unique security origin warnings
+    if (window.location.protocol === 'file:' && window.location.hash) {
+      const hashId = window.location.hash.substring(1);
+      try {
+        history.replaceState(null, '', window.location.pathname);
+      } catch (_) {}
+      setTimeout(() => scrollToSection(hashId), 150);
+    }
+  </script>
+
 </body>
 </html>

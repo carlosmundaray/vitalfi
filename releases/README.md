@@ -14,15 +14,16 @@ APK firmadas listas para instalar en Android 8.0+ (API 26).
 
 | Versión | Archivo | Notas |
 |---------|---------|-------|
-| **1.3.20** (actual) | [VitalFi-v1.3.20-signed.apk](VitalFi-v1.3.20-signed.apk) | Radar 2D/3D, detección RSSI offline, guía de búsqueda |
+| **1.3.29** (actual) | [VitalFi-v1.3.29-signed.apk](VitalFi-v1.3.29-signed.apk) | Soporte multilingüe global (14 idiomas), Radar 2D/3D, detección RSSI offline |
+| 1.3.20 | [VitalFi-v1.3.20-signed.apk](VitalFi-v1.3.20-signed.apk) | Radar 2D/3D, detección RSSI offline, guía de búsqueda |
 | 1.0.0 | [VitalFi-v1.0.0-signed.apk](VitalFi-v1.0.0-signed.apk) | Primera versión publicada |
 
-> Las builds intermedias (1.3.1–1.3.19) se retiraron del repositorio para reducir tamaño.
+> Las builds intermedias se retiran del repositorio para optimizar tamaño.
 > Usa siempre la **última** versión firmada salvo que necesites reproducir un ensayo antiguo.
 
 ## Enlace directo (última versión)
 
-https://github.com/carlosmundaray/vitalfi/raw/main/releases/VitalFi-v1.3.20-signed.apk
+https://github.com/carlosmundaray/vitalfi/raw/main/releases/VitalFi-v1.3.29-signed.apk
 
 ---
 

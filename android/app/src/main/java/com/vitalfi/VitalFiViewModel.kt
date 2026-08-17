@@ -103,6 +103,8 @@ data class VitalFiUiState(
     val rubbleZoneCenterDeg: Double? = null,
     val defaultWifiMode: WifiCollectMode = WifiCollectMode.PASSIVE_SCAN,
     val colorblindMode: Boolean = true,
+    val appLanguage: String = "",
+    val forceUpdateInfo: com.vitalfi.update.UpdateInfo? = null,
     /** Sectores del entorno RF medidos con datos reales (RSSI + brújula). */
     val environmentCells: List<EnvironmentCell> = emptyList(),
 )
@@ -158,6 +160,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 WifiCollectMode.PASSIVE_SCAN
             },
             colorblindMode = settingsStore.colorblindMode,
+            appLanguage = settingsStore.appLanguage,
         ),
     )
     val uiState: StateFlow<VitalFiUiState> = _uiState.asStateFlow()
@@ -196,6 +199,17 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                     // Evita que un fallo puntual (Wi-Fi/ML) cierre la app.
                 }
                 delay(500)
+            }
+        }
+
+        viewModelScope.launch {
+            try {
+                val update = com.vitalfi.update.UpdateChecker.checkUpdate(com.vitalfi.BuildConfig.VERSION_CODE)
+                if (update != null) {
+                    _uiState.value = _uiState.value.copy(forceUpdateInfo = update)
+                }
+            } catch (_: Throwable) {
+                // Ignore network errors
             }
         }
 
@@ -274,6 +288,11 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     fun setColorblindMode(enabled: Boolean) {
         settingsStore.colorblindMode = enabled
         _uiState.value = _uiState.value.copy(colorblindMode = enabled)
+    }
+
+    fun setAppLanguage(language: String) {
+        settingsStore.appLanguage = language
+        _uiState.value = _uiState.value.copy(appLanguage = language)
     }
 
     fun setDefaultWifiMode(mode: WifiCollectMode) {
@@ -709,13 +728,14 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         val approachTarget = approachLock.approaching(bearing, distance, now)
         val approaching = approachTarget != null
         val headingAligned = approachTarget != null &&
-            approachLock.headingAligned(bearing, approachTarget.id, maxDeg = 40.0)
+            approachLock.headingAligned(bearing, approachTarget.id, maxDeg = 55.0)
 
-        // Solo actualizar ancla/radar con distancia de persona detectada
-        if (approaching && approachTarget != null && personDetected) {
+        // Actualizar ancla/radar de aproximación continuamente al caminar hacia la persona
+        if (approaching && approachTarget != null) {
+            val liveDist = if (personDetected && distance > 0.0) distance else approachTarget.distance
             distance = approachLock.updateWhileApproaching(
                 id = approachTarget.id,
-                liveDistanceM = distance,
+                liveDistanceM = liveDist,
                 reflectionVar = personSignalStrength,
                 bearingDeg = bearing,
                 nowMs = now,

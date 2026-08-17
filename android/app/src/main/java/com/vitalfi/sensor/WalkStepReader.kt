@@ -31,12 +31,10 @@ class WalkStepReader(context: Context) : SensorEventListener {
 
     fun start() {
         stepDetector?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
         }
-        if (stepDetector == null) {
-            accel?.let {
-                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-            }
+        accel?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
     }
 
@@ -72,8 +70,8 @@ class WalkStepReader(context: Context) : SensorEventListener {
                 val mag = sqrt(x * x + y * y + z * z)
                 val delta = kotlin.math.abs(mag - lastAccelMag)
                 lastAccelMag = mag
-                // Umbral simple de zancada si no hay step detector
-                if (delta > 1.35) {
+                // Si el step detector no disparó en los últimos 800ms, usar acelerómetro
+                if (now - lastStepAtMs > 400L && delta > 1.15) {
                     accelBurst++
                     if (accelBurst >= 2) {
                         stepCount += 1
@@ -81,10 +79,10 @@ class WalkStepReader(context: Context) : SensorEventListener {
                         lastStepAtMs = now
                         walking = true
                     }
-                } else {
+                } else if (delta < 0.4) {
                     accelBurst = 0
                 }
-                walking = now - lastStepAtMs < 1_200L
+                walking = now - lastStepAtMs < 1_400L
             }
         }
     }

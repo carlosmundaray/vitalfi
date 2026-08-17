@@ -93,6 +93,13 @@ class SettingsStore(context: Context) {
             prefs.edit().putBoolean(KEY_COLORBLIND, value).apply()
         }
 
+    /** Idioma seleccionado: "" para sistema, "es", "en", "zh", etc. */
+    var appLanguage: String
+        get() = prefs.getString(KEY_APP_LANGUAGE, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_APP_LANGUAGE, value).apply()
+        }
+
     fun loadRadarLayers(): RadarLayers = RadarLayers(
         grid = prefs.getBoolean(KEY_LAYER_GRID, true),
         compass = prefs.getBoolean(KEY_LAYER_COMPASS, true),
@@ -133,6 +140,7 @@ class SettingsStore(context: Context) {
         private const val KEY_MANUAL_ELEVATION = "manual_elevation_m"
         private const val KEY_DEFAULT_WIFI_MODE = "default_wifi_mode"
         private const val KEY_COLORBLIND = "colorblind_mode"
+        private const val KEY_APP_LANGUAGE = "app_language"
         private const val KEY_LAYER_GRID = "radar_layer_grid"
         private const val KEY_LAYER_COMPASS = "radar_layer_compass"
         private const val KEY_LAYER_WIFI = "radar_layer_wifi"
