@@ -238,10 +238,10 @@
     <string name="settings_sensing_mode_title">Modo de Detección</string>
     <string name="settings_sensing_mode_rssi">📱 RSSI Nativo (2 Estados)</string>
     <string name="settings_sensing_mode_rssi_desc">Teléfono autónomo. Detecta área despejada o movimiento/actividad.</string>
-    <string name="settings_sensing_mode_csi">📡 CSI OpenWrt (3 Estados)</string>
-    <string name="settings_sensing_mode_csi_desc">Stream de router OpenWrt por UDP. Detecta respiración de atrapados y auxilio.</string>
-    <string name="settings_csi_udp_port">Puerto UDP de CSI</string>
-    <string name="settings_csi_udp_port_hint">Puerto UDP para recibir paquetes CSI de OpenWrt (default 5500)</string>
+    <string name="settings_sensing_mode_csi">📡 WiFi-CSI (3 Estados)</string>
+    <string name="settings_sensing_mode_csi_desc">Stream de tramas WiFi-CSI por UDP. Detecta respiración de atrapados y auxilio.</string>
+    <string name="settings_csi_udp_port">Puerto UDP WiFi-CSI</string>
+    <string name="settings_csi_udp_port_hint">Puerto UDP para recibir paquetes WiFi-CSI (default 5500)</string>
     <string name="csi_badge_connected">CSI: %1$.0f paq/s</string>
     <string name="csi_badge_waiting">CSI: Escuchando :%1$d</string>
     <string name="vital_state_clear">Despejado (Sin vida)</string>

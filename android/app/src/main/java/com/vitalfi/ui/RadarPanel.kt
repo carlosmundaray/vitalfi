@@ -422,7 +422,7 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                 )
                 Text(
                     if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
-                        if (state.csiConnected) "🛰️ CSI OPENWRT (${state.csiPacketRateHz.toInt()} Hz)" else "⚠️ CSI DESCONECTADO"
+                        if (state.csiConnected) "🛰️ WiFi-CSI (${state.csiPacketRateHz.toInt()} Hz)" else "⚠️ WiFi-CSI DESCONECTADO"
                     } else {
                         stringResource(R.string.radar_real_data)
                     },
@@ -609,7 +609,7 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                     }
                 } else {
                     Text(
-                        "⚠️ Esperando tramas UDP en puerto ${state.openWrtUdpPort}... (Ejecuta /usr/bin/vitalfi-stream en tu router)",
+                        "⚠️ Esperando tramas WiFi-CSI en puerto UDP :${state.openWrtUdpPort}...",
                         color = Color(0xFFFFCC00),
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,

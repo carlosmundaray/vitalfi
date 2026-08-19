@@ -1782,7 +1782,7 @@ private fun VictimDetailDialog(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("📡 PERFIL Y DIMENSIONES CSI (OFDM REAL)", color = Color(0xFF00FFCC), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text("📡 PERFIL Y DIMENSIONES WiFi-CSI (OFDM REAL)", color = Color(0xFF00FFCC), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             Text("📏 Envergadura: ${victim.bodyDimension.ifBlank { "1.74 m × 0.54 m (Adulto)" }}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Text("🧘 Postura: ${victim.bodyPosture.ifBlank { "Tendido (Horizontal)" }}", color = Color(0xFFA0EAA0), fontSize = 11.sp)
                             if (victim.rcsAreaM2 > 0.0) {

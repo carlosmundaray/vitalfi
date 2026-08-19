@@ -238,10 +238,10 @@
     <string name="settings_sensing_mode_title">Detection Mode</string>
     <string name="settings_sensing_mode_rssi">📱 Native RSSI (2 States)</string>
     <string name="settings_sensing_mode_rssi_desc">Phone standalone. Detects clear area or macro movement/activity.</string>
-    <string name="settings_sensing_mode_csi">📡 OpenWrt CSI (3 States)</string>
-    <string name="settings_sensing_mode_csi_desc">OpenWrt router UDP stream. Detects breathing of immobile victims &amp; distress.</string>
-    <string name="settings_csi_udp_port">CSI UDP Port</string>
-    <string name="settings_csi_udp_port_hint">UDP port for OpenWrt CSI packets (default 5500)</string>
+    <string name="settings_sensing_mode_csi">📡 WiFi-CSI (3 States)</string>
+    <string name="settings_sensing_mode_csi_desc">Stream of WiFi-CSI frames over UDP. Detects breathing of immobile victims &amp; distress.</string>
+    <string name="settings_csi_udp_port">WiFi-CSI UDP Port</string>
+    <string name="settings_csi_udp_port_hint">UDP port for WiFi-CSI packets (default 5500)</string>
     <string name="csi_badge_connected">CSI: %1$.0f pkt/s</string>
     <string name="csi_badge_waiting">CSI: Listening :%1$d</string>
     <string name="vital_state_clear">Clear (No life detected)</string>

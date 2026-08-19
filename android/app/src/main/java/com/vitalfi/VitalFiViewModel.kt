@@ -1068,15 +1068,15 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         val finalStatus = when {
-            isCsiMode && !csiConnected -> "CSI OpenWrt: Esperando tramas en puerto ${_uiState.value.openWrtUdpPort}..."
+            isCsiMode && !csiConnected -> "WiFi-CSI: Esperando tramas en puerto :${_uiState.value.openWrtUdpPort}..."
             isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS -> "¡ALERTA DE AUXILIO! Movimiento activo en escombros"
             isCsiMode && csiState == VictimVitalState.IMMOBILE_BREATHING -> "Víctima inmóvil respirando (~${csiBpm.toInt()} rpm)"
-            isCsiMode && csiState == VictimVitalState.CLEAR -> "CSI OpenWrt: Área despejada"
+            isCsiMode && csiState == VictimVitalState.CLEAR -> "WiFi-CSI: Área despejada"
             else -> statusWithRubble
         }
 
         val finalHint = when {
-            isCsiMode && !csiConnected -> "Conecta tu móvil al Wi-Fi 'VitalFi-AP' o ejecuta /usr/bin/vitalfi-stream en el router."
+            isCsiMode && !csiConnected -> "Conecta tu móvil a la red WiFi-CSI o activa el stream de telemetría."
             isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS -> "Posible llamada de auxilio o persona golpeando escombros."
             isCsiMode && csiState == VictimVitalState.IMMOBILE_BREATHING -> "Signos vitales continuos confirmados por fase CSI."
             isCsiMode && csiState == VictimVitalState.CLEAR -> "Monitoreando 56 subportadoras OFDM pasivamente."
