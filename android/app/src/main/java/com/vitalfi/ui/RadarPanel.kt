@@ -376,10 +376,12 @@ fun RadarPanel(
 @Composable
 private fun CompactRadarStatus(state: VitalFiUiState) {
     val context = LocalContext.current
-    val target = navigationTarget(state.victims, state.selectedVictim?.id)
+    val isCsiDisconnected = state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT && !state.csiConnected
+    val target = if (isCsiDisconnected) null else navigationTarget(state.victims, state.selectedVictim?.id)
     val bearing = state.bearingDeg.roundToInt()
     val cardinal = bearingToCardinal(state.bearingDeg)
     val steer = when {
+        isCsiDisconnected -> "🛰️ Esperando flujo de radiofrecuencia CSI desde el router..."
         target == null -> stringResource(R.string.radar_search_wifi_prompt)
         target.distance < 0.6 -> stringResource(R.string.radar_signal_very_close)
         else -> {
