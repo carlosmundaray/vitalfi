@@ -330,6 +330,10 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSensingEngineMode(mode: SensingEngineMode) {
         settingsStore.sensingEngineMode = mode
+        victimTracker.reset()
+        approachLock.reset()
+        personIdentities.reset()
+        positionTrail.clear()
         if (mode == SensingEngineMode.CSI_OPENWRT) {
             if (running) {
                 csiCollector.start(settingsStore.openWrtUdpPort)
@@ -339,6 +343,13 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         }
         _uiState.value = _uiState.value.copy(
             sensingEngineMode = mode,
+            victims = emptyList(),
+            selectedVictim = null,
+            position = null,
+            heatmap = emptyList(),
+            isBreathing = false,
+            isActivity = false,
+            confidence = 0.0,
             toastMessage = if (mode == SensingEngineMode.CSI_OPENWRT) {
                 "Modo CSI OpenWrt activado (Puerto UDP ${settingsStore.openWrtUdpPort})"
             } else {
@@ -848,8 +859,15 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value.scanningElevationM
         }
 
-        // Solo colocar/mover el punto si hay persona (vida o movimiento) con su distancia
-        if (shouldUpdateTracker && personDetected) {
+        val isCsiMode = _uiState.value.sensingEngineMode == SensingEngineMode.CSI_OPENWRT
+        val csiConnected = isCsiMode && csiCollector.isConnected.value
+        val csiPacketRate = if (isCsiMode) csiCollector.packetRateHz.value else 0.0
+        val csiBpm = if (isCsiMode) csiCollector.breathingBpm.value else 0.0
+        val csiState = if (isCsiMode) csiCollector.vitalState.value else VictimVitalState.CLEAR
+        val csiFrame = if (isCsiMode) csiCollector.latestFrame.value else null
+
+        // 1. En modo RSSI: actualizar tracker con datos nativos del smartphone
+        if (!isCsiMode && shouldUpdateTracker && personDetected) {
             val trackBreathing = isBreathing || (approaching && approachTarget?.wasBreathing == true)
             victimTracker.update(
                 bearingDeg = bearing,
@@ -865,8 +883,30 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
-        val allVictims = victimTracker.locateVictims(minScore = if (trappedOnly) 0.035 else 0.025, nowMs = now)
-            .map { applyIdentity(it) }
+        // 2. En modo CSI: actualizar tracker EXCLUSIVAMENTE con tramas OFDM reales recibidas del router
+        if (isCsiMode && csiConnected && csiFrame != null && (csiState == VictimVitalState.IMMOBILE_BREATHING || csiState == VictimVitalState.ACTIVE_DISTRESS)) {
+            val csiTargetBearing = (bearing + csiFrame.estimatedAoADeg + 360.0) % 360.0
+            victimTracker.update(
+                bearingDeg = csiTargetBearing,
+                distanceM = csiFrame.estimatedDistanceM,
+                strength = if (csiState == VictimVitalState.ACTIVE_DISTRESS) 0.95 else 0.88,
+                detection = detection.copy(
+                    isBreathing = csiState == VictimVitalState.IMMOBILE_BREATHING,
+                    isActivity = csiState == VictimVitalState.ACTIVE_DISTRESS,
+                    respRate = csiBpm,
+                    confidence = csiFrame.confidence,
+                ),
+                rubbleConf = max(rubbleConf, 0.75),
+                nowMs = now,
+            )
+        }
+
+        val allVictims = if (isCsiMode && !csiConnected) {
+            emptyList()
+        } else {
+            victimTracker.locateVictims(minScore = if (trappedOnly) 0.035 else 0.025, nowMs = now)
+                .map { applyIdentity(it) }
+        }
         val victims = if (trappedOnly) {
             filterTrappedVictims(allVictims, now)
         } else {
@@ -876,53 +916,60 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             approachLock.remember(it, now, reflectionVar = detection.reflectionVariance)
         }
         // Radar de ubicación: al acercarte, el punto de la persona se mueve hacia “Yo”
-        // con la distancia anclada (datos reales de reflexión), no se queda fija lejos.
-        val mappedVictims = victims.map { victim ->
-            val lock = approachLock.get(victim.id) ?: return@map victim
-            val held = approachLock.isHeld(victim.id, now)
-            if (!held) return@map victim
-            val d = if (approaching && approachTarget?.id == victim.id) {
-                distance
-            } else {
-                minOf(victim.distance, lock.distance)
-            }.coerceIn(0.15, 8.0)
-            val b = if (approaching && approachTarget?.id == victim.id) {
-                lock.bearing
-            } else {
-                victim.bearing
+        val mappedVictims = if (isCsiMode && !csiConnected) {
+            emptyList()
+        } else {
+            victims.map { victim ->
+                val lock = approachLock.get(victim.id) ?: return@map victim
+                val held = approachLock.isHeld(victim.id, now)
+                if (!held) return@map victim
+                val d = if (approaching && approachTarget?.id == victim.id) {
+                    distance
+                } else {
+                    minOf(victim.distance, lock.distance)
+                }.coerceIn(0.15, 8.0)
+                val b = if (approaching && approachTarget?.id == victim.id) {
+                    lock.bearing
+                } else {
+                    victim.bearing
+                }
+                val (x, y) = polarToXY(d, b)
+                val proximityLabel = when {
+                    d < VitalSignalDetector.PUNTO_CERO_M -> "MUY CERCA"
+                    d < 1.0 -> "MUY CERCA"
+                    d < 2.0 -> "CERCA"
+                    d < 3.5 -> "MEDIA"
+                    else -> victim.proximity
+                }
+                victim.copy(
+                    x = x,
+                    y = y,
+                    bearing = b,
+                    distance = d,
+                    proximity = proximityLabel,
+                    depth = victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2)),
+                )
             }
-            val (x, y) = polarToXY(d, b)
-            val proximityLabel = when {
-                d < VitalSignalDetector.PUNTO_CERO_M -> "MUY CERCA"
-                d < 1.0 -> "MUY CERCA"
-                d < 2.0 -> "CERCA"
-                d < 3.5 -> "MEDIA"
-                else -> victim.proximity
-            }
-            victim.copy(
-                x = x,
-                y = y,
-                bearing = b,
-                distance = d,
-                proximity = proximityLabel,
-                depth = victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2)),
-            )
         }
         maybePlayTrappedAlert(mappedVictims)
         val primary = mappedVictims.firstOrNull()
 
         val best = victimTracker.bestEstimate(minScore = 0.03)
-        val position = primary?.let {
-            PositionEstimate(it.x, it.y, it.bearing, it.distance, it.depth)
-        } ?: best?.let { (estBearing, estDist, _) ->
-            buildPosition(estBearing, estDist, rubbleConf)
-        } ?: run {
-            if ((isBreathing || isActivity || rubbleConf > 0.12) && hasSignal) {
-                val fallback = victimTracker.strongestBearing()
-                val (estBearing, estDist) = fallback ?: (bearing to distance)
+        val position = if (isCsiMode && !csiConnected) {
+            null
+        } else {
+            primary?.let {
+                PositionEstimate(it.x, it.y, it.bearing, it.distance, it.depth)
+            } ?: best?.let { (estBearing, estDist, _) ->
                 buildPosition(estBearing, estDist, rubbleConf)
-            } else {
-                null
+            } ?: run {
+                if ((isBreathing || isActivity || rubbleConf > 0.12) && hasSignal && !isCsiMode) {
+                    val fallback = victimTracker.strongestBearing()
+                    val (estBearing, estDist) = fallback ?: (bearing to distance)
+                    buildPosition(estBearing, estDist, rubbleConf)
+                } else {
+                    null
+                }
             }
         }
 
@@ -967,45 +1014,21 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 "${detection.hint} Funciona sin internet."
             else -> detection.hint
         }
-        val isCsiMode = _uiState.value.sensingEngineMode == SensingEngineMode.CSI_OPENWRT
-        val csiConnected = isCsiMode && csiCollector.isConnected.value
-        val csiPacketRate = if (isCsiMode) csiCollector.packetRateHz.value else 0.0
-        val csiBpm = if (isCsiMode) csiCollector.breathingBpm.value else 0.0
-        val csiState = if (isCsiMode) csiCollector.vitalState.value else VictimVitalState.CLEAR
-        val csiFrame = if (isCsiMode) csiCollector.latestFrame.value else null
 
-        // Reforzar tracker de víctimas con precisión CSI OFDM si hay detección activa
-        if (csiConnected && csiFrame != null && (csiState == VictimVitalState.IMMOBILE_BREATHING || csiState == VictimVitalState.ACTIVE_DISTRESS)) {
-            val csiTargetBearing = (bearing + csiFrame.estimatedAoADeg + 360.0) % 360.0
-            victimTracker.update(
-                bearingDeg = csiTargetBearing,
-                distanceM = csiFrame.estimatedDistanceM,
-                strength = if (csiState == VictimVitalState.ACTIVE_DISTRESS) 0.95 else 0.88,
-                detection = detection.copy(
-                    isBreathing = csiState == VictimVitalState.IMMOBILE_BREATHING,
-                    isActivity = csiState == VictimVitalState.ACTIVE_DISTRESS,
-                    respRate = csiBpm,
-                    confidence = csiFrame.confidence,
-                ),
-                rubbleConf = max(rubbleConf, 0.75),
-                nowMs = now,
-            )
-        }
-
-        val finalBreathing = if (csiConnected && csiState == VictimVitalState.IMMOBILE_BREATHING) {
-            true
+        val finalBreathing = if (isCsiMode) {
+            csiConnected && csiState == VictimVitalState.IMMOBILE_BREATHING
         } else {
             primary?.isBreathing ?: isBreathing
         }
 
-        val finalActivity = if (csiConnected && csiState == VictimVitalState.ACTIVE_DISTRESS) {
-            true
+        val finalActivity = if (isCsiMode) {
+            csiConnected && csiState == VictimVitalState.ACTIVE_DISTRESS
         } else {
             primary?.isActivity ?: isActivity
         }
 
-        val finalRespRate = if (csiConnected && csiBpm > 0) {
-            csiBpm
+        val finalRespRate = if (isCsiMode) {
+            if (csiConnected && csiBpm > 0) csiBpm else 0.0
         } else {
             primary?.respRate?.takeIf { it > 0 } ?: detection.respRate
         }
@@ -1014,14 +1037,28 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             isCsiMode && !csiConnected -> "CSI OpenWrt: Esperando tramas en puerto ${_uiState.value.openWrtUdpPort}..."
             isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS -> "¡ALERTA DE AUXILIO! Movimiento activo en escombros"
             isCsiMode && csiState == VictimVitalState.IMMOBILE_BREATHING -> "Víctima inmóvil respirando (~${csiBpm.toInt()} rpm)"
+            isCsiMode && csiState == VictimVitalState.CLEAR -> "CSI OpenWrt: Área despejada"
             else -> statusWithRubble
         }
 
         val finalHint = when {
-            isCsiMode && !csiConnected -> "Envía el flujo UDP desde tu router OpenWrt (ej: nc -u <IP_MÓVIL> ${_uiState.value.openWrtUdpPort})."
+            isCsiMode && !csiConnected -> "Conecta tu móvil al Wi-Fi 'VitalFi-AP' o ejecuta /usr/bin/vitalfi-stream en el router."
             isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS -> "Posible llamada de auxilio o persona golpeando escombros."
             isCsiMode && csiState == VictimVitalState.IMMOBILE_BREATHING -> "Signos vitales continuos confirmados por fase CSI."
+            isCsiMode && csiState == VictimVitalState.CLEAR -> "Monitoreando 56 subportadoras OFDM pasivamente."
             else -> baseHint
+        }
+
+        val finalConfidence = if (isCsiMode) {
+            if (csiConnected && (finalBreathing || finalActivity)) (csiFrame?.confidence ?: 0.95) else 0.0
+        } else {
+            primary?.confidence?.takeIf { it > 0 } ?: max(detection.confidence, mlBreathing * 0.85)
+        }
+
+        val finalRubbleConf = if (isCsiMode) {
+            if (csiConnected && (finalBreathing || finalActivity)) (csiFrame?.estimatedDepthM?.let { 0.75 } ?: 0.50) else 0.0
+        } else {
+            primary?.rubbleConfidence?.takeIf { it > 0 } ?: rubbleConf
         }
 
         _uiState.value = prev.copy(
@@ -1037,23 +1074,22 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             isBreathing = finalBreathing,
             isActivity = finalActivity,
             respRate = finalRespRate,
-            confidence = primary?.confidence?.takeIf { it > 0 }
-                ?: if (csiConnected && (finalBreathing || finalActivity)) 0.95 else max(detection.confidence, mlBreathing * 0.85),
-            rubbleConfidence = primary?.rubbleConfidence?.takeIf { it > 0 } ?: rubbleConf,
-            heartBeating = (primary?.heartBeating ?: detection.heartBeating) || (csiConnected && finalBreathing),
-            heartRateBpm = primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm,
-            calibrating = rubbleTracker.calibrating,
-            calibRemainingSec = rubbleTracker.calibRemainingSec(now),
-            proximity = primary?.proximity ?: proximity,
+            confidence = finalConfidence,
+            rubbleConfidence = finalRubbleConf,
+            heartBeating = if (isCsiMode) (csiConnected && finalBreathing) else ((primary?.heartBeating ?: detection.heartBeating)),
+            heartRateBpm = if (isCsiMode) 0.0 else (primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm),
+            calibrating = if (isCsiMode) false else rubbleTracker.calibrating,
+            calibRemainingSec = if (isCsiMode) 0 else rubbleTracker.calibRemainingSec(now),
+            proximity = if (isCsiMode) (if (csiConnected && primary != null) primary.proximity else "—") else (primary?.proximity ?: proximity),
             bearingDeg = bearing,
             compassLabel = compassLabel,
             position = position,
             victims = mappedVictims,
             selectedVictim = prev.selectedVictim?.let { sel ->
-                mappedVictims.find { it.id == sel.id } ?: sel
+                mappedVictims.find { it.id == sel.id }
             },
-            heatmap = victimTracker.heatmapPoints(),
-            recentQuality = cachedRecentQuality,
+            heatmap = if (isCsiMode && !csiConnected) emptyList() else victimTracker.heatmapPoints(),
+            recentQuality = if (isCsiMode && !csiConnected) emptyList() else cachedRecentQuality,
             collectMode = mode,
             trail = positionTrail.toList(),
             mlReady = signatureModel.isReady,
