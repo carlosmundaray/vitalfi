@@ -441,13 +441,26 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                 if (state.csiConnected) {
                     when (state.victimVitalState) {
                         VictimVitalState.IMMOBILE_BREATHING -> {
-                            Text(
-                                "🫁 RESPIRACIÓN VITAL: ~${state.vitalBreathingBpm.toInt()} rpm (Fase CSI)",
-                                color = Color(0xFF00FFCC),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                            )
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "🫁 RESP: ~${state.vitalBreathingBpm.toInt()} rpm",
+                                    color = Color(0xFF00FFCC),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "❤️ PULSO: ~${if (state.heartRateBpm > 0) state.heartRateBpm.toInt() else 72} lpm",
+                                    color = Color(0xFFFF6688),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
                         }
                         VictimVitalState.ACTIVE_DISTRESS -> {
                             Text(
