@@ -1,10 +1,10 @@
 {
-  "latestVersion": "1.3.37",
-  "latestVersionCode": 44,
+  "latestVersion": "1.3.38",
+  "latestVersionCode": 45,
   "minRequiredVersionCode": 40,
   "forceUpdate": false,
   "releaseDate": "2026-08-19",
-  "apkUrl": "releases/VitalFi-v1.3.37-signed.apk",
-  "downloadUrl": "https://vitalfi.app/releases/VitalFi-v1.3.37-signed.apk",
-  "changelog": "Cámara por IA a través de ondas Wi-Fi (RF-Vision Edge): Reconstrucción en tiempo real del esqueleto 3D, silueta térmica, postura exacta y constantes vitales bajo escombros."
+  "apkUrl": "releases/VitalFi-v1.3.38-signed.apk",
+  "downloadUrl": "https://vitalfi.app/releases/VitalFi-v1.3.38-signed.apk",
+  "changelog": "Modo Realidad Aumentada (AR estilo Pokémon GO): Cámara trasera en vivo con proyección holográfica 3D, flechas direccionales espaciales, sonar de pulsos y esqueleto flotante."
 }
