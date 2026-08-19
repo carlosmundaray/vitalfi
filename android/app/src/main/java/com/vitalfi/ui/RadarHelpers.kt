@@ -1544,6 +1544,7 @@ fun DrawScope.drawVictims2D(
     colorblind: Boolean = false,
 ) {
     val (cx, cy) = radarCenter(viewport)
+    val hasSelection = selectedVictimId != null
 
     for (victim in victims) {
         val (rx, ry) = rotateMapCoords(victim.x, victim.y, bearingDeg)
@@ -1551,24 +1552,27 @@ fun DrawScope.drawVictims2D(
         val tx = cx + rx.toFloat() * scale
         val ty = cy - ry.toFloat() * scale
         val selected = victim.id == selectedVictimId
-        val kind = victimStatusKind(victim)
-        val tint = victimColor(victim, colorblind)
-        val center = Offset(tx, ty)
         val atPointZero = victim.distance < 0.6
+        val isDimmed = hasSelection && !selected && !atPointZero
+
+        val kind = victimStatusKind(victim)
+        val baseTint = victimColor(victim, colorblind)
+        val tint = if (isDimmed) baseTint.copy(alpha = 0.25f) else baseTint
+        val center = Offset(tx, ty)
 
         // Línea táctica guía hacia la víctima
         drawLine(
-            color = tint.copy(alpha = if (selected || atPointZero) 0.55f else 0.25f),
+            color = tint.copy(alpha = if (selected || atPointZero) 0.65f else if (isDimmed) 0.08f else 0.25f),
             start = Offset(cx, cy),
             end = center,
-            strokeWidth = if (selected || atPointZero) 2.2f else 1.2f,
+            strokeWidth = if (selected || atPointZero) 2.5f else 1.2f,
         )
 
         // Anillo de pulso vital si está respirando
-        if (victim.isBreathing) {
+        if (victim.isBreathing && !isDimmed) {
             drawCircle(
-                color = Color(0xFF00FFCC).copy(alpha = 0.25f),
-                radius = 20f * viewport.zoom.coerceAtLeast(1.0f),
+                color = Color(0xFF00FFCC).copy(alpha = 0.28f),
+                radius = 22f * viewport.zoom.coerceAtLeast(1.0f),
                 center = center,
                 style = Stroke(width = 2.0f),
             )
@@ -1580,24 +1584,34 @@ fun DrawScope.drawVictims2D(
             kind = kind,
             color = tint,
             selected = selected || atPointZero,
-            label = if (showLabels) victim.label else null,
-            tagPaint = if (showLabels) tagPaint else null,
+            label = if (showLabels && !isDimmed) victim.label else null,
+            tagPaint = if (showLabels && !isDimmed) tagPaint else null,
         )
 
         if (selected || atPointZero) {
-            drawTargetBracket(center, 44f * viewport.zoom.coerceAtLeast(1.0f), tint)
+            drawTargetBracket(center, 46f * viewport.zoom.coerceAtLeast(1.0f), tint)
         }
 
-        if (showLabels) {
-            val statusLabel = if (atPointZero) "🎯 ¡PUNTO CERO!" else "${victim.label} · ${victimStatusIconLabel(kind)}"
+        if (showLabels && !isDimmed) {
+            val isTrapped = victim.depth > 0.15 || victim.isBreathing
+            val badge = when {
+                atPointZero -> "🎯 ¡PUNTO CERO!"
+                isTrapped -> "🎯 [ATRAPADA ${victim.label}]"
+                else -> "🚶 [Superficie ${victim.label}]"
+            }
+
             drawContext.canvas.nativeCanvas.drawText(
-                statusLabel,
-                tx - 40f,
+                badge,
+                tx - 44f,
                 ty + 22f,
                 android.graphics.Paint(labelPaint).apply {
                     textSize = 14f
                     isFakeBoldText = true
-                    color = if (atPointZero) android.graphics.Color.YELLOW else android.graphics.Color.WHITE
+                    color = when {
+                        atPointZero -> android.graphics.Color.YELLOW
+                        isTrapped -> android.graphics.Color.CYAN
+                        else -> android.graphics.Color.LTGRAY
+                    }
                 },
             )
 
