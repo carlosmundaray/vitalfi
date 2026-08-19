@@ -1554,37 +1554,71 @@ fun DrawScope.drawVictims2D(
         val kind = victimStatusKind(victim)
         val tint = victimColor(victim, colorblind)
         val center = Offset(tx, ty)
+        val atPointZero = victim.distance < 0.6
 
-        // Solo punto compacto (sin figura humana)
+        // Línea táctica guía hacia la víctima
+        drawLine(
+            color = tint.copy(alpha = if (selected || atPointZero) 0.55f else 0.25f),
+            start = Offset(cx, cy),
+            end = center,
+            strokeWidth = if (selected || atPointZero) 2.2f else 1.2f,
+        )
+
+        // Anillo de pulso vital si está respirando
+        if (victim.isBreathing) {
+            drawCircle(
+                color = Color(0xFF00FFCC).copy(alpha = 0.25f),
+                radius = 20f * viewport.zoom.coerceAtLeast(1.0f),
+                center = center,
+                style = Stroke(width = 2.0f),
+            )
+        }
+
+        // Punto de radar compacto con mira militar
         drawVictimRadarDot(
             center = center,
             kind = kind,
             color = tint,
-            selected = selected,
+            selected = selected || atPointZero,
             label = if (showLabels) victim.label else null,
             tagPaint = if (showLabels) tagPaint else null,
         )
 
+        if (selected || atPointZero) {
+            drawTargetBracket(center, 44f * viewport.zoom.coerceAtLeast(1.0f), tint)
+        }
+
         if (showLabels) {
-            val statusLabel = victimStatusIconLabel(kind)
+            val statusLabel = if (atPointZero) "🎯 ¡PUNTO CERO!" else "${victim.label} · ${victimStatusIconLabel(kind)}"
             drawContext.canvas.nativeCanvas.drawText(
                 statusLabel,
-                tx - 22f,
+                tx - 40f,
                 ty + 22f,
                 android.graphics.Paint(labelPaint).apply {
-                    textSize = 13f
+                    textSize = 14f
                     isFakeBoldText = true
-                    color = android.graphics.Color.WHITE
+                    color = if (atPointZero) android.graphics.Color.YELLOW else android.graphics.Color.WHITE
                 },
             )
-            if (selected) {
-                drawContext.canvas.nativeCanvas.drawText(
-                    "${"%.1f".format(victim.distance)} m · ↓${"%.1f".format(kotlin.math.abs(victim.depth))} m",
-                    tx - 40f,
-                    ty + 38f,
-                    labelPaint,
-                )
+
+            val depthStr = "↓${"%.2f".format(kotlin.math.abs(victim.depth))}m"
+            val distStr = "${"%.2f".format(victim.distance)}m"
+            val vitalStr = when {
+                victim.isActivity -> "🚨 AUXILIO"
+                victim.isBreathing -> "🫁 ~${if (victim.respRate > 0) victim.respRate.toInt() else 16} rpm"
+                else -> ""
             }
+
+            drawContext.canvas.nativeCanvas.drawText(
+                "$distStr · $depthStr ${if (vitalStr.isNotEmpty()) "· $vitalStr" else ""}",
+                tx - 55f,
+                ty + 38f,
+                android.graphics.Paint(labelPaint).apply {
+                    textSize = 12f
+                    isFakeBoldText = true
+                    color = if (victim.isBreathing) android.graphics.Color.CYAN else android.graphics.Color.LTGRAY
+                },
+            )
         }
     }
 }
@@ -1790,30 +1824,37 @@ fun DrawScope.drawVictims3D(
         }
 
         if (showLabels) {
-            val statusLabel = if (atPointZero) "◎" else victimStatusIconLabel(kind)
+            val statusLabel = if (atPointZero) "🎯 ¡PUNTO CERO!" else "${victim.label} · ${victimStatusIconLabel(kind)}"
             drawContext.canvas.nativeCanvas.drawText(
                 statusLabel,
-                groundProj.x - 36f,
+                groundProj.x - 40f,
                 groundProj.y + 28f,
                 android.graphics.Paint(tagPaint).apply {
-                    color = android.graphics.Color.WHITE
+                    color = if (atPointZero) android.graphics.Color.YELLOW else android.graphics.Color.WHITE
                     isFakeBoldText = true
                     textSize = 13f
                 },
             )
+            val depthStr = "↓${"%.2f".format(absDepth)}m"
+            val distStr = "${"%.2f".format(victim.distance)}m"
+            val vitalStr = when {
+                victim.isActivity -> "🚨 AUXILIO"
+                victim.isBreathing -> "🫁 ~${if (victim.respRate > 0) victim.respRate.toInt() else 16} rpm"
+                else -> ""
+            }
             val info = if (atPointZero) {
-                "↓ ${"%.1f".format(absDepth)} m"
+                "🎯 $depthStr"
             } else {
-                "${"%.1f".format(victim.distance)} m · ↓ ${"%.1f".format(absDepth)} m"
+                "$distStr · $depthStr ${if (vitalStr.isNotEmpty()) "· $vitalStr" else ""}"
             }
             drawContext.canvas.nativeCanvas.drawText(
                 info,
-                groundProj.x - 48f,
+                groundProj.x - 50f,
                 groundProj.y + 44f,
                 android.graphics.Paint(labelPaint).apply {
-                    color = android.graphics.Color.WHITE
+                    color = if (victim.isBreathing) android.graphics.Color.CYAN else android.graphics.Color.LTGRAY
                     isFakeBoldText = true
-                    textSize = 13f
+                    textSize = 12f
                 },
             )
         }

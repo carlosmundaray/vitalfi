@@ -262,6 +262,24 @@ class CsiUdpCollector(
         val highFreqAtten = (leftEnergy - rightEnergy).coerceAtLeast(0.0)
         val estimatedDepth = (highFreqAtten * 0.45 + (100.0 + frame.rssi).coerceAtLeast(0.0) * 0.02).coerceIn(0.1, 4.5)
 
+        // e) Estimación de Dimensiones Corporales y Postura (CSI Body Profiling)
+        val totalAttenDb = ((-45.0 - frame.rssi) / 10.0).coerceAtLeast(0.1)
+        val dispersionCoeff = ((frame.subcarrierAmplitudes.maxOrNull() ?: 1.0f) - (frame.subcarrierAmplitudes.minOrNull() ?: 0.0f)).toDouble()
+        val estimatedRcs = (0.35 + dispersionCoeff * 0.04 + totalAttenDb * 0.08).coerceIn(0.25, 1.25)
+
+        val (category, heightEst, widthEst) = when {
+            estimatedRcs < 0.48 -> Triple("Infante / Pequeño", 1.15, 0.38)
+            estimatedRcs < 0.72 -> Triple("Joven / Mediano", 1.55, 0.46)
+            else -> Triple("Adulto", 1.74, 0.54)
+        }
+
+        val posture = when {
+            abs(aoaOffsetDeg) > 16.0 || dispersionCoeff > 10.0 -> "Tendido (Horizontal)"
+            motionEnergy > 3.0 -> "En lucha / Auxilio activo"
+            dispersionCoeff < 5.0 -> "Compacto (Fetal / En cuclillas)"
+            else -> "Sentado / Reclinado"
+        }
+
         // 5. Clasificar estado vital
         val state = when {
             motionEnergy > 3.2 -> VictimVitalState.ACTIVE_DISTRESS
@@ -283,6 +301,11 @@ class CsiUdpCollector(
             estimatedAoADeg = aoaOffsetDeg,
             estimatedDepthM = estimatedDepth,
             confidence = confidence,
+            estimatedHeightM = heightEst,
+            estimatedWidthM = widthEst,
+            bodyPosture = posture,
+            bodyCategory = category,
+            rcsAreaM2 = estimatedRcs,
             subcarrierAmplitudesList = frame.subcarrierAmplitudes.toList(),
             respirationWave = respirationHistory.takeLast(40).map { it.toFloat() },
         )
