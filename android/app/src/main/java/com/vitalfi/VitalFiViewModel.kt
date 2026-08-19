@@ -184,7 +184,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     )
     val uiState: StateFlow<VitalFiUiState> = _uiState.asStateFlow()
 
-    private val csiCollector = CsiUdpCollector(settingsStore.openWrtUdpPort)
+    private val csiCollector = CsiUdpCollector(app, settingsStore.openWrtUdpPort)
 
     private var analysisJob: Job? = null
     private var running = false

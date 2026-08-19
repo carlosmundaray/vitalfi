@@ -23,12 +23,18 @@ import kotlin.math.*
  * 3. Aplica filtrado DSP para aislar respiración (0.15 - 0.4 Hz) y movimiento de auxilio (1 - 8 Hz).
  * 4. Clasifica el estado vital en 3 niveles: CLEAR, IMMOBILE_BREATHING, ACTIVE_DISTRESS.
  */
+import android.content.Context
+import android.net.wifi.WifiManager
+import java.net.InetSocketAddress
+
 class CsiUdpCollector(
+    private val context: Context,
     private val defaultPort: Int = 5500,
 ) {
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var listeningJob: Job? = null
     private var socket: DatagramSocket? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     private val _latestFrame = MutableStateFlow<CsiPacketData?>(null)
     val latestFrame: StateFlow<CsiPacketData?> = _latestFrame.asStateFlow()
@@ -62,13 +68,25 @@ class CsiUdpCollector(
     fun start(port: Int = defaultPort) {
         stop()
 
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            multicastLock = wifiManager?.createMulticastLock("VitalFiCSILock")?.apply {
+                setReferenceCounted(true)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo adquirir MulticastLock: ${e.message}")
+        }
+
         listeningJob = coroutineScope.launch {
             try {
-                socket = DatagramSocket(port).apply {
+                socket = DatagramSocket(null).apply {
                     reuseAddress = true
-                    soTimeout = 2000 // 2s timeout para chequear conectividad
+                    broadcast = true
+                    bind(InetSocketAddress(port))
+                    soTimeout = 2500 // 2.5s timeout para chequear conectividad
                 }
-                Log.i(TAG, "Socket UDP CSI escuchando en el puerto $port")
+                Log.i(TAG, "Socket UDP CSI escuchando en el puerto $port (Broadcast/Unicast activo)")
 
                 val buffer = ByteArray(4096)
                 val packet = DatagramPacket(buffer, buffer.size)
@@ -123,6 +141,12 @@ class CsiUdpCollector(
             socket?.close()
         } catch (_: Exception) {}
         socket = null
+        try {
+            if (multicastLock?.isHeld == true) {
+                multicastLock?.release()
+            }
+        } catch (_: Exception) {}
+        multicastLock = null
         _isConnected.value = false
         _packetRateHz.value = 0.0
     }
