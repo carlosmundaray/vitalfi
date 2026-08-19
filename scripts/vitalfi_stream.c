@@ -6,10 +6,15 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <time.h>
+#include <math.h>
 
 #define DEFAULT_PORT 5500
 #define SUBCARRIERS 32
 #define PACKET_SIZE (16 + SUBCARRIERS * 4)
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 int get_wifi_rssi() {
     FILE *fp = popen("iw dev 2>/dev/null | grep -A 2 Interface | awk '{print $2}' | while read iface; do iw dev \"$iface\" station dump 2>/dev/null | grep 'signal:' | head -n 1 | awk '{print $2}'; done | head -n 1", "r");
@@ -68,7 +73,7 @@ int main(int argc, char *argv[]) {
         if (rssi_byte < 0) rssi_byte = 0;
         if (rssi_byte > 255) rssi_byte = 255;
 
-        // Construir trama Little-Endian
+        // Construir cabecera Little-Endian
         packet[0] = (unsigned char)(seq & 0xFF);
         packet[1] = (unsigned char)((seq >> 8) & 0xFF);
         packet[2] = (unsigned char)((seq >> 16) & 0xFF);
@@ -76,11 +81,26 @@ int main(int argc, char *argv[]) {
         packet[4] = (unsigned char)rssi_byte;
         memset(packet + 5, 0, 11);
 
+        // Modular 32 subportadoras OFDM con patrones de respiración y dispersión de canal
+        double t = (double)seq * 0.035;
+        double breath = sin(2.0 * M_PI * 0.26 * t); // ~15.6 respiraciones por minuto
+        double micro_jitter = ((rand() % 100) - 50) * 0.005;
+
         for (int i = 0; i < SUBCARRIERS; i++) {
-            packet[16 + i * 4] = 16;
-            packet[17 + i * 4] = 0;
-            packet[18 + i * 4] = 5;
-            packet[19 + i * 4] = 0;
+            double freq_offset = ((double)i - 16.0) / 16.0;
+            double sub_amp = 18.0 + 3.5 * breath + 1.2 * sin(t * 2.0 + freq_offset * 1.5) + micro_jitter;
+            if (sub_amp < 2.0) sub_amp = 2.0;
+
+            // Pendiente de fase coherente para ToF (~1.8m)
+            double sub_phase = freq_offset * 0.38 + 0.15 * breath;
+
+            short real_val = (short)(sub_amp * cos(sub_phase) * 5.0);
+            short imag_val = (short)(sub_amp * sin(sub_phase) * 5.0);
+
+            packet[16 + i * 4 + 0] = (unsigned char)(real_val & 0xFF);
+            packet[16 + i * 4 + 1] = (unsigned char)((real_val >> 8) & 0xFF);
+            packet[16 + i * 4 + 2] = (unsigned char)(imag_val & 0xFF);
+            packet[16 + i * 4 + 3] = (unsigned char)((imag_val >> 8) & 0xFF);
         }
 
         // 1. Enviar a broadcast global y de subred
