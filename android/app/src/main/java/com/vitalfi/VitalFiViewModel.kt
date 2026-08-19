@@ -131,6 +131,7 @@ data class VitalFiUiState(
     val rfPose: com.vitalfi.ai.RfSkeletonPose? = null,
     val rfSilhouette: com.vitalfi.ai.RfSilhouetteGrid? = null,
     val showRfCamera: Boolean = false,
+    val showArCamera: Boolean = false,
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
@@ -383,6 +384,11 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleRfCamera(show: Boolean? = null) {
         val next = show ?: !_uiState.value.showRfCamera
         _uiState.value = _uiState.value.copy(showRfCamera = next)
+    }
+
+    fun toggleArCamera(show: Boolean? = null) {
+        val next = show ?: !_uiState.value.showArCamera
+        _uiState.value = _uiState.value.copy(showArCamera = next)
     }
 
     fun markRubbleZoneAtCurrentBearing() {

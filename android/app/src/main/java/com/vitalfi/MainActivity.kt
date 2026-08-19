@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
                         onSetSensingEngineMode = { viewModel.setSensingEngineMode(it) },
                         onSetOpenWrtUdpPort = { viewModel.setOpenWrtUdpPort(it) },
                         onToggleRfCamera = { viewModel.toggleRfCamera() },
+                        onToggleArCamera = { viewModel.toggleArCamera() },
                         onMarkRubbleZone = { viewModel.markRubbleZoneAtCurrentBearing() },
                         onClearRubbleZone = { viewModel.clearRubbleZone() },
                         onExcludeRescuer = { viewModel.excludeRescuerAtCurrentBearing() },
