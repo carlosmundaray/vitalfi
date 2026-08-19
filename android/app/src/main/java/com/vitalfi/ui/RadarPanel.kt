@@ -62,6 +62,8 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.vitalfi.R
+import com.vitalfi.wifi.SensingEngineMode
+import com.vitalfi.wifi.VictimVitalState
 
 private val BgDark = Color(0xFF0A0F0A)
 private val Cyan = Color(0xFF00FFCC)
@@ -402,7 +404,7 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
     ) {
         Column(
             Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -417,12 +419,164 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                     fontFamily = FontFamily.Monospace,
                 )
                 Text(
-                    stringResource(R.string.radar_real_data),
-                    color = Color(0xFF66FF99),
+                    if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                        if (state.csiConnected) "🛰️ CSI OPENWRT (${state.csiPacketRateHz.toInt()} Hz)" else "⚠️ CSI DESCONECTADO"
+                    } else {
+                        stringResource(R.string.radar_real_data)
+                    },
+                    color = if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                        if (state.csiConnected) Color(0xFF00FFCC) else Color(0xFFFFCC00)
+                    } else {
+                        Color(0xFF66FF99)
+                    },
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
                 )
             }
+
+            if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                if (state.csiConnected) {
+                    when (state.victimVitalState) {
+                        VictimVitalState.IMMOBILE_BREATHING -> {
+                            Text(
+                                "🫁 RESPIRACIÓN VITAL: ~${state.vitalBreathingBpm.toInt()} rpm (Fase CSI)",
+                                color = Color(0xFF00FFCC),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                        VictimVitalState.ACTIVE_DISTRESS -> {
+                            Text(
+                                "🚨 ALERTA DE AUXILIO / MOVIMIENTO ACTIVO (CSI)",
+                                color = Color(0xFFFF3366),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                        VictimVitalState.CLEAR -> {
+                            Text(
+                                "📡 Monitoreando 56 subportadoras OFDM (: ${state.openWrtUdpPort})",
+                                color = Color(0xFFA0C4A0),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+
+                    // Métricas de ubicación de alta precisión CSI (distancia, profundidad, AoA)
+                    if (state.csiDistanceM != null || state.csiDepthM != null) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Dist. OFDM: ${"%.2f".format(state.csiDistanceM ?: 0.0)} m",
+                                color = NavYellow,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "Profundidad: ${"%.2f".format(state.csiDepthM ?: 0.0)} m",
+                                color = Color(0xFFFF9966),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            val aoa = state.csiAoADeg
+                            if (aoa != null) {
+                                Text(
+                                    "AoA: ${if (aoa >= 0) "+" else ""}${"%.1f".format(aoa)}°",
+                                    color = Cyan,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+
+                    // Visualizador de Espectro OFDM de Subportadoras
+                    if (state.csiSubcarriers.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "Espectro OFDM (Amplitud de Subportadoras):",
+                                color = Color(0xFF88AA88),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(28.dp)
+                                    .background(Color(0xFF081008), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                            ) {
+                                val subs = state.csiSubcarriers
+                                val barWidth = (size.width / subs.size).coerceAtLeast(1.5f)
+                                val maxVal = subs.maxOrNull()?.coerceAtLeast(1.0f) ?: 1.0f
+                                for (i in subs.indices) {
+                                    val h = (subs[i] / maxVal * size.height).coerceIn(2f, size.height)
+                                    val barColor = when {
+                                        state.victimVitalState == VictimVitalState.ACTIVE_DISTRESS -> Color(0xFFFF3366)
+                                        state.victimVitalState == VictimVitalState.IMMOBILE_BREATHING -> Cyan
+                                        else -> Color(0xFF339966)
+                                    }
+                                    drawRect(
+                                        color = barColor,
+                                        topLeft = Offset(i * (size.width / subs.size), size.height - h),
+                                        size = Size(barWidth - 0.5f, h),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Visualizador de Onda Respiratoria CSI (Osciloscopio)
+                    if (state.csiRespirationWave.size >= 10) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "Onda de Respiración / Micro-desplazamiento:",
+                                color = Color(0xFF88AA88),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(30.dp)
+                                    .background(Color(0xFF060D06), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                            ) {
+                                val wave = state.csiRespirationWave
+                                val midY = size.height / 2f
+                                val maxAmp = wave.map { kotlin.math.abs(it) }.maxOrNull()?.coerceAtLeast(0.1f) ?: 1.0f
+                                val stepX = size.width / (wave.size - 1).coerceAtLeast(1)
+                                val wavePath = Path()
+                                for (i in wave.indices) {
+                                    val normY = (wave[i] / maxAmp * (size.height * 0.42f)).coerceIn(-midY, midY)
+                                    val pt = Offset(i * stepX, midY - normY)
+                                    if (i == 0) wavePath.moveTo(pt.x, pt.y) else wavePath.lineTo(pt.x, pt.y)
+                                }
+                                drawPath(
+                                    path = wavePath,
+                                    color = if (state.victimVitalState == VictimVitalState.IMMOBILE_BREATHING) Cyan else NavYellow,
+                                    style = Stroke(width = 2.2f),
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "⚠️ Esperando tramas UDP en puerto ${state.openWrtUdpPort}... (Ejecuta /usr/bin/vitalfi-stream en tu router)",
+                        color = Color(0xFFFFCC00),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+
             Text(
                 steer,
                 color = NavYellow,

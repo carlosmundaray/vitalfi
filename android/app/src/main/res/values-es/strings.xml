@@ -234,4 +234,17 @@
     <string name="permission_location_needed">VitalFi necesita permiso de ubicación para leer señal Wi-Fi</string>
     <string name="share_error">No se pudo compartir: %1$s</string>
     <string name="share_chooser_title">Compartir CSV VitalFi</string>
+    <string name="settings_section_sensing_mode">Motor de Detección y Hardware</string>
+    <string name="settings_sensing_mode_title">Modo de Detección</string>
+    <string name="settings_sensing_mode_rssi">📱 RSSI Nativo (2 Estados)</string>
+    <string name="settings_sensing_mode_rssi_desc">Teléfono autónomo. Detecta área despejada o movimiento/actividad.</string>
+    <string name="settings_sensing_mode_csi">📡 CSI OpenWrt (3 Estados)</string>
+    <string name="settings_sensing_mode_csi_desc">Stream de router OpenWrt por UDP. Detecta respiración de atrapados y auxilio.</string>
+    <string name="settings_csi_udp_port">Puerto UDP de CSI</string>
+    <string name="settings_csi_udp_port_hint">Puerto UDP para recibir paquetes CSI de OpenWrt (default 5500)</string>
+    <string name="csi_badge_connected">CSI: %1$.0f paq/s</string>
+    <string name="csi_badge_waiting">CSI: Escuchando :%1$d</string>
+    <string name="vital_state_clear">Despejado (Sin vida)</string>
+    <string name="vital_state_breathing">Víctima Respirando (~%1$.0f rpm)</string>
+    <string name="vital_state_distress">AUXILIO / LLAMADA DE AYUDA</string>
 </resources>

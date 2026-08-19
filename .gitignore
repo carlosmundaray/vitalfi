@@ -42,6 +42,10 @@ captures/
 *.swp
 *.swo
 
+# Scratch & temp
+scratch/
+*.log
+
 # OS files
 Thumbs.db
 db.properties
