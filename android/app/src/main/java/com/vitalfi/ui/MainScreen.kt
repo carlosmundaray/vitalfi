@@ -1728,8 +1728,9 @@ private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> U
                         label = {
                             val kind = victimStatusKind(victim)
                             Text(
-                                "${victim.label} ${victimStatusIconLabel(kind)} ${"%.1f".format(victim.distance)}m",
+                                "${victim.label} ${victimStatusIconLabel(kind)} ${"%.2f".format(victim.distance)}m · ↓${"%.2f".format(kotlin.math.abs(victim.depth))}m",
                                 fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
                             )
                         },
                     )
@@ -1806,6 +1807,13 @@ private fun VictimDetailDialog(
                     stringResource(R.string.victim_heading),
                     "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}",
                 )
+                if (victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank()) {
+                    VictimDetailRow("📏 Envergadura", victim.bodyDimension.ifBlank { "~1.74 m × 0.54 m" })
+                    VictimDetailRow("🧘 Postura", victim.bodyPosture.ifBlank { "Tendido (Horizontal)" })
+                    if (victim.rcsAreaM2 > 0.0) {
+                        VictimDetailRow("👤 Sección RCS", "${"%.2f".format(victim.rcsAreaM2)} m²")
+                    }
+                }
                 VictimDetailRow(stringResource(R.string.victim_zone), "${victim.proximity} (~${"%.1f".format(horizDist)} m)")
                 VictimDetailRow(
                     stringResource(R.string.victim_breathing),

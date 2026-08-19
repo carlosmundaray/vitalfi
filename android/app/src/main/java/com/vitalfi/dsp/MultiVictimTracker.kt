@@ -23,6 +23,9 @@ data class TrappedVictim(
     val lastSeenMs: Long,
     /** Firma automática Persona A/B… (sin nombre civil). */
     val signatureCode: String = "",
+    val bodyDimension: String = "",
+    val bodyPosture: String = "",
+    val rcsAreaM2: Double = 0.0,
 )
 
 /**

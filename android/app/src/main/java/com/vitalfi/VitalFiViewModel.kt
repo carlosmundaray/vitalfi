@@ -123,6 +123,10 @@ data class VitalFiUiState(
     val csiDepthM: Double? = null,
     val csiSubcarriers: List<Float> = emptyList(),
     val csiRespirationWave: List<Float> = emptyList(),
+    val csiBodyDimension: String? = null,
+    val csiBodyPosture: String? = null,
+    val csiBodyCategory: String? = null,
+    val csiRcsM2: Double? = null,
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
@@ -944,6 +948,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                     d < 3.5 -> "MEDIA"
                     else -> victim.proximity
                 }
+                val bodyDim = if (isCsiMode && csiFrame != null) "${"%.2f".format(csiFrame.estimatedHeightM)}m × ${"%.2f".format(csiFrame.estimatedWidthM)}m (${csiFrame.bodyCategory})" else victim.bodyDimension
+                val bodyPos = if (isCsiMode && csiFrame != null) csiFrame.bodyPosture else victim.bodyPosture
+                val rcs = if (isCsiMode && csiFrame != null) csiFrame.rcsAreaM2 else victim.rcsAreaM2
                 victim.copy(
                     x = x,
                     y = y,
@@ -951,6 +958,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                     distance = d,
                     proximity = proximityLabel,
                     depth = victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2)),
+                    bodyDimension = bodyDim,
+                    bodyPosture = bodyPos,
+                    rcsAreaM2 = rcs,
                 )
             }
         }
@@ -1120,6 +1130,10 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             csiDepthM = if (csiConnected) csiFrame?.estimatedDepthM else null,
             csiSubcarriers = if (csiConnected) csiFrame?.subcarrierAmplitudesList ?: emptyList() else emptyList(),
             csiRespirationWave = if (csiConnected) csiFrame?.respirationWave ?: emptyList() else emptyList(),
+            csiBodyDimension = if (csiConnected && csiFrame != null) "${"%.2f".format(csiFrame.estimatedHeightM)} m × ${"%.2f".format(csiFrame.estimatedWidthM)} m" else null,
+            csiBodyPosture = if (csiConnected) csiFrame?.bodyPosture else null,
+            csiBodyCategory = if (csiConnected) csiFrame?.bodyCategory else null,
+            csiRcsM2 = if (csiConnected) csiFrame?.rcsAreaM2 else null,
         )
     }
 

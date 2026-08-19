@@ -499,6 +499,44 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                         }
                     }
 
+                    // Perfil Corporal y Dimensiones de la Persona Atrapada (CSI Profiling)
+                    if (state.csiBodyDimension != null || state.csiBodyPosture != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1A12)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "📏 Envergadura: ${state.csiBodyDimension ?: "~1.70m × 0.50m"}",
+                                        color = Color(0xFF00FFCC),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                    Text(
+                                        "👤 ${state.csiBodyCategory ?: "Adulto"} (RCS: ${"%.2f".format(state.csiRcsM2 ?: 0.82)} m²)",
+                                        color = Color(0xFFFFCC00),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
+                                Text(
+                                    "🧘 Postura: ${state.csiBodyPosture ?: "Tendido (Horizontal)"}",
+                                    color = Color(0xFFA0DCA0),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+
                     // Visualizador de Espectro OFDM de Subportadoras
                     if (state.csiSubcarriers.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
