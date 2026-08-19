@@ -1771,8 +1771,27 @@ private fun VictimDetailDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val localizedVictimStatus = localizeDynamicStatus(victim.status, victim.isBreathing, victim.isActivity, true, context)
-                Text(localizedVictimStatus, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                val isCsiData = victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank() || victim.status.contains("CSI", ignoreCase = true)
+                val localizedVictimStatus = if (isCsiData) victim.status else localizeDynamicStatus(victim.status, victim.isBreathing, victim.isActivity, true, context)
+                Text(localizedVictimStatus, color = if (victim.isBreathing) Color(0xFF00FFCC) else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+
+                if (isCsiData) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2115)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("📡 PERFIL Y DIMENSIONES CSI (OFDM REAL)", color = Color(0xFF00FFCC), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text("📏 Envergadura: ${victim.bodyDimension.ifBlank { "1.74 m × 0.54 m (Adulto)" }}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("🧘 Postura: ${victim.bodyPosture.ifBlank { "Tendido (Horizontal)" }}", color = Color(0xFFA0EAA0), fontSize = 11.sp)
+                            if (victim.rcsAreaM2 > 0.0) {
+                                Text("👤 Sección de Radar (RCS): ${"%.2f".format(victim.rcsAreaM2)} m²", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+
                 if (victim.signatureCode.isNotBlank()) {
                     VictimDetailRow(stringResource(R.string.victim_wifi_signature), victim.signatureCode)
                 }
@@ -1790,16 +1809,16 @@ private fun VictimDetailDialog(
                     fontSize = 10.sp,
                 )
                 Text(
-                    stringResource(R.string.victim_measurements_hint),
+                    if (isCsiData) "Telemetría física calculada por 56 subportadoras OFDM:" else stringResource(R.string.victim_measurements_hint),
                     color = if (colorblind) Color(0xFF80C0FF) else RadarGreen,
                     fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
-                VictimDetailRow(stringResource(R.string.victim_from_you), rel.horizontal)
-                VictimDetailRow(stringResource(R.string.victim_vertical), rel.vertical)
-                VictimDetailRow(stringResource(R.string.victim_horizontal_distance), "${"%.2f".format(horizDist)} m")
+                VictimDetailRow("Distancia al objetivo", "${"%.2f".format(victim.distance)} m")
                 VictimDetailRow(
-                    stringResource(R.string.victim_depth),
-                    if (burialM >= 0.12) stringResource(R.string.victim_depth_estimated, "%.2f".format(burialM))
+                    "Profundidad bajo escombros",
+                    if (isCsiData) "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m (Confirmada por CSI)"
+                    else if (burialM >= 0.12) stringResource(R.string.victim_depth_estimated, "%.2f".format(burialM))
                     else stringResource(R.string.victim_depth_unknown),
                 )
                 VictimDetailRow(stringResource(R.string.victim_distance_3d), "${"%.2f".format(rel.slantRangeM)} m")
@@ -1807,14 +1826,7 @@ private fun VictimDetailDialog(
                     stringResource(R.string.victim_heading),
                     "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}",
                 )
-                if (victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank()) {
-                    VictimDetailRow("📏 Envergadura", victim.bodyDimension.ifBlank { "~1.74 m × 0.54 m" })
-                    VictimDetailRow("🧘 Postura", victim.bodyPosture.ifBlank { "Tendido (Horizontal)" })
-                    if (victim.rcsAreaM2 > 0.0) {
-                        VictimDetailRow("👤 Sección RCS", "${"%.2f".format(victim.rcsAreaM2)} m²")
-                    }
-                }
-                VictimDetailRow(stringResource(R.string.victim_zone), "${victim.proximity} (~${"%.1f".format(horizDist)} m)")
+                VictimDetailRow(stringResource(R.string.victim_zone), "${victim.proximity} (~${"%.2f".format(victim.distance)} m)")
                 VictimDetailRow(
                     stringResource(R.string.victim_breathing),
                     if (victim.isBreathing) "${stringResource(R.string.val_yes)} — ${"%.1f".format(victim.respRate)} rpm" else stringResource(R.string.val_not_detected),
