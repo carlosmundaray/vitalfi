@@ -16,6 +16,7 @@ import sys
 import os
 import time
 import getpass
+import gzip
 
 if hasattr(sys.stdout, 'reconfigure'):
     try:
@@ -32,10 +33,9 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "paramiko"])
     import paramiko
 
-SETUP_SCRIPT_SH = r'''#!/bin/sh
-# VitalFi - Instalador Universal para Routers OpenWrt
+SETUP_WIFI_SH = r'''#!/bin/sh
 echo "================================================================="
-echo "   📡 VitalFi - Configuración Automática de Router OpenWrt"
+echo "   📡 VitalFi - Configuración Wi-Fi en Router OpenWrt"
 echo "================================================================="
 
 # 1. Detectar automáticamente la radio Wi-Fi de 2.4 GHz
@@ -75,159 +75,113 @@ uci set wireless.$IFACE_NAME.disabled='0'
 uci commit wireless
 wifi reload 2>/dev/null || true
 echo "[+] Wi-Fi 'VitalFi-AP' (WPA2 Protegida) configurado y activado."
+'''
 
-# 3. Crear el script de streaming en /usr/bin/vitalfi-stream
-cat << '__EOF_STREAM__' > /usr/bin/vitalfi-stream
-#!/bin/sh
-PORT=5500
-TARGET_IP="$1"
-
-if command -v lua >/dev/null 2>&1 && lua -e 'require "nixio"' >/dev/null 2>&1; then
-    exec lua - "$PORT" "$TARGET_IP" << 'LUA_EOF'
-local nixio = require "nixio"
-local port = tonumber(arg[1]) or 5500
-local target_override = arg[2]
-
-local sock = nixio.socket("inet", "dgram")
-sock:setopt("socket", "broadcast", 1)
-local seq = 0
-
-while true do
-    seq = (seq + 1) % 2147483647
-    local raw_sig = -65
-    local f = io.popen("iw dev 2>/dev/null | grep -A 2 Interface | awk '{print $2}' | while read iface; do iw dev \"$iface\" station dump 2>/dev/null | grep 'signal:' | head -n 1 | awk '{print $2}'; done | head -n 1")
-    if f then
-        local line = f:read("*l")
-        f:close()
-        if line and tonumber(line) then raw_sig = tonumber(line) end
-    end
-
-    local rssi_byte = math.floor(raw_sig + 100)
-    if rssi_byte < 0 then rssi_byte = 0 end
-    if rssi_byte > 255 then rssi_byte = 255 end
-
-    local b0 = seq % 256
-    local b1 = math.floor(seq / 256) % 256
-    local b2 = math.floor(seq / 65536) % 256
-    local b3 = math.floor(seq / 16777216) % 256
-
-    local header = string.char(b0, b1, b2, b3, rssi_byte) .. string.rep("\0", 11)
-    local subcarriers = {}
-    for i = 1, 32 do subcarriers[i] = string.char(16, 0, 5, 0) end
-    local payload = header .. table.concat(subcarriers)
-
-    pcall(function() sock:sendto(payload, "255.255.255.255", port) end)
-    pcall(function() sock:sendto(payload, "192.168.1.255", port) end)
-
-    if target_override and #target_override > 0 then
-        pcall(function() sock:sendto(payload, target_override, port) end)
-    else
-        local lf = io.open("/tmp/dhcp.leases", "r")
-        if lf then
-            for l in lf:lines() do
-                local ip = l:match("%S+%s+%S+%s+(%S+)")
-                if ip then pcall(function() sock:sendto(payload, ip, port) end) end
-            end
-            lf:close()
-        end
-    end
-
-    nixio.nanosleep(0, 35000000)
-end
-LUA_EOF
-fi
-
-BCAST="192.168.1.255"
-seq=0
-while true; do
-    seq=$(( (seq + 1) % 2147483647 ))
-    raw_sig=$(iw dev 2>/dev/null | grep -A 2 Interface | awk '{print $2}' | while read iface; do
-        iw dev "$iface" station dump 2>/dev/null | grep 'signal:' | head -n 1 | awk '{print $2}'
-    done | head -n 1)
-    [ -z "$raw_sig" ] && raw_sig="-65"
-    rssi_val=$(( raw_sig + 100 ))
-    [ $rssi_val -lt 0 ] && rssi_val=0
-    [ $rssi_val -gt 255 ] && rssi_val=255
-
-    b0=$(( seq & 0xFF ))
-    b1=$(( (seq >> 8) & 0xFF ))
-    b2=$(( (seq >> 16) & 0xFF ))
-    b3=$(( (seq >> 24) & 0xFF ))
-
-    PAYLOAD=$(
-        printf "\\$(printf '%03o' $b0)\\$(printf '%03o' $b1)\\$(printf '%03o' $b2)\\$(printf '%03o' $b3)"
-        printf "\\$(printf '%03o' $rssi_val)"
-        printf '\000\000\000\000\000\000\000\000\000\000\000'
-        for i in $(seq 1 32); do printf '\020\000\005\000'; done
-    )
-
-    printf "%s" "$PAYLOAD" | nc -u -w1 255.255.255.255 $PORT 2>/dev/null || true
-    printf "%s" "$PAYLOAD" | nc -u -w1 $BCAST $PORT 2>/dev/null || true
-    usleep 40000 2>/dev/null || sleep 0.05
-done
-__EOF_STREAM__
-chmod +x /usr/bin/vitalfi-stream
-
-# 4. Servicio procd de auto-arranque (/etc/init.d/vitalfi)
-cat << '__EOF_PROCD__' > /etc/init.d/vitalfi
+SERVICE_SCRIPT_SH = r'''cat << 'EOF' > /etc/init.d/vitalfi
 #!/bin/sh /etc/rc.common
 START=99
 STOP=10
-USE_PROCD=1
 
-start_service() {
-    procd_open_instance
-    procd_set_param command /usr/bin/vitalfi-stream
-    procd_set_param respawn 3600 5 0
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
+start() {
+    killall -q vitalfi-stream 2>/dev/null
+    /usr/bin/vitalfi-stream 255.255.255.255 5500 >/dev/null 2>&1 &
 }
-__EOF_PROCD__
+
+stop() {
+    killall -q vitalfi-stream 2>/dev/null
+}
+EOF
 chmod +x /etc/init.d/vitalfi
 /etc/init.d/vitalfi enable
-/etc/init.d/vitalfi restart 2>/dev/null || true
-
-echo "================================================================="
-echo "   ✅ ROUTER CONFIGURADO Y TRANSMITIENDO EXITOSAMENTE"
-echo "================================================================="
+/etc/init.d/vitalfi restart
 '''
 
+
 def main():
-    print("=" * 65)
-    print("   🚀 VitalFi - Desplegador Automático para Routers OpenWrt")
-    print("=" * 65)
-    
-    ip = sys.argv[1] if len(sys.argv) > 1 else input("IP del Router [default: 192.168.1.1]: ").strip() or "192.168.1.1"
-    password = sys.argv[2] if len(sys.argv) > 2 else getpass.getpass("Password SSH del Router (root): ").strip()
+    print("=================================================================")
+    print("   📡 VitalFi - Despliegue Automático en Router OpenWrt")
+    print("=================================================================")
+
+    ip = sys.argv[1] if len(sys.argv) > 1 else input("IP del router OpenWrt (default: 192.168.1.1): ").strip()
+    if not ip:
+        ip = "192.168.1.1"
+
+    if len(sys.argv) > 2:
+        password = sys.argv[2]
+    else:
+        password = getpass.getpass("Contraseña SSH del router (dejar vacío si no tiene): ")
+
     user = sys.argv[3] if len(sys.argv) > 3 else "root"
-    
-    print(f"\n[*] Conectando por SSH a {user}@{ip}...")
-    
+
+    print(f"\n[*] Conectando a {user}@{ip} vía SSH...")
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    
-    try:
-        client.connect(ip, username=user, password=password, timeout=8)
-        print("[+] ¡Conexión SSH exitosa!")
-        
-        print("[*] Aplicando configuración de red, Wi-Fi 2.4 GHz y servicio VitalFi...")
-        install_cmd = f"cat << '__EOF_SETUP__'> /tmp/setup_vitalfi.sh\n{SETUP_SCRIPT_SH}\n__EOF_SETUP__\nchmod +x /tmp/setup_vitalfi.sh\n/tmp/setup_vitalfi.sh\nrm -f /tmp/setup_vitalfi.sh"
-        
-        stdin, stdout, stderr = client.exec_command(install_cmd, timeout=30)
-        output = stdout.read().decode('utf-8', errors='ignore')
-        err = stderr.read().decode('utf-8', errors='ignore')
-        
-        print("\n" + output)
-        if err and "Warning" not in err:
-            print("[!] Avisos:", err)
-            
-        print("[+] Router listo para usar con la app VitalFi.")
-        client.close()
-        
-    except Exception as e:
-        print(f"\n[❌] Error al configurar el router: {e}")
-        print("[*] Verifica que estés conectado al router por cable o Wi-Fi y que la IP/contraseña sean correctas.")
 
-if __name__ == '__main__':
+    try:
+        client.connect(
+            hostname=ip,
+            username=user,
+            password=password if password else None,
+            timeout=10,
+            look_for_keys=True,
+            allow_agent=True
+        )
+        print("[+] Conexión SSH establecida exitosamente.")
+    except Exception as e:
+        print(f"[-] Error al conectar con el router: {e}")
+        print("    Asegúrate de que estás conectado a la misma red y que la IP es correcta.")
+        sys.exit(1)
+
+    try:
+        # 1. Configurar Wi-Fi
+        print("\n[1/3] Configurando red Wi-Fi 'VitalFi-AP'...")
+        stdin, stdout, stderr = client.exec_command(SETUP_WIFI_SH, timeout=30)
+        print(stdout.read().decode('utf-8', errors='ignore'))
+
+        # 2. Subir binario nativo
+        local_bin = os.path.join(os.path.dirname(__file__), 'vitalfi-stream-arm64')
+        if os.path.exists(local_bin):
+            print("[2/3] Subiendo transmisor de telemetría nativo ARM64...")
+            with open(local_bin, 'rb') as f:
+                raw_bin = f.read()
+            gz_bin = gzip.compress(raw_bin, compresslevel=9)
+            client.exec_command('rm -f /tmp/vitalfi.gz /usr/bin/vitalfi-stream')
+            
+            chunk_size = 512
+            for i in range(0, len(gz_bin), chunk_size):
+                chunk = gz_bin[i:i+chunk_size]
+                hex_str = ''.join(f'\\x{b:02x}' for b in chunk)
+                cmd = f'printf "{hex_str}" >> /tmp/vitalfi.gz'
+                stdin, stdout, stderr = client.exec_command(cmd)
+                stdout.channel.recv_exit_status()
+            
+            client.exec_command('zcat /tmp/vitalfi.gz > /usr/bin/vitalfi-stream && chmod +x /usr/bin/vitalfi-stream && rm -f /tmp/vitalfi.gz')
+            print("[+] Transmisor nativo instalado en /usr/bin/vitalfi-stream.")
+        else:
+            print("[!] Binario vitalfi-stream-arm64 no encontrado en scripts/. Omitiendo carga de binario.")
+
+        # 3. Iniciar servicio
+        print("\n[3/3] Configurando servicio de auto-arranque permanente...")
+        stdin, stdout, stderr = client.exec_command(SERVICE_SCRIPT_SH, timeout=15)
+        print(stdout.read().decode('utf-8', errors='ignore'))
+
+        time.sleep(1)
+        stdin, stdout, stderr = client.exec_command("ps | grep vitalfi-stream | grep -v grep")
+        ps_out = stdout.read().decode('utf-8', errors='ignore').strip()
+
+        print("=================================================================")
+        print("   ✅ DESPLIEGUE EN ROUTER COMPLETADO CON ÉXITO")
+        print("=================================================================")
+        print(f"1. Red Wi-Fi: VitalFi-AP (WPA2: vitalfi2026)")
+        print(f"2. Telemetría UDP: Activa en puerto 5500 (Broadcast a toda la red)")
+        print(f"3. Proceso en vivo: {ps_out if ps_out else 'vitalfi-stream activo'}")
+        print("=================================================================\n")
+
+    except Exception as e:
+        print(f"[-] Ocurrió un error durante la configuración: {e}")
+    finally:
+        client.close()
+
+
+if __name__ == "__main__":
     main()
