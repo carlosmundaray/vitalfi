@@ -5,11 +5,11 @@
 Permite configurar cualquier router con OpenWrt en segundos desde tu PC.
 
 Uso:
-  python deploy_openwrt.py [IP_ROUTER] [PASSWORD] [USUARIO]
+  python scripts/deploy_openwrt.py [IP_ROUTER] [PASSWORD] [USUARIO]
 
 Ejemplo:
-  python deploy_openwrt.py
-  python deploy_openwrt.py 192.168.1.1 mi_password_router root
+  python scripts/deploy_openwrt.py
+  python scripts/deploy_openwrt.py 192.168.1.1 mi_password_router root
 """
 
 import sys
