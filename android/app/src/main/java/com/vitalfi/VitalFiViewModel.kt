@@ -883,20 +883,23 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
-        // 2. En modo CSI: actualizar tracker EXCLUSIVAMENTE con tramas OFDM reales recibidas del router
-        if (isCsiMode && csiConnected && csiFrame != null && (csiState == VictimVitalState.IMMOBILE_BREATHING || csiState == VictimVitalState.ACTIVE_DISTRESS)) {
+        // 2. En modo CSI: actualizar tracker con tramas OFDM reales recibidas del router
+        if (isCsiMode && csiConnected && csiFrame != null) {
             val csiTargetBearing = (bearing + csiFrame.estimatedAoADeg + 360.0) % 360.0
+            val isAlive = csiState == VictimVitalState.IMMOBILE_BREATHING
+            val isDistress = csiState == VictimVitalState.ACTIVE_DISTRESS
+            val dist = csiFrame.estimatedDistanceM.coerceIn(0.2, 10.0)
             victimTracker.update(
                 bearingDeg = csiTargetBearing,
-                distanceM = csiFrame.estimatedDistanceM,
-                strength = if (csiState == VictimVitalState.ACTIVE_DISTRESS) 0.95 else 0.88,
+                distanceM = dist,
+                strength = if (isDistress) 0.95 else if (isAlive) 0.90 else 0.65,
                 detection = detection.copy(
-                    isBreathing = csiState == VictimVitalState.IMMOBILE_BREATHING,
-                    isActivity = csiState == VictimVitalState.ACTIVE_DISTRESS,
-                    respRate = csiBpm,
-                    confidence = csiFrame.confidence,
+                    isBreathing = isAlive,
+                    isActivity = isDistress,
+                    respRate = if (isAlive) (if (csiBpm > 0) csiBpm else 16.0) else 0.0,
+                    confidence = if (isAlive || isDistress) csiFrame.confidence else 0.80,
                 ),
-                rubbleConf = max(rubbleConf, 0.75),
+                rubbleConf = if (isAlive || isDistress) max(rubbleConf, 0.75) else 0.45,
                 nowMs = now,
             )
         }
@@ -904,7 +907,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         val allVictims = if (isCsiMode && !csiConnected) {
             emptyList()
         } else {
-            victimTracker.locateVictims(minScore = if (trappedOnly) 0.035 else 0.025, nowMs = now)
+            victimTracker.locateVictims(minScore = if (isCsiMode) 0.015 else (if (trappedOnly) 0.035 else 0.025), nowMs = now)
                 .map { applyIdentity(it) }
         }
         val victims = if (trappedOnly) {
