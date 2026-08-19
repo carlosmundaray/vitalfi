@@ -141,7 +141,6 @@ fun MainScreen(
     onSetTrappedOnlyMode: (Boolean) -> Unit,
     onSetSensingEngineMode: (SensingEngineMode) -> Unit = {},
     onSetOpenWrtUdpPort: (Int) -> Unit = {},
-    onToggleRfCamera: () -> Unit = {},
     onToggleArCamera: () -> Unit = {},
     onMarkRubbleZone: () -> Unit,
     onClearRubbleZone: () -> Unit,
@@ -305,33 +304,22 @@ fun MainScreen(
                 Button(
                     onClick = onToggleArCamera,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.showArCamera) Color(0xFFFF9900) else Color(0xFF2A1C08),
+                        containerColor = if (state.showArCamera) Color(0xFFFF9900) else Color(0xFF2E220D),
                         contentColor = if (state.showArCamera) Color.Black else Color(0xFFFFCC00),
                     ),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text("🎮 AR", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                }
-                Button(
-                    onClick = onToggleRfCamera,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.showRfCamera) Cyan else Color(0xFF132B1E),
-                        contentColor = if (state.showRfCamera) Color.Black else Color(0xFF00FFCC),
-                    ),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    Text("📹 RF", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Text("🎮 MODO AR", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 }
                 Button(
                     onClick = onReset,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
                     Text(stringResource(R.string.action_reset), fontSize = 11.sp)
                 }
-                Button(onClick = onExportCsv, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)) {
+                Button(onClick = onExportCsv, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
                     Icon(Icons.Default.Download, null)
                     Text(" CSV", fontSize = 11.sp)
                 }
@@ -489,13 +477,6 @@ fun MainScreen(
             onRadarLayersSoloPersona = onRadarLayersSoloPersona,
             onRadarLayersTodo = onRadarLayersTodo,
             onRadarLayersModoRescate = onRadarLayersModoRescate,
-        )
-    }
-
-    if (state.showRfCamera) {
-        RfCameraView(
-            state = state,
-            onClose = onToggleRfCamera,
         )
     }
 

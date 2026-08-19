@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
@@ -91,6 +92,17 @@ fun ArCameraView(
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+        onResult = { granted -> hasCameraPermission = granted }
+    )
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
     }
 
     // Animaciones holográficas
@@ -135,15 +147,18 @@ fun ArCameraView(
         if (hasCameraPermission) {
             AndroidView(
                 factory = { ctx ->
-                    val previewView = PreviewView(ctx)
+                    val previewView = PreviewView(ctx).apply {
+                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                        scaleType = PreviewView.ScaleType.FILL_CENTER
+                    }
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                     cameraProviderFuture.addListener({
-                        val cameraProvider = cameraProviderFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
-                        }
-                        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
                         try {
+                            val cameraProvider = cameraProviderFuture.get()
+                            val preview = Preview.Builder().build().also {
+                                it.setSurfaceProvider(previewView.surfaceProvider)
+                            }
+                            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
                             cameraProvider.unbindAll()
                             cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
                         } catch (e: Exception) {
@@ -155,16 +170,39 @@ fun ArCameraView(
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            // Fondo sintético táctico si no tiene permiso de cámara aún
+            // Mensaje para solicitar permiso de cámara
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(Color(0xFF0C2218), Color(0xFF040A07)),
-                        ),
-                    ),
-            )
+                    .background(Color(0xFF07140E)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(24.dp),
+                ) {
+                    Text(
+                        "📷 PERMISO DE CÁMARA REQUERIDO",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Text(
+                        "Para ver a las personas atrapadas en Realidad Aumentada estilo Pokémon GO, concede el permiso de cámara.",
+                        color = Color(0xFFA0C4A0),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    Button(
+                        onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFCC), contentColor = Color.Black),
+                    ) {
+                        Text("ACTIVAR CÁMARA AR", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
 
         // 2. Capa de Realidad Aumentada Holográfica (Canvas 3D)
@@ -546,6 +584,54 @@ private fun DrawScope.drawArTargetHologram(
         start = Offset(sx, sy),
         end = Offset(sx, sy - beamHeight),
         strokeWidth = (3.5f * perspectiveScale).coerceIn(2.0f, 6.0f),
+    )
+
+    // Etiqueta flotante 3D encima del objetivo
+    val paintBg = android.graphics.Paint().apply {
+        this.color = if (isLocked) android.graphics.Color.argb(220, 0, 40, 25) else android.graphics.Color.argb(220, 10, 25, 18)
+        this.style = android.graphics.Paint.Style.FILL
+        this.isAntiAlias = true
+    }
+    val paintText = android.graphics.Paint().apply {
+        this.color = if (isLocked) android.graphics.Color.parseColor("#00FFCC") else android.graphics.Color.WHITE
+        this.textSize = (32f * perspectiveScale).coerceIn(18f, 44f)
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+        this.textAlign = android.graphics.Paint.Align.CENTER
+        this.isAntiAlias = true
+    }
+    val paintSub = android.graphics.Paint().apply {
+        this.color = android.graphics.Color.parseColor("#FFCC00")
+        this.textSize = (24f * perspectiveScale).coerceIn(14f, 32f)
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.NORMAL)
+        this.textAlign = android.graphics.Paint.Align.CENTER
+        this.isAntiAlias = true
+    }
+
+    val labelY = sy - diamondRadius - (20f * perspectiveScale)
+    val textLine1 = "${victim.label} (~${"%.2f".format(victim.distance)}m)"
+    val textLine2 = "⬇ Profundidad: ${"%.2f".format(kotlin.math.abs(victim.depth))}m"
+
+    val badgeWidth = (260f * perspectiveScale).coerceIn(160f, 380f)
+    val badgeHeight = (70f * perspectiveScale).coerceIn(44f, 95f)
+
+    drawContext.canvas.nativeCanvas.drawRoundRect(
+        sx - badgeWidth / 2f,
+        labelY - badgeHeight,
+        sx + badgeWidth / 2f,
+        labelY,
+        16f, 16f, paintBg
+    )
+    drawContext.canvas.nativeCanvas.drawText(
+        textLine1,
+        sx,
+        labelY - badgeHeight * 0.52f,
+        paintText
+    )
+    drawContext.canvas.nativeCanvas.drawText(
+        textLine2,
+        sx,
+        labelY - badgeHeight * 0.16f,
+        paintSub
     )
 }
 
