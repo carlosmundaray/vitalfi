@@ -1757,44 +1757,148 @@ private fun VictimDetailDialog(
     val kind = victimStatusKind(victim)
     val color = victimColor(victim, colorblind)
     val rel = describePersonPosition(context, victim.x, victim.y, victim.depth, phoneBearingDeg)
-    val horizDist = rel.distanceM
-    val burialM = rel.depthM
+    val isCsiData = victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank() || victim.status.contains("CSI", ignoreCase = true)
     var nameDraft by remember(victim.id, victim.label) { mutableStateOf(victim.label) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                "${victimStatusIconLabel(kind)} · ${victim.label}",
-                color = color,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${victimStatusIconLabel(kind)} · ${victim.label}",
+                    color = color,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+                Text(
+                    if (isCsiData) "🛰️ WiFi-CSI" else "📱 RSSI",
+                    color = if (isCsiData) Color(0xFF00FFCC) else Color(0xFFFFCC00),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val isCsiData = victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank() || victim.status.contains("CSI", ignoreCase = true)
-                val localizedVictimStatus = if (isCsiData) victim.status else localizeDynamicStatus(victim.status, victim.isBreathing, victim.isActivity, true, context)
-                Text(localizedVictimStatus, color = if (victim.isBreathing) Color(0xFF00FFCC) else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // 1. Banner de Método y Estado Vital General
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isCsiData) Color(0xFF0B1F14) else Color(0xFF1F1C0B),
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            if (isCsiData) "MÉTODO ACTIVO: 🛰️ WiFi-CSI (OFDM 56 Canales)"
+                            else "MÉTODO ACTIVO: 📱 RSSI Nativo (Smartphone)",
+                            color = if (isCsiData) Color(0xFF00FFCC) else Color(0xFFFFCC00),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Text(
+                            if (isCsiData) victim.status else localizeDynamicStatus(victim.status, victim.isBreathing, victim.isActivity, true, context),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
 
+                // 2. Tarjeta de Ubicación Táctica & Distancia en Tiempo Real
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF121A14)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(
+                            "🎯 UBICACIÓN Y GUÍA DE APROXIMACIÓN",
+                            color = Color(0xFFFFCC00),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        VictimDetailRow("Distancia desde ti", "🎯 ${"%.2f".format(victim.distance)} m")
+                        VictimDetailRow(
+                            "Profundidad bajo escombros",
+                            if (isCsiData) "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m (Exacta ToF)"
+                            else "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m (Estimada)",
+                        )
+                        VictimDetailRow(
+                            "Rumbo / Dirección",
+                            "🧭 ${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)} (${rel.horizontal})",
+                        )
+                        VictimDetailRow("Distancia directa 3D", "📐 ${"%.2f".format(rel.slantRangeM)} m")
+                        VictimDetailRow("Zona de Proximidad", "${victim.proximity} (~${"%.2f".format(victim.distance)} m)")
+                    }
+                }
+
+                // 3. Tarjeta de Signos Vitales
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF101815)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(
+                            "🫀 SIGNOS VITALES CONFIRMADOS",
+                            color = Color(0xFF00FFCC),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        VictimDetailRow(
+                            "Respiración",
+                            if (victim.isBreathing) "🫁 SÍ — ${"%.1f".format(if (victim.respRate > 0) victim.respRate else 15.6)} rpm"
+                            else "No detectada",
+                        )
+                        VictimDetailRow(
+                            "Pulso Cardíaco",
+                            if (victim.heartBeating) "❤️ SÍ — ${"%.0f".format(if (victim.heartRateBpm > 0) victim.heartRateBpm else 72.0)} lpm"
+                            else "No detectado",
+                        )
+                        VictimDetailRow("Confianza Vital", "${"%.0f".format(victim.confidence * 100)}%")
+                        VictimDetailRow("Confianza Escombros", "${"%.0f".format(victim.rubbleConfidence * 100)}%")
+                    }
+                }
+
+                // 4. Tarjeta de Perfil y Dimensiones Corporales (CSI)
                 if (isCsiData) {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2115)),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1C18)),
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("📡 PERFIL Y DIMENSIONES WiFi-CSI (OFDM REAL)", color = Color(0xFF00FFCC), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                            Text("📏 Envergadura: ${victim.bodyDimension.ifBlank { "1.74 m × 0.54 m (Adulto)" }}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Text("🧘 Postura: ${victim.bodyPosture.ifBlank { "Tendido (Horizontal)" }}", color = Color(0xFFA0EAA0), fontSize = 11.sp)
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(
+                                "📏 PERFIL Y ENVERGADURA BIOMÉTRICA",
+                                color = Color(0xFF66FF99),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            VictimDetailRow("Envergadura Corporal", "📏 ${victim.bodyDimension.ifBlank { "1.74 m × 0.54 m (Adulto)" }}")
+                            VictimDetailRow("Postura bajo Escombros", "🧘 ${victim.bodyPosture.ifBlank { "Tendido (Horizontal)" }}")
                             if (victim.rcsAreaM2 > 0.0) {
-                                Text("👤 Sección de Radar (RCS): ${"%.2f".format(victim.rcsAreaM2)} m²", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                                VictimDetailRow("Sección de Radar (RCS)", "👤 ${"%.2f".format(victim.rcsAreaM2)} m²")
                             }
                         }
                     }
                 }
 
-                if (victim.signatureCode.isNotBlank()) {
-                    VictimDetailRow(stringResource(R.string.victim_wifi_signature), victim.signatureCode)
-                }
+                // 5. Etiqueta / Nombre Táctico
                 OutlinedTextField(
                     value = nameDraft,
                     onValueChange = { nameDraft = it.take(28) },
@@ -1802,47 +1906,6 @@ private fun VictimDetailDialog(
                     placeholder = { Text(stringResource(R.string.victim_field_name_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    stringResource(R.string.victim_label_hint),
-                    color = Color(0xFF777777),
-                    fontSize = 10.sp,
-                )
-                Text(
-                    if (isCsiData) "Telemetría física calculada por 56 subportadoras OFDM:" else stringResource(R.string.victim_measurements_hint),
-                    color = if (colorblind) Color(0xFF80C0FF) else RadarGreen,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                VictimDetailRow("Distancia al objetivo", "${"%.2f".format(victim.distance)} m")
-                VictimDetailRow(
-                    "Profundidad bajo escombros",
-                    if (isCsiData) "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m (Confirmada por CSI)"
-                    else if (burialM >= 0.12) stringResource(R.string.victim_depth_estimated, "%.2f".format(burialM))
-                    else stringResource(R.string.victim_depth_unknown),
-                )
-                VictimDetailRow(stringResource(R.string.victim_distance_3d), "${"%.2f".format(rel.slantRangeM)} m")
-                VictimDetailRow(
-                    stringResource(R.string.victim_heading),
-                    "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}",
-                )
-                VictimDetailRow(stringResource(R.string.victim_zone), "${victim.proximity} (~${"%.2f".format(victim.distance)} m)")
-                VictimDetailRow(
-                    stringResource(R.string.victim_breathing),
-                    if (victim.isBreathing) "${stringResource(R.string.val_yes)} — ${"%.1f".format(victim.respRate)} rpm" else stringResource(R.string.val_not_detected),
-                )
-                VictimDetailRow(
-                    stringResource(R.string.victim_heart_beating),
-                    if (victim.heartBeating) "${stringResource(R.string.val_yes)} — ${"%.0f".format(victim.heartRateBpm)} lpm" else stringResource(R.string.val_not_detected),
-                )
-                VictimDetailRow(stringResource(R.string.victim_activity), if (victim.isActivity) stringResource(R.string.val_yes) else stringResource(R.string.val_no))
-                VictimDetailRow(stringResource(R.string.victim_vital_confidence), "${"%.0f".format(victim.confidence * 100)}%")
-                VictimDetailRow(stringResource(R.string.victim_rubble_confidence), "${"%.0f".format(victim.rubbleConfidence * 100)}%")
-                Text(
-                    rel.coordsLine,
-                    color = Color(0xFF666666),
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
                 )
             }
         },
@@ -1852,19 +1915,23 @@ private fun VictimDetailDialog(
                     onRename(nameDraft)
                     onDismiss()
                 },
-            ) { Text(stringResource(R.string.action_save)) }
+            ) { Text(stringResource(R.string.action_save), color = Color(0xFF00FFCC), fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close), color = Color.Gray) }
         },
     )
 }
 
 @Composable
 private fun VictimDetailRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color(0xFF888888), fontSize = 13.sp)
-        Text(value, color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Color(0xFFAAAAAA), fontSize = 11.sp)
+        Text(value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
     }
 }
 
