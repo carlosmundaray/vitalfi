@@ -127,6 +127,10 @@ data class VitalFiUiState(
     val csiBodyPosture: String? = null,
     val csiBodyCategory: String? = null,
     val csiRcsM2: Double? = null,
+    val csiRcsAreaM2: Double? = null,
+    val rfPose: com.vitalfi.ai.RfSkeletonPose? = null,
+    val rfSilhouette: com.vitalfi.ai.RfSilhouetteGrid? = null,
+    val showRfCamera: Boolean = false,
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
@@ -374,6 +378,11 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     fun setOpenWrtRouterIp(ip: String) {
         settingsStore.openWrtRouterIp = ip
         _uiState.value = _uiState.value.copy(openWrtRouterIp = ip)
+    }
+
+    fun toggleRfCamera(show: Boolean? = null) {
+        val next = show ?: !_uiState.value.showRfCamera
+        _uiState.value = _uiState.value.copy(showRfCamera = next)
     }
 
     fun markRubbleZoneAtCurrentBearing() {
@@ -1103,6 +1112,18 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             primary?.rubbleConfidence?.takeIf { it > 0 } ?: rubbleConf
         }
 
+        val (inferredPose, inferredSilhouette) = if (isCsiMode && csiConnected && csiFrame != null) {
+            com.vitalfi.ai.RfVisionAiEngine.infer(
+                csiFrame = csiFrame,
+                vitalState = csiState,
+                respBpm = if (csiBpm > 0) csiBpm else 15.6,
+                heartBpm = if (csiHeartBpm > 0) csiHeartBpm else 72.0,
+                heartBeating = csiConnected,
+            )
+        } else {
+            Pair(null, null)
+        }
+
         _uiState.value = prev.copy(
             ssid = ssid,
             rssiDbm = rssi,
@@ -1163,6 +1184,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             csiBodyPosture = if (csiConnected) csiFrame?.bodyPosture else null,
             csiBodyCategory = if (csiConnected) csiFrame?.bodyCategory else null,
             csiRcsM2 = if (csiConnected) csiFrame?.rcsAreaM2 else null,
+            csiRcsAreaM2 = if (csiConnected) csiFrame?.rcsAreaM2 else null,
+            rfPose = inferredPose,
+            rfSilhouette = inferredSilhouette,
         )
     }
 

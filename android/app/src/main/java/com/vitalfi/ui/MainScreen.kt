@@ -141,6 +141,7 @@ fun MainScreen(
     onSetTrappedOnlyMode: (Boolean) -> Unit,
     onSetSensingEngineMode: (SensingEngineMode) -> Unit = {},
     onSetOpenWrtUdpPort: (Int) -> Unit = {},
+    onToggleRfCamera: () -> Unit = {},
     onMarkRubbleZone: () -> Unit,
     onClearRubbleZone: () -> Unit,
     onExcludeRescuer: () -> Unit,
@@ -301,15 +302,26 @@ fun MainScreen(
                     leadingIcon = { Icon(Icons.Default.ViewInAr, null) },
                 )
                 Button(
+                    onClick = onToggleRfCamera,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (state.showRfCamera) Cyan else Color(0xFF132B1E),
+                        contentColor = if (state.showRfCamera) Color.Black else Color(0xFF00FFCC),
+                    ),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text("📹 CÁMARA RF", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                }
+                Button(
                     onClick = onReset,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
-                    Text(stringResource(R.string.action_reset), fontSize = 12.sp)
+                    Text(stringResource(R.string.action_reset), fontSize = 11.sp)
                 }
-                Button(onClick = onExportCsv) {
+                Button(onClick = onExportCsv, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
                     Icon(Icons.Default.Download, null)
-                    Text(" " + stringResource(R.string.action_csv))
+                    Text(" CSV", fontSize = 11.sp)
                 }
             }
 
@@ -465,6 +477,13 @@ fun MainScreen(
             onRadarLayersSoloPersona = onRadarLayersSoloPersona,
             onRadarLayersTodo = onRadarLayersTodo,
             onRadarLayersModoRescate = onRadarLayersModoRescate,
+        )
+    }
+
+    if (state.showRfCamera) {
+        RfCameraView(
+            state = state,
+            onClose = onToggleRfCamera,
         )
     }
 }

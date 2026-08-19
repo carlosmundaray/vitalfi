@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
                         onSetTrappedOnlyMode = { viewModel.setTrappedOnlyMode(it) },
                         onSetSensingEngineMode = { viewModel.setSensingEngineMode(it) },
                         onSetOpenWrtUdpPort = { viewModel.setOpenWrtUdpPort(it) },
+                        onToggleRfCamera = { viewModel.toggleRfCamera() },
                         onMarkRubbleZone = { viewModel.markRubbleZoneAtCurrentBearing() },
                         onClearRubbleZone = { viewModel.clearRubbleZone() },
                         onExcludeRescuer = { viewModel.excludeRescuerAtCurrentBearing() },
