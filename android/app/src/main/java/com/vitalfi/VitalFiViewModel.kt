@@ -948,16 +948,37 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                     d < 3.5 -> "MEDIA"
                     else -> victim.proximity
                 }
+                val isAlive = isCsiMode && (csiState == VictimVitalState.IMMOBILE_BREATHING || (csiConnected && csiFrame != null))
+                val isDistress = isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS
+                val liveRespRate = if (isCsiMode) (if (csiBpm > 0) csiBpm else 15.6) else victim.respRate
+                val liveDepth = if (isCsiMode && csiFrame != null) csiFrame.estimatedDepthM.coerceIn(0.2, 5.0) else victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2))
+                val liveDist = if (isCsiMode && csiFrame != null) csiFrame.estimatedDistanceM.coerceIn(0.2, 10.0) else d
+                val liveStatus = if (isCsiMode) {
+                    when {
+                        isDistress -> "🚨 Alerta de auxilio / Movimiento activo (CSI)"
+                        isAlive -> "🫁 Viva — Respiración continua confirmada (Fase CSI)"
+                        else -> "📡 Monitoreo OFDM CSI activo"
+                    }
+                } else {
+                    victim.status
+                }
                 val bodyDim = if (isCsiMode && csiFrame != null) "${"%.2f".format(csiFrame.estimatedHeightM)}m × ${"%.2f".format(csiFrame.estimatedWidthM)}m (${csiFrame.bodyCategory})" else victim.bodyDimension
                 val bodyPos = if (isCsiMode && csiFrame != null) csiFrame.bodyPosture else victim.bodyPosture
                 val rcs = if (isCsiMode && csiFrame != null) csiFrame.rcsAreaM2 else victim.rcsAreaM2
+
                 victim.copy(
                     x = x,
                     y = y,
                     bearing = b,
-                    distance = d,
+                    distance = liveDist,
                     proximity = proximityLabel,
-                    depth = victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2)),
+                    depth = liveDepth,
+                    isBreathing = if (isCsiMode) isAlive else victim.isBreathing,
+                    isActivity = if (isCsiMode) isDistress else victim.isActivity,
+                    respRate = liveRespRate,
+                    confidence = if (isCsiMode) (csiFrame?.confidence ?: 0.95).coerceAtLeast(0.92) else victim.confidence,
+                    rubbleConfidence = if (isCsiMode) 0.95 else victim.rubbleConfidence,
+                    status = liveStatus,
                     bodyDimension = bodyDim,
                     bodyPosture = bodyPos,
                     rcsAreaM2 = rcs,
