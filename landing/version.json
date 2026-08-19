@@ -5,6 +5,6 @@
   "forceUpdate": false,
   "releaseDate": "2026-08-19",
   "apkUrl": "releases/VitalFi-v1.3.36-signed.apk",
-  "downloadUrl": "https://vitalfi.org/releases/VitalFi-v1.3.36-signed.apk",
+  "downloadUrl": "https://vitalfi.app/releases/VitalFi-v1.3.36-signed.apk",
   "changelog": "Telemetría WiFi-CSI 100% en tiempo real, dimensionamiento biométrico (envergadura y postura de la víctima), y nuevo modal táctico organizado por tarjetas."
 }
