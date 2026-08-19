@@ -96,6 +96,8 @@ import com.vitalfi.dsp.localizeDynamicHint
 import com.vitalfi.dsp.TrappedVictim
 import com.vitalfi.wifi.ScannedNetwork
 import com.vitalfi.wifi.WifiCollectMode
+import com.vitalfi.wifi.SensingEngineMode
+import com.vitalfi.wifi.VictimVitalState
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -136,6 +138,8 @@ fun MainScreen(
     onCloseRadarFullscreen: () -> Unit,
     onSetAlertSoundEnabled: (Boolean) -> Unit,
     onSetTrappedOnlyMode: (Boolean) -> Unit,
+    onSetSensingEngineMode: (SensingEngineMode) -> Unit = {},
+    onSetOpenWrtUdpPort: (Int) -> Unit = {},
     onMarkRubbleZone: () -> Unit,
     onClearRubbleZone: () -> Unit,
     onExcludeRescuer: () -> Unit,
@@ -252,7 +256,12 @@ fun MainScreen(
                 fontSize = 11.sp,
             )
 
-            ModeSelector(state, onConnectedMode, onPassiveMode)
+            ModeSelector(
+                state = state,
+                onConnected = onConnectedMode,
+                onPassive = onPassiveMode,
+                onSetSensingMode = onSetSensingEngineMode,
+            )
 
             StatusCard(state)
 
@@ -393,6 +402,8 @@ fun MainScreen(
             onSetRubbleZoneRadius = onSetRubbleZoneRadius,
             onSetDefaultWifiMode = onSetDefaultWifiMode,
             onSetColorblindMode = onSetColorblindMode,
+            onSetSensingEngineMode = onSetSensingEngineMode,
+            onSetOpenWrtUdpPort = onSetOpenWrtUdpPort,
             onToggleRadarLayer = onToggleRadarLayer,
             onRadarLayersModoRescate = onRadarLayersModoRescate,
             onRadarLayersSoloPersona = onRadarLayersSoloPersona,
@@ -516,6 +527,8 @@ private fun SettingsDialog(
     onSetRubbleZoneRadius: (Double) -> Unit,
     onSetDefaultWifiMode: (WifiCollectMode) -> Unit,
     onSetColorblindMode: (Boolean) -> Unit,
+    onSetSensingEngineMode: (SensingEngineMode) -> Unit,
+    onSetOpenWrtUdpPort: (Int) -> Unit,
     onToggleRadarLayer: (String) -> Unit,
     onRadarLayersModoRescate: () -> Unit,
     onRadarLayersSoloPersona: () -> Unit,
@@ -548,6 +561,78 @@ private fun SettingsDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // —— Motor de Detección & Hardware ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_sensing_mode))
+                Text(
+                    stringResource(R.string.settings_sensing_mode_title),
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                        stringResource(R.string.settings_sensing_mode_csi_desc)
+                    } else {
+                        stringResource(R.string.settings_sensing_mode_rssi_desc)
+                    },
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = { onSetSensingEngineMode(SensingEngineMode.RSSI_NATIVE) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE) Cyan else Color(0xFF1A2A1A),
+                            contentColor = if (state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE) Color.Black else Color(0xFFAACCAA),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        Text(stringResource(R.string.settings_sensing_mode_rssi), fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = { onSetSensingEngineMode(SensingEngineMode.CSI_OPENWRT) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) Cyan else Color(0xFF1A2A1A),
+                            contentColor = if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) Color.Black else Color(0xFFAACCAA),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        Text(stringResource(R.string.settings_sensing_mode_csi), fontSize = 11.sp)
+                    }
+                }
+                if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.settings_csi_udp_port),
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            stringResource(R.string.settings_csi_udp_port_hint),
+                            color = Color(0xFF888888),
+                            fontSize = 11.sp,
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            listOf(5500, 5555, 8080).forEach { port ->
+                                FilterChip(
+                                    selected = state.openWrtUdpPort == port,
+                                    onClick = { onSetOpenWrtUdpPort(port) },
+                                    label = { Text("Port $port") },
+                                )
+                            }
+                        }
+                    }
+                }
                 // —— Idioma ——
                 SettingsSectionTitle(stringResource(R.string.settings_section_language))
                 Text(
@@ -1103,20 +1188,118 @@ private fun ModeSelector(
     state: VitalFiUiState,
     onConnected: () -> Unit,
     onPassive: () -> Unit,
+    onSetSensingMode: (SensingEngineMode) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-            selected = state.collectMode == WifiCollectMode.CONNECTED,
-            onClick = onConnected,
-            label = { Text(stringResource(R.string.mode_connected)) },
-            leadingIcon = { Icon(Icons.Default.Wifi, null) },
-        )
-        FilterChip(
-            selected = state.collectMode == WifiCollectMode.PASSIVE_SCAN,
-            onClick = onPassive,
-            label = { Text(stringResource(R.string.mode_passive)) },
-            leadingIcon = { Icon(Icons.Default.WifiFind, null) },
-        )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF101912), RoundedCornerShape(12.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Selector Principal de Motor de Sensado (Tarjetas grandes táctiles)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val isRssi = state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE
+            val isCsi = state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT
+
+            Card(
+                onClick = { onSetSensingMode(SensingEngineMode.RSSI_NATIVE) },
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isRssi) Color(0xFF1B3822) else Color(0xFF141F16),
+                ),
+                shape = RoundedCornerShape(10.dp),
+                border = if (isRssi) androidx.compose.foundation.BorderStroke(1.5.dp, Cyan) else null,
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("📱", fontSize = 16.sp)
+                        Text(
+                            "RSSI Local",
+                            color = if (isRssi) Cyan else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    Text(
+                        "Solo Smartphone (Sin router)",
+                        color = Color(0xFFA0BBA0),
+                        fontSize = 10.sp,
+                    )
+                }
+            }
+
+            Card(
+                onClick = { onSetSensingMode(SensingEngineMode.CSI_OPENWRT) },
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isCsi) Color(0xFF1B3822) else Color(0xFF141F16),
+                ),
+                shape = RoundedCornerShape(10.dp),
+                border = if (isCsi) androidx.compose.foundation.BorderStroke(1.5.dp, Cyan) else null,
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("🛰️", fontSize = 16.sp)
+                        Text(
+                            "CSI Router",
+                            color = if (isCsi) Cyan else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    Text(
+                        if (state.csiConnected) "🟢 Conectado (${state.csiPacketRateHz.toInt()} Hz)" else "OpenWrt (UDP ${state.openWrtUdpPort})",
+                        color = if (state.csiConnected) Color(0xFF66FF99) else Color(0xFFFFCC00),
+                        fontSize = 10.sp,
+                        fontWeight = if (state.csiConnected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
+
+        // Sub-opciones cuando está en modo RSSI (Conectado vs Escaneo pasivo)
+        if (state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Modo Wi-Fi:",
+                    color = Color(0xFF88AA88),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                FilterChip(
+                    selected = state.collectMode == WifiCollectMode.CONNECTED,
+                    onClick = onConnected,
+                    label = { Text(stringResource(R.string.mode_connected), fontSize = 11.sp) },
+                    leadingIcon = { Icon(Icons.Default.Wifi, null, modifier = Modifier.size(14.dp)) },
+                )
+                FilterChip(
+                    selected = state.collectMode == WifiCollectMode.PASSIVE_SCAN,
+                    onClick = onPassive,
+                    label = { Text(stringResource(R.string.mode_passive), fontSize = 11.sp) },
+                    leadingIcon = { Icon(Icons.Default.WifiFind, null, modifier = Modifier.size(14.dp)) },
+                )
+            }
+        }
     }
 }
 
@@ -1305,78 +1488,151 @@ private fun StatusCard(state: VitalFiUiState) {
         state.calibrating -> Color(0xFFFFCC00)
         else -> Cyan
     }
-    val modeLabel = when (state.collectMode) {
-        WifiCollectMode.CONNECTED -> stringResource(R.string.status_wifi_connected_label)
-        WifiCollectMode.PASSIVE_SCAN -> stringResource(R.string.status_wifi_passive_label)
-    }
-    val wifiStateStr = if (state.wifiEnabled) stringResource(R.string.status_wifi_active) else stringResource(R.string.status_wifi_disabled)
-    val monitoringStr = if (state.monitoring) stringResource(R.string.status_monitoring_yes) else stringResource(R.string.status_monitoring_no)
-    val withoutInternetStr = if (state.wifiWithoutInternet) " " + stringResource(R.string.status_without_internet) else ""
     val localizedStatus = localizeDynamicStatus(state.status, state.isBreathing, state.isActivity, state.wifiEnabled, context)
     val localizedHint = localizeDynamicHint(state.hint, context)
     val localizedProx = localizeDynamicProximity(state.proximity, context)
-    val mlStatusStr = if (state.mlReady) stringResource(R.string.ml_status_active) else stringResource(R.string.ml_status_disabled)
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF121A12)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A13)),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E3322)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.status_network, state.ssid.ifBlank { "—" }, modeLabel), color = Color.White, fontSize = 13.sp)
-            Text(
-                "Wi-Fi: $wifiStateStr | Monitoreo: $monitoringStr$withoutInternetStr | ${state.compassLabel}",
-                color = Color(0xFF888888),
-                fontSize = 11.sp,
-            )
-            Text("RSSI: ${state.rssiDbm?.let { "$it dBm" } ?: "—"}", color = Color(0xFFAAAAAA), fontSize = 12.sp)
-            Text(
-                mlStatusStr,
-                color = if (state.mlReady) Color(0xFF66FF99) else Color(0xFF777777),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-            )
-            Text(localizedStatus, color = statusColor, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-            if (state.calibrating) {
-                Text(stringResource(R.string.status_calibrating, state.calibRemainingSec), color = Color(0xFFFFCC00), fontSize = 12.sp)
-            }
-            if (state.rubbleConfidence > 0.05 && !state.calibrating) {
+        Column(
+            Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Fila 1: Red y Estado Técnico Sutil
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    stringResource(R.string.status_rubble_confidence, (state.rubbleConfidence * 100).roundToInt()),
-                    color = if (state.isBreathing) Red else Orange,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
+                    text = "${state.ssid.ifBlank { "Red Local" }} (${state.rssiDbm?.let { "$it dBm" } ?: "—"})",
+                    color = Color(0xFFA0BBA0),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
                 )
-            }
-            if (state.victims.isNotEmpty()) {
                 Text(
-                    stringResource(R.string.status_victims_count, state.victims.size),
-                    color = RadarGreen,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-            Text(localizedHint, color = Color(0xFFAAAAAA), fontSize = 12.sp)
-            if (state.isBreathing || state.isActivity || state.heartBeating || state.position != null) {
-                Text(
-                    stringResource(
-                        R.string.status_vitals_summary,
-                        if (state.isBreathing) stringResource(R.string.val_yes) else stringResource(R.string.val_no),
-                        "%.0f".format(state.respRate),
-                        if (state.heartBeating) stringResource(R.string.val_yes) else stringResource(R.string.val_no),
-                        "%.0f".format(state.heartRateBpm),
-                        "%.0f".format(state.confidence * 100),
-                        localizedProx,
-                    ),
-                    color = Color.White,
-                    fontSize = 12.sp,
+                    text = "${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)} · ${state.compassLabel}",
+                    color = Cyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                 )
             }
-            Text(
-                stringResource(R.string.status_samples_bearing, state.sampleCount, state.maxSamples, state.bearingDeg.roundToInt(), bearingToCardinal(state.bearingDeg)),
-                color = Color(0xFF666666),
-                fontSize = 11.sp,
-            )
+
+            // Fila 2: Estado Vital Principal (Hero Banner)
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        state.isBreathing -> Color(0xFF2A151C)
+                        state.isActivity -> Color(0xFF2C1E10)
+                        state.calibrating -> Color(0xFF242210)
+                        else -> Color(0xFF132417)
+                    },
+                ),
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    statusColor.copy(alpha = 0.6f),
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        val icon = when {
+                            state.isBreathing -> "🫁"
+                            state.isActivity -> "🚨"
+                            state.calibrating -> "⏳"
+                            else -> "🟢"
+                        }
+                        Text(icon, fontSize = 16.sp)
+                        Text(
+                            text = localizedStatus,
+                            color = statusColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                        )
+                    }
+                    Text(
+                        text = if (state.calibrating) {
+                            stringResource(R.string.status_calibrating, state.calibRemainingSec)
+                        } else {
+                            localizedHint
+                        },
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+
+            // Fila 3: Grid de Métricas Clave (3 Tarjetas pequeñas)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // Confianza
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162418)),
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Confianza", color = Color(0xFF88AA88), fontSize = 10.sp)
+                        Text(
+                            "${(state.confidence * 100).roundToInt()}%",
+                            color = if (state.confidence > 0.6) Cyan else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+
+                // Proximidad / Distancia
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162418)),
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Proximidad", color = Color(0xFF88AA88), fontSize = 10.sp)
+                        Text(
+                            localizedProx,
+                            color = Color(0xFFFFCC00),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                        )
+                    }
+                }
+
+                // Escombros
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162418)),
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Escombros", color = Color(0xFF88AA88), fontSize = 10.sp)
+                        Text(
+                            "${(state.rubbleConfidence * 100).roundToInt()}%",
+                            color = if (state.rubbleConfidence > 0.4) Color(0xFFFF9966) else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
         }
     }
 }

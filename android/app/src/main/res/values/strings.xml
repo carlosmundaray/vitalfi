@@ -231,7 +231,20 @@
     <string name="radar_mode_rescue">MODO RESCATE</string>
     <string name="radar_status_searching">BUSCANDO…</string>
     <string name="waiting_wifi_signal">Esperando señal Wi-Fi (dBm)...</string>
-    <string name="permission_location_needed">VitalFi necesita permiso de ubicación para leer señal Wi-Fi</string>
+    <string name="permission_location_needed">VitalFi needs location permission to scan Wi-Fi signals</string>
     <string name="share_error">No se pudo compartir: %1$s</string>
     <string name="share_chooser_title">Compartir CSV VitalFi</string>
+    <string name="settings_section_sensing_mode">Sensing Engine &amp; Hardware</string>
+    <string name="settings_sensing_mode_title">Detection Mode</string>
+    <string name="settings_sensing_mode_rssi">📱 Native RSSI (2 States)</string>
+    <string name="settings_sensing_mode_rssi_desc">Phone standalone. Detects clear area or macro movement/activity.</string>
+    <string name="settings_sensing_mode_csi">📡 OpenWrt CSI (3 States)</string>
+    <string name="settings_sensing_mode_csi_desc">OpenWrt router UDP stream. Detects breathing of immobile victims &amp; distress.</string>
+    <string name="settings_csi_udp_port">CSI UDP Port</string>
+    <string name="settings_csi_udp_port_hint">UDP port for OpenWrt CSI packets (default 5500)</string>
+    <string name="csi_badge_connected">CSI: %1$.0f pkt/s</string>
+    <string name="csi_badge_waiting">CSI: Listening :%1$d</string>
+    <string name="vital_state_clear">Clear (No life detected)</string>
+    <string name="vital_state_breathing">Victim Breathing (~%1$.0f rpm)</string>
+    <string name="vital_state_distress">DISTRESS / CALL FOR HELP</string>
 </resources>

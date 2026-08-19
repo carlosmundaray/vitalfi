@@ -100,6 +100,31 @@ class SettingsStore(context: Context) {
             prefs.edit().putString(KEY_APP_LANGUAGE, value).apply()
         }
 
+    /** Modo de motor de detección: RSSI_NATIVE o CSI_OPENWRT */
+    var sensingEngineMode: com.vitalfi.wifi.SensingEngineMode
+        get() {
+            val raw = prefs.getString(KEY_SENSING_ENGINE_MODE, com.vitalfi.wifi.SensingEngineMode.RSSI_NATIVE.name)
+            return runCatching { com.vitalfi.wifi.SensingEngineMode.valueOf(raw ?: "") }
+                .getOrDefault(com.vitalfi.wifi.SensingEngineMode.RSSI_NATIVE)
+        }
+        set(value) {
+            prefs.edit().putString(KEY_SENSING_ENGINE_MODE, value.name).apply()
+        }
+
+    /** Puerto UDP de recepción de tramas CSI desde el router OpenWrt (default: 5500). */
+    var openWrtUdpPort: Int
+        get() = prefs.getInt(KEY_OPENWRT_UDP_PORT, 5500)
+        set(value) {
+            prefs.edit().putInt(KEY_OPENWRT_UDP_PORT, value).apply()
+        }
+
+    /** IP del router OpenWrt o filtro (opcional). */
+    var openWrtRouterIp: String
+        get() = prefs.getString(KEY_OPENWRT_ROUTER_IP, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_OPENWRT_ROUTER_IP, value).apply()
+        }
+
     fun loadRadarLayers(): RadarLayers = RadarLayers(
         grid = prefs.getBoolean(KEY_LAYER_GRID, true),
         compass = prefs.getBoolean(KEY_LAYER_COMPASS, true),
@@ -141,6 +166,9 @@ class SettingsStore(context: Context) {
         private const val KEY_DEFAULT_WIFI_MODE = "default_wifi_mode"
         private const val KEY_COLORBLIND = "colorblind_mode"
         private const val KEY_APP_LANGUAGE = "app_language"
+        private const val KEY_SENSING_ENGINE_MODE = "sensing_engine_mode"
+        private const val KEY_OPENWRT_UDP_PORT = "openwrt_udp_port"
+        private const val KEY_OPENWRT_ROUTER_IP = "openwrt_router_ip"
         private const val KEY_LAYER_GRID = "radar_layer_grid"
         private const val KEY_LAYER_COMPASS = "radar_layer_compass"
         private const val KEY_LAYER_WIFI = "radar_layer_wifi"

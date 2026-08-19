@@ -30,6 +30,9 @@ import com.vitalfi.wifi.ScannedNetwork
 import com.vitalfi.wifi.WifiCollectMode
 import com.vitalfi.wifi.WifiCoverageEstimator
 import com.vitalfi.wifi.WifiRssiCollector
+import com.vitalfi.wifi.SensingEngineMode
+import com.vitalfi.wifi.VictimVitalState
+import com.vitalfi.csi.CsiUdpCollector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -107,6 +110,19 @@ data class VitalFiUiState(
     val forceUpdateInfo: com.vitalfi.update.UpdateInfo? = null,
     /** Sectores del entorno RF medidos con datos reales (RSSI + brújula). */
     val environmentCells: List<EnvironmentCell> = emptyList(),
+    /** Modo de motor de detección: RSSI nativo o CSI OpenWrt. */
+    val sensingEngineMode: SensingEngineMode = SensingEngineMode.RSSI_NATIVE,
+    val openWrtUdpPort: Int = 5500,
+    val openWrtRouterIp: String = "",
+    val csiPacketRateHz: Double = 0.0,
+    val csiConnected: Boolean = false,
+    val vitalBreathingBpm: Double = 0.0,
+    val victimVitalState: VictimVitalState = VictimVitalState.CLEAR,
+    val csiDistanceM: Double? = null,
+    val csiAoADeg: Double? = null,
+    val csiDepthM: Double? = null,
+    val csiSubcarriers: List<Float> = emptyList(),
+    val csiRespirationWave: List<Float> = emptyList(),
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
@@ -161,9 +177,14 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             },
             colorblindMode = settingsStore.colorblindMode,
             appLanguage = settingsStore.appLanguage,
+            sensingEngineMode = settingsStore.sensingEngineMode,
+            openWrtUdpPort = settingsStore.openWrtUdpPort,
+            openWrtRouterIp = settingsStore.openWrtRouterIp,
         ),
     )
     val uiState: StateFlow<VitalFiUiState> = _uiState.asStateFlow()
+
+    private val csiCollector = CsiUdpCollector(settingsStore.openWrtUdpPort)
 
     private var analysisJob: Job? = null
     private var running = false
@@ -184,6 +205,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         barometer.start()
         if (collector.mode == WifiCollectMode.CONNECTED || !collector.targetSsid.isNullOrBlank()) {
             collector.start(viewModelScope)
+        }
+        if (settingsStore.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+            csiCollector.start(settingsStore.openWrtUdpPort)
         }
         if (rubbleTracker.calibrating) {
             rubbleTracker.begin(System.currentTimeMillis())
@@ -228,6 +252,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         analysisJob?.cancel()
         compassJob?.cancel()
         collector.stop()
+        csiCollector.stop()
         compass.stop()
         walkSteps.stop()
         barometer.stop()
@@ -301,6 +326,39 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             WifiCollectMode.PASSIVE_SCAN -> "PASSIVE_SCAN"
         }
         _uiState.value = _uiState.value.copy(defaultWifiMode = mode)
+    }
+
+    fun setSensingEngineMode(mode: SensingEngineMode) {
+        settingsStore.sensingEngineMode = mode
+        if (mode == SensingEngineMode.CSI_OPENWRT) {
+            if (running) {
+                csiCollector.start(settingsStore.openWrtUdpPort)
+            }
+        } else {
+            csiCollector.stop()
+        }
+        _uiState.value = _uiState.value.copy(
+            sensingEngineMode = mode,
+            toastMessage = if (mode == SensingEngineMode.CSI_OPENWRT) {
+                "Modo CSI OpenWrt activado (Puerto UDP ${settingsStore.openWrtUdpPort})"
+            } else {
+                "Modo RSSI Nativo activado"
+            },
+        )
+    }
+
+    fun setOpenWrtUdpPort(port: Int) {
+        val clamped = port.coerceIn(1024, 65535)
+        settingsStore.openWrtUdpPort = clamped
+        if (_uiState.value.sensingEngineMode == SensingEngineMode.CSI_OPENWRT && running) {
+            csiCollector.start(clamped)
+        }
+        _uiState.value = _uiState.value.copy(openWrtUdpPort = clamped)
+    }
+
+    fun setOpenWrtRouterIp(ip: String) {
+        settingsStore.openWrtRouterIp = ip
+        _uiState.value = _uiState.value.copy(openWrtRouterIp = ip)
     }
 
     fun markRubbleZoneAtCurrentBearing() {
@@ -909,7 +967,63 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 "${detection.hint} Funciona sin internet."
             else -> detection.hint
         }
-        val hintWithOffline = baseHint
+        val isCsiMode = _uiState.value.sensingEngineMode == SensingEngineMode.CSI_OPENWRT
+        val csiConnected = isCsiMode && csiCollector.isConnected.value
+        val csiPacketRate = if (isCsiMode) csiCollector.packetRateHz.value else 0.0
+        val csiBpm = if (isCsiMode) csiCollector.breathingBpm.value else 0.0
+        val csiState = if (isCsiMode) csiCollector.vitalState.value else VictimVitalState.CLEAR
+        val csiFrame = if (isCsiMode) csiCollector.latestFrame.value else null
+
+        // Reforzar tracker de víctimas con precisión CSI OFDM si hay detección activa
+        if (csiConnected && csiFrame != null && (csiState == VictimVitalState.IMMOBILE_BREATHING || csiState == VictimVitalState.ACTIVE_DISTRESS)) {
+            val csiTargetBearing = (bearing + csiFrame.estimatedAoADeg + 360.0) % 360.0
+            victimTracker.update(
+                bearingDeg = csiTargetBearing,
+                distanceM = csiFrame.estimatedDistanceM,
+                strength = if (csiState == VictimVitalState.ACTIVE_DISTRESS) 0.95 else 0.88,
+                detection = detection.copy(
+                    isBreathing = csiState == VictimVitalState.IMMOBILE_BREATHING,
+                    isActivity = csiState == VictimVitalState.ACTIVE_DISTRESS,
+                    respRate = csiBpm,
+                    confidence = csiFrame.confidence,
+                ),
+                rubbleConf = max(rubbleConf, 0.75),
+                nowMs = now,
+            )
+        }
+
+        val finalBreathing = if (csiConnected && csiState == VictimVitalState.IMMOBILE_BREATHING) {
+            true
+        } else {
+            primary?.isBreathing ?: isBreathing
+        }
+
+        val finalActivity = if (csiConnected && csiState == VictimVitalState.ACTIVE_DISTRESS) {
+            true
+        } else {
+            primary?.isActivity ?: isActivity
+        }
+
+        val finalRespRate = if (csiConnected && csiBpm > 0) {
+            csiBpm
+        } else {
+            primary?.respRate?.takeIf { it > 0 } ?: detection.respRate
+        }
+
+        val finalStatus = when {
+            isCsiMode && !csiConnected -> "CSI OpenWrt: Esperando tramas en puerto ${_uiState.value.openWrtUdpPort}..."
+            isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS -> "¡ALERTA DE AUXILIO! Movimiento activo en escombros"
+            isCsiMode && csiState == VictimVitalState.IMMOBILE_BREATHING -> "Víctima inmóvil respirando (~${csiBpm.toInt()} rpm)"
+            else -> statusWithRubble
+        }
+
+        val finalHint = when {
+            isCsiMode && !csiConnected -> "Envía el flujo UDP desde tu router OpenWrt (ej: nc -u <IP_MÓVIL> ${_uiState.value.openWrtUdpPort})."
+            isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS -> "Posible llamada de auxilio o persona golpeando escombros."
+            isCsiMode && csiState == VictimVitalState.IMMOBILE_BREATHING -> "Signos vitales continuos confirmados por fase CSI."
+            else -> baseHint
+        }
+
         _uiState.value = prev.copy(
             ssid = ssid,
             rssiDbm = rssi,
@@ -918,15 +1032,15 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             wifiWithoutInternet = wifiWithoutInternet,
             wifiEnabled = wifiEnabled,
             sampleCount = series.size,
-            status = statusWithRubble,
-            hint = hintWithOffline,
-            isBreathing = primary?.isBreathing ?: isBreathing,
-            isActivity = primary?.isActivity ?: isActivity,
-            respRate = primary?.respRate?.takeIf { it > 0 } ?: detection.respRate,
+            status = finalStatus,
+            hint = finalHint,
+            isBreathing = finalBreathing,
+            isActivity = finalActivity,
+            respRate = finalRespRate,
             confidence = primary?.confidence?.takeIf { it > 0 }
-                ?: max(detection.confidence, mlBreathing * 0.85),
+                ?: if (csiConnected && (finalBreathing || finalActivity)) 0.95 else max(detection.confidence, mlBreathing * 0.85),
             rubbleConfidence = primary?.rubbleConfidence?.takeIf { it > 0 } ?: rubbleConf,
-            heartBeating = primary?.heartBeating ?: detection.heartBeating,
+            heartBeating = (primary?.heartBeating ?: detection.heartBeating) || (csiConnected && finalBreathing),
             heartRateBpm = primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm,
             calibrating = rubbleTracker.calibrating,
             calibRemainingSec = rubbleTracker.calibRemainingSec(now),
@@ -958,6 +1072,15 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             filterStatus = if (trappedOnly) classification.reason else null,
             excludedRescuerCount = exclusionTracker.excludedSectorCount(),
             scanningElevationM = elevation,
+            csiConnected = csiConnected,
+            csiPacketRateHz = csiPacketRate,
+            vitalBreathingBpm = csiBpm,
+            victimVitalState = csiState,
+            csiDistanceM = if (csiConnected) csiFrame?.estimatedDistanceM else null,
+            csiAoADeg = if (csiConnected) csiFrame?.estimatedAoADeg else null,
+            csiDepthM = if (csiConnected) csiFrame?.estimatedDepthM else null,
+            csiSubcarriers = if (csiConnected) csiFrame?.subcarrierAmplitudesList ?: emptyList() else emptyList(),
+            csiRespirationWave = if (csiConnected) csiFrame?.respirationWave ?: emptyList() else emptyList(),
         )
     }
 

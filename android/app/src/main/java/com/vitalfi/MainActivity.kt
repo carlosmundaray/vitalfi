@@ -159,6 +159,8 @@ class MainActivity : ComponentActivity() {
                         onCloseRadarFullscreen = { viewModel.closeRadarFullscreen() },
                         onSetAlertSoundEnabled = { viewModel.setAlertSoundEnabled(it) },
                         onSetTrappedOnlyMode = { viewModel.setTrappedOnlyMode(it) },
+                        onSetSensingEngineMode = { viewModel.setSensingEngineMode(it) },
+                        onSetOpenWrtUdpPort = { viewModel.setOpenWrtUdpPort(it) },
                         onMarkRubbleZone = { viewModel.markRubbleZoneAtCurrentBearing() },
                         onClearRubbleZone = { viewModel.clearRubbleZone() },
                         onExcludeRescuer = { viewModel.excludeRescuerAtCurrentBearing() },
