@@ -182,13 +182,16 @@ fun ArCameraView(
                 val screenX = cx + (deltaAngleDeg / (horizontalFovDeg / 2.0)).toFloat() * (w * 0.45f)
                 val screenY = cy + (targetVictim.depth * 40f).toFloat().coerceIn(-120f, 160f)
 
+                // Camino de navegación en el suelo estilo Pokémon GO
+                drawArGroundNavigationTrail(cx, h, screenX, screenY, pulseWave, isLocked)
+
                 // Ondas de Sonar 3D en el suelo / escombros
                 drawArSonarWaves(screenX, screenY, pulseWave, targetVictim.distance.toFloat(), isLocked)
 
-                // Marcador Holográfico tipo Pokémon GO
+                // Marcador Holográfico tipo Pokémon GO con escala de distancia
                 drawArTargetHologram(screenX, screenY, beaconPulse, targetVictim, isLocked)
 
-                // Esqueleto AR superpuesto si hay pose disponible
+                // Esqueleto AR superpuesto escalado por perspectiva
                 state.rfPose?.let { pose ->
                     drawArSkeleton(screenX, screenY, pose, targetVictim.distance.toFloat(), isLocked)
                 }
@@ -428,6 +431,52 @@ private fun DrawScope.drawArCrosshair(cx: Float, cy: Float, isLocked: Boolean) {
     )
 }
 
+private fun DrawScope.drawArGroundNavigationTrail(
+    cx: Float,
+    h: Float,
+    targetX: Float,
+    targetY: Float,
+    progress: Float,
+    isLocked: Boolean,
+) {
+    val trailColor = if (isLocked) Color(0xFF00FFCC) else Color(0xFF00E6B8)
+    val startPt = Offset(cx, h - 20f)
+    val endPt = Offset(targetX, targetY)
+
+    // Línea guía principal con gradiente de profundidad
+    drawLine(
+        brush = Brush.verticalGradient(
+            colors = listOf(trailColor.copy(alpha = 0.15f), trailColor.copy(alpha = 0.75f)),
+            startY = targetY,
+            endY = h,
+        ),
+        start = startPt,
+        end = endPt,
+        strokeWidth = 3.5f,
+        cap = StrokeCap.Round,
+    )
+
+    // Chevrons / Flechas de pasos animados hacia el objetivo
+    val numChevrons = 5
+    for (i in 0 until numChevrons) {
+        val t = ((progress + i.toFloat() / numChevrons) % 1.0f)
+        val curX = startPt.x + (endPt.x - startPt.x) * t
+        val curY = startPt.y + (endPt.y - startPt.y) * t
+        val chevronWidth = 28f * (1.0f - t * 0.45f)
+
+        val path = Path().apply {
+            moveTo(curX - chevronWidth, curY + 12f)
+            lineTo(curX, curY)
+            lineTo(curX + chevronWidth, curY + 12f)
+        }
+        drawPath(
+            path = path,
+            color = trailColor.copy(alpha = (1.0f - t * 0.3f) * 0.85f),
+            style = Stroke(width = 2.5f, cap = StrokeCap.Round),
+        )
+    }
+}
+
 private fun DrawScope.drawArSonarWaves(
     sx: Float,
     sy: Float,
@@ -436,19 +485,19 @@ private fun DrawScope.drawArSonarWaves(
     isLocked: Boolean,
 ) {
     val baseColor = if (isLocked) Color(0xFF00FFCC) else Color(0xFF00E6B8)
-    val scale = (1.0f / (distanceM * 0.6f).coerceIn(0.5f, 3.0f))
-    val maxRadius = 140f * scale
+    val perspectiveScale = (2.2f / distanceM.coerceIn(0.6f, 10.0f)).coerceIn(0.22f, 2.5f)
+    val maxRadius = 160f * perspectiveScale
 
     for (i in 0..2) {
         val p = (progress + i * 0.33f) % 1.0f
         val r = p * maxRadius
-        val alpha = (1.0f - p).coerceIn(0f, 1f) * 0.6f
+        val alpha = (1.0f - p).coerceIn(0f, 1f) * 0.75f
 
         drawOval(
             color = baseColor.copy(alpha = alpha),
             topLeft = Offset(sx - r, sy - r * 0.35f),
             size = Size(r * 2f, r * 0.7f),
-            style = Stroke(width = 2.5f),
+            style = Stroke(width = (3.5f * perspectiveScale).coerceIn(1.5f, 6.0f)),
         )
     }
 }
@@ -461,20 +510,21 @@ private fun DrawScope.drawArTargetHologram(
     isLocked: Boolean,
 ) {
     val color = if (isLocked) Color(0xFF00FFCC) else Color(0xFFFFCC00)
-    val diamondRadius = 26f * pulse
+    val perspectiveScale = (2.2f / victim.distance.toFloat().coerceIn(0.6f, 10.0f)).coerceIn(0.25f, 2.5f)
+    val diamondRadius = 32f * pulse * perspectiveScale
 
-    // Rombo holográfico 3D estilo Pokémon GO
+    // Rombo holográfico 3D con escala de perspectiva dinámica
     val path = Path().apply {
         moveTo(sx, sy - diamondRadius)
-        lineTo(sx + diamondRadius * 0.8f, sy)
+        lineTo(sx + diamondRadius * 0.85f, sy)
         lineTo(sx, sy + diamondRadius)
-        lineTo(sx - diamondRadius * 0.8f, sy)
+        lineTo(sx - diamondRadius * 0.85f, sy)
         close()
     }
     drawPath(
         path = path,
         brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.8f), color.copy(alpha = 0.2f)),
+            colors = listOf(color.copy(alpha = 0.85f), color.copy(alpha = 0.25f)),
             center = Offset(sx, sy),
             radius = diamondRadius,
         ),
@@ -482,19 +532,20 @@ private fun DrawScope.drawArTargetHologram(
     drawPath(
         path = path,
         color = Color.White,
-        style = Stroke(width = 2.5f),
+        style = Stroke(width = (2.8f * perspectiveScale).coerceIn(1.5f, 5.0f)),
     )
 
-    // Haz de luz vertical hacia el cielo
+    // Haz de luz vertical hacia el cielo proporcional a la distancia
+    val beamHeight = 220f * perspectiveScale
     drawLine(
         brush = Brush.verticalGradient(
-            colors = listOf(color.copy(alpha = 0.7f), Color.Transparent),
+            colors = listOf(color.copy(alpha = 0.75f), Color.Transparent),
             startY = sy,
-            endY = sy - 180f,
+            endY = sy - beamHeight,
         ),
         start = Offset(sx, sy),
-        end = Offset(sx, sy - 180f),
-        strokeWidth = 3f,
+        end = Offset(sx, sy - beamHeight),
+        strokeWidth = (3.5f * perspectiveScale).coerceIn(2.0f, 6.0f),
     )
 }
 
@@ -505,8 +556,12 @@ private fun DrawScope.drawArSkeleton(
     distanceM: Float,
     isLocked: Boolean,
 ) {
-    val scale = (1.0f / (distanceM * 0.7f).coerceIn(0.6f, 2.5f)) * 260f
+    val perspectiveScale = (2.2f / distanceM.coerceIn(0.6f, 10.0f)).coerceIn(0.25f, 2.6f)
+    val scale = 220f * perspectiveScale
     val color = if (isLocked) Color(0xFF00FFCC) else Color(0xFF66FF99)
+    val boneWidth = (3.5f * perspectiveScale).coerceIn(1.5f, 6.5f)
+    val jointRadius = (9f * perspectiveScale).coerceIn(3.0f, 16.0f)
+    val headRadius = (20f * perspectiveScale).coerceIn(6.0f, 36.0f)
 
     fun toScreen(kp: RfKeypoint) = Offset(
         sx + (kp.x - 0.5f) * scale,
@@ -538,9 +593,47 @@ private fun DrawScope.drawArSkeleton(
     )
 
     bones.forEach { (start, end) ->
-        drawLine(color.copy(alpha = 0.85f), start, end, strokeWidth = 3.5f, cap = StrokeCap.Round)
+        // Brillo exterior
+        drawLine(
+            color = color.copy(alpha = 0.35f),
+            start = start,
+            end = end,
+            strokeWidth = boneWidth * 2.2f,
+            cap = StrokeCap.Round,
+        )
+        // Núcleo
+        drawLine(
+            color = color.copy(alpha = 0.95f),
+            start = start,
+            end = end,
+            strokeWidth = boneWidth,
+            cap = StrokeCap.Round,
+        )
     }
 
-    drawCircle(color, radius = 12f, center = head, style = Stroke(2f))
-    drawCircle(Color.White, radius = 5f, center = chest)
+    // Articulaciones
+    val joints = listOf(head, neck, lShoulder, rShoulder, lElbow, rElbow, lWrist, rWrist, pelvis, lKnee, rKnee, lAnkle, rAnkle)
+    joints.forEach { pt ->
+        drawCircle(color = Color.White, radius = (jointRadius * 0.45f).coerceAtLeast(1.5f), center = pt)
+        drawCircle(color = color, radius = jointRadius, center = pt, style = Stroke(1.5f))
+    }
+
+    // Cabeza
+    drawCircle(color = color.copy(alpha = 0.25f), radius = headRadius, center = head)
+    drawCircle(color = color, radius = headRadius, center = head, style = Stroke(width = (2.0f * perspectiveScale).coerceIn(1.2f, 4.0f)))
+
+    // Corazón pulsante en el pecho
+    if (pose.heartPulsing) {
+        val pulseR = (14f * perspectiveScale).coerceIn(4.0f, 28.0f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFFF3366), Color(0x66FF3366), Color.Transparent),
+                center = chest,
+                radius = pulseR * 1.5f,
+            ),
+            radius = pulseR * 1.5f,
+            center = chest,
+        )
+        drawCircle(color = Color.White, radius = (4f * perspectiveScale).coerceIn(1.5f, 8.0f), center = chest)
+    }
 }
