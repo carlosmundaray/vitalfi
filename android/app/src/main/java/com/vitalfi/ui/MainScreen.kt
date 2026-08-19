@@ -58,6 +58,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
@@ -195,6 +196,7 @@ fun MainScreen(
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // Header Táctico VitalFi (Open Design)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -203,17 +205,35 @@ fun MainScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(
-                        text = "VitalFi",
-                        color = Cyan,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = "VitalFi",
+                            color = Cyan,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp,
+                        )
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF132A18)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF22552E)),
+                        ) {
+                            Text(
+                                text = "🟢 OFFLINE",
+                                color = Color(0xFF66FF99),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
                     Text(
                         text = stringResource(R.string.app_tagline),
                         color = Color(0xFFA0C4A0),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     )
                 }
@@ -223,38 +243,32 @@ fun MainScreen(
                 ) {
                     IconButton(
                         onClick = { showAbout = true },
-                        modifier = Modifier.background(Color(0xFF142418), CircleShape),
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(Color(0xFF142418), CircleShape),
                     ) {
                         Icon(
                             Icons.Default.Info,
                             contentDescription = stringResource(R.string.about_title),
                             tint = Cyan,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                     IconButton(
                         onClick = { showSettings = true },
-                        modifier = Modifier.background(Color(0xFF142418), CircleShape),
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(Color(0xFF142418), CircleShape),
                     ) {
                         Icon(
                             Icons.Default.Settings,
                             contentDescription = stringResource(R.string.settings_title),
                             tint = Cyan,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
             }
-
-            Text(
-                text = stringResource(R.string.offline_badge),
-                color = Color(0xFF66FF99),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = stringResource(R.string.offline_hint),
-                color = Color(0xFF557755),
-                fontSize = 11.sp,
-            )
 
             ModeSelector(
                 state = state,
@@ -970,49 +984,68 @@ private fun TrappedFilterControls(
     onClearExclusions: () -> Unit,
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101810)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101912)),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E3322)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                if (state.trappedOnlyMode) stringResource(R.string.status_filter_trapped_active) else stringResource(R.string.status_filter_wide_mode),
-                color = if (state.trappedOnlyMode) RadarGreen else Orange,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-            )
-            state.rubbleZoneLabel?.let { label ->
-                Text(label, color = Cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            }
-            state.filterStatus?.let { filter ->
-                Text(filter, color = Color(0xFFAAAAAA), fontSize = 11.sp)
-            }
-            if (state.excludedRescuerCount > 0) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    stringResource(R.string.status_excluded_sectors, state.excludedRescuerCount),
-                    color = Color(0xFF888888),
-                    fontSize = 11.sp,
+                    if (state.trappedOnlyMode) "🎯 " + stringResource(R.string.status_filter_trapped_active) else "🌐 " + stringResource(R.string.status_filter_wide_mode),
+                    color = if (state.trappedOnlyMode) Color(0xFF66FF99) else Color(0xFFFF9966),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
                 )
+                if (state.excludedRescuerCount > 0) {
+                    Text(
+                        stringResource(R.string.status_excluded_sectors, state.excludedRescuerCount),
+                        color = Cyan,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
             }
-            Text(
-                stringResource(R.string.mark_rubble_zone_hint),
-                color = Color(0xFF666666),
-                fontSize = 11.sp,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Button(onClick = onMarkRubbleZone) {
-                    Text(stringResource(R.string.mark_rubble_zone), fontSize = 11.sp)
+
+            state.rubbleZoneLabel?.let { label ->
+                Text(label, color = Cyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onMarkRubbleZone,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Text("🎯 " + stringResource(R.string.mark_rubble_zone), fontSize = 11.sp)
                 }
                 if (state.rubbleZoneLabel != null) {
-                    TextButton(onClick = onClearRubbleZone) {
-                        Text(stringResource(R.string.status_remove_zone), fontSize = 11.sp)
+                    TextButton(
+                        onClick = onClearRubbleZone,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(stringResource(R.string.status_remove_zone), color = Color(0xFFFF6666), fontSize = 11.sp)
                     }
                 }
-                Button(onClick = onExcludeRescuer) {
-                    Text(stringResource(R.string.exclude_rescuer), fontSize = 11.sp)
+                OutlinedButton(
+                    onClick = onExcludeRescuer,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Text("🚫 " + stringResource(R.string.exclude_rescuer), fontSize = 11.sp)
                 }
                 if (state.excludedRescuerCount > 0) {
-                    TextButton(onClick = onClearExclusions) {
-                        Text(stringResource(R.string.clear_exclusions), fontSize = 11.sp)
+                    TextButton(
+                        onClick = onClearExclusions,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(stringResource(R.string.clear_exclusions), color = Color(0xFFFF6666), fontSize = 11.sp)
                     }
                 }
             }
