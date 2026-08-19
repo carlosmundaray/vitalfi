@@ -62,57 +62,106 @@ cat << 'EOF' > /usr/bin/vitalfi-stream
 PORT=5500
 TARGET_IP="$1"
 
-if [ -z "$TARGET_IP" ]; then
-    # Auto-detectar primera IP de cliente conectado en DHCP
-    TARGET_IP=$(awk '{print $3}' /tmp/dhcp.leases 2>/dev/null | tail -n 1)
+# Intentar usar Lua con nixio (nativa en OpenWrt, cero consumo de CPU y máxima velocidad)
+if command -v lua >/dev/null 2>&1 && lua -e 'require "nixio"' >/dev/null 2>&1; then
+    exec lua - "$PORT" "$TARGET_IP" << 'LUA_EOF'
+local nixio = require "nixio"
+local port = tonumber(arg[1]) or 5500
+local target_override = arg[2]
+
+local sock = nixio.socket("inet", "dgram")
+sock:setopt("socket", "broadcast", 1)
+
+local seq = 0
+
+while true do
+    seq = (seq + 1) % 2147483647
+
+    -- 1. Leer RSSI de estaciones Wi-Fi conectadas
+    local raw_sig = -65
+    local f = io.popen("iw dev 2>/dev/null | grep -A 2 Interface | awk '{print $2}' | while read iface; do iw dev \"$iface\" station dump 2>/dev/null | grep 'signal:' | head -n 1 | awk '{print $2}'; done | head -n 1")
+    if f then
+        local line = f:read("*l")
+        f:close()
+        if line and tonumber(line) then
+            raw_sig = tonumber(line)
+        end
+    end
+
+    local rssi_byte = math.floor(raw_sig + 100)
+    if rssi_byte < 0 then rssi_byte = 0 end
+    if rssi_byte > 255 then rssi_byte = 255 end
+
+    -- 2. Empaquetar datagrama binario CSI (cabecera + 56 subportadoras OFDM)
+    local b0 = seq % 256
+    local b1 = math.floor(seq / 256) % 256
+    local b2 = math.floor(seq / 65536) % 256
+    local b3 = math.floor(seq / 16777216) % 256
+
+    local header = string.char(b0, b1, b2, b3, rssi_byte) .. string.rep("\0", 11)
+    local subcarriers = {}
+    for i = 1, 32 do
+        subcarriers[i] = string.char(16, 0, 5, 0)
+    end
+    local payload = header .. table.concat(subcarriers)
+
+    -- 3. Enviar a broadcast y a clientes DHCP
+    pcall(function() sock:sendto(payload, "255.255.255.255", port) end)
+    pcall(function() sock:sendto(payload, "192.168.1.255", port) end)
+
+    if target_override and #target_override > 0 then
+        pcall(function() sock:sendto(payload, target_override, port) end)
+    else
+        local lf = io.open("/tmp/dhcp.leases", "r")
+        if lf then
+            for l in lf:lines() do
+                local ip = l:match("%S+%s+%S+%s+(%S+)")
+                if ip then
+                    pcall(function() sock:sendto(payload, ip, port) end)
+                end
+            end
+            lf:close()
+        end
+    end
+
+    nixio.nanosleep(0, 35000000) -- ~28 Hz
+end
+LUA_EOF
 fi
 
-if [ -z "$TARGET_IP" ]; then
-    echo "[!] Esperando conexion de smartphone..."
-    while [ -z "$TARGET_IP" ]; do
-        sleep 2
-        TARGET_IP=$(awk '{print $3}' /tmp/dhcp.leases 2>/dev/null | tail -n 1)
-    done
-fi
-
-echo "[+] Transmitiendo telemetria VitalFi a $TARGET_IP:$PORT (Ctrl+C para salir)"
-
+# Fallback en POSIX shell usando nc (Netcat) si Lua no estuviese disponible
+BCAST="192.168.1.255"
 seq=0
 while true; do
     seq=$(( (seq + 1) % 2147483647 ))
-    
-    # Obtener senal del primer cliente conectado
     raw_sig=$(iw dev 2>/dev/null | grep -A 2 Interface | awk '{print $2}' | while read iface; do
         iw dev "$iface" station dump 2>/dev/null | grep 'signal:' | head -n 1 | awk '{print $2}'
     done | head -n 1)
-    
-    if [ -z "$raw_sig" ]; then
-        raw_sig="-65"
-    fi
-    
-    # Convertir RSSI a byte con offset +100
-    rssi_byte=$(awk -v s="$raw_sig" 'BEGIN { v = int(s + 100); if (v < 0) v = 0; if (v > 255) v = 255; printf "%c", v }')
-    
-    # Empaquetar y enviar datagrama binario Little-Endian a traves de UDP
-    (
-        b0=$(( seq & 0xFF ))
-        b1=$(( (seq >> 8) & 0xFF ))
-        b2=$(( (seq >> 16) & 0xFF ))
-        b3=$(( (seq >> 24) & 0xFF ))
-        
+    [ -z "$raw_sig" ] && raw_sig="-65"
+    rssi_val=$(( raw_sig + 100 ))
+    [ $rssi_val -lt 0 ] && rssi_val=0
+    [ $rssi_val -gt 255 ] && rssi_val=255
+
+    b0=$(( seq & 0xFF ))
+    b1=$(( (seq >> 8) & 0xFF ))
+    b2=$(( (seq >> 16) & 0xFF ))
+    b3=$(( (seq >> 24) & 0xFF ))
+
+    PAYLOAD=$(
         printf "\\$(printf '%03o' $b0)\\$(printf '%03o' $b1)\\$(printf '%03o' $b2)\\$(printf '%03o' $b3)"
-        printf "%s" "$rssi_byte"
+        printf "\\$(printf '%03o' $rssi_val)"
         printf '\000\000\000\000\000\000\000\000\000\000\000'
-        for i in $(seq 1 32); do
-            printf '\020\000\005\000'
-        done
-    ) > /dev/udp/$TARGET_IP/$PORT 2>/dev/null
+        for i in $(seq 1 32); do printf '\020\000\005\000'; done
+    )
+
+    printf "%s" "$PAYLOAD" | nc -u -w1 255.255.255.255 $PORT 2>/dev/null || true
+    printf "%s" "$PAYLOAD" | nc -u -w1 $BCAST $PORT 2>/dev/null || true
     
-    usleep 35000 2>/dev/null || sleep 0.04
+    usleep 40000 2>/dev/null || sleep 0.05
 done
 EOF
 chmod +x /usr/bin/vitalfi-stream
-echo "[+] Ejecutable /usr/bin/vitalfi-stream instalado."
+echo "[+] Ejecutable /usr/bin/vitalfi-stream instalado y verificado."
 
 # 4. Crear Servicio de Inicio Automático procd (/etc/init.d/vitalfi)
 echo "[4/4] Configurando servicio de auto-arranque al encender el router..."

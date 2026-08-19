@@ -82,49 +82,88 @@ cat << '__EOF_STREAM__' > /usr/bin/vitalfi-stream
 PORT=5500
 TARGET_IP="$1"
 
-if [ -z "$TARGET_IP" ]; then
-    TARGET_IP=$(awk '{print $3}' /tmp/dhcp.leases 2>/dev/null | tail -n 1)
+if command -v lua >/dev/null 2>&1 && lua -e 'require "nixio"' >/dev/null 2>&1; then
+    exec lua - "$PORT" "$TARGET_IP" << 'LUA_EOF'
+local nixio = require "nixio"
+local port = tonumber(arg[1]) or 5500
+local target_override = arg[2]
+
+local sock = nixio.socket("inet", "dgram")
+sock:setopt("socket", "broadcast", 1)
+local seq = 0
+
+while true do
+    seq = (seq + 1) % 2147483647
+    local raw_sig = -65
+    local f = io.popen("iw dev 2>/dev/null | grep -A 2 Interface | awk '{print $2}' | while read iface; do iw dev \"$iface\" station dump 2>/dev/null | grep 'signal:' | head -n 1 | awk '{print $2}'; done | head -n 1")
+    if f then
+        local line = f:read("*l")
+        f:close()
+        if line and tonumber(line) then raw_sig = tonumber(line) end
+    end
+
+    local rssi_byte = math.floor(raw_sig + 100)
+    if rssi_byte < 0 then rssi_byte = 0 end
+    if rssi_byte > 255 then rssi_byte = 255 end
+
+    local b0 = seq % 256
+    local b1 = math.floor(seq / 256) % 256
+    local b2 = math.floor(seq / 65536) % 256
+    local b3 = math.floor(seq / 16777216) % 256
+
+    local header = string.char(b0, b1, b2, b3, rssi_byte) .. string.rep("\0", 11)
+    local subcarriers = {}
+    for i = 1, 32 do subcarriers[i] = string.char(16, 0, 5, 0) end
+    local payload = header .. table.concat(subcarriers)
+
+    pcall(function() sock:sendto(payload, "255.255.255.255", port) end)
+    pcall(function() sock:sendto(payload, "192.168.1.255", port) end)
+
+    if target_override and #target_override > 0 then
+        pcall(function() sock:sendto(payload, target_override, port) end)
+    else
+        local lf = io.open("/tmp/dhcp.leases", "r")
+        if lf then
+            for l in lf:lines() do
+                local ip = l:match("%S+%s+%S+%s+(%S+)")
+                if ip then pcall(function() sock:sendto(payload, ip, port) end) end
+            end
+            lf:close()
+        end
+    end
+
+    nixio.nanosleep(0, 35000000)
+end
+LUA_EOF
 fi
 
-if [ -z "$TARGET_IP" ]; then
-    echo "[!] Esperando cliente..."
-    while [ -z "$TARGET_IP" ]; do
-        sleep 2
-        TARGET_IP=$(awk '{print $3}' /tmp/dhcp.leases 2>/dev/null | tail -n 1)
-    done
-fi
-
-echo "[+] Transmitiendo telemetria VitalFi a $TARGET_IP:$PORT"
-
+BCAST="192.168.1.255"
 seq=0
 while true; do
     seq=$(( (seq + 1) % 2147483647 ))
-    
     raw_sig=$(iw dev 2>/dev/null | grep -A 2 Interface | awk '{print $2}' | while read iface; do
         iw dev "$iface" station dump 2>/dev/null | grep 'signal:' | head -n 1 | awk '{print $2}'
     done | head -n 1)
-    
-    if [ -z "$raw_sig" ]; then
-        raw_sig="-65"
-    fi
-    
-    rssi_byte=$(awk -v s="$raw_sig" 'BEGIN { v = int(s + 100); if (v < 0) v = 0; if (v > 255) v = 255; printf "%c", v }')
-    
-    (
-        b0=$(( seq & 0xFF ))
-        b1=$(( (seq >> 8) & 0xFF ))
-        b2=$(( (seq >> 16) & 0xFF ))
-        b3=$(( (seq >> 24) & 0xFF ))
-        
+    [ -z "$raw_sig" ] && raw_sig="-65"
+    rssi_val=$(( raw_sig + 100 ))
+    [ $rssi_val -lt 0 ] && rssi_val=0
+    [ $rssi_val -gt 255 ] && rssi_val=255
+
+    b0=$(( seq & 0xFF ))
+    b1=$(( (seq >> 8) & 0xFF ))
+    b2=$(( (seq >> 16) & 0xFF ))
+    b3=$(( (seq >> 24) & 0xFF ))
+
+    PAYLOAD=$(
         printf "\\$(printf '%03o' $b0)\\$(printf '%03o' $b1)\\$(printf '%03o' $b2)\\$(printf '%03o' $b3)"
-        printf "%s" "$rssi_byte"
+        printf "\\$(printf '%03o' $rssi_val)"
         printf '\000\000\000\000\000\000\000\000\000\000\000'
-        for i in $(seq 1 32); do
-            printf '\020\000\005\000'
-        done
-    ) > /dev/udp/$TARGET_IP/$PORT 2>/dev/null
-    
-    usleep 35000 2>/dev/null || sleep 0.04
+        for i in $(seq 1 32); do printf '\020\000\005\000'; done
+    )
+
+    printf "%s" "$PAYLOAD" | nc -u -w1 255.255.255.255 $PORT 2>/dev/null || true
+    printf "%s" "$PAYLOAD" | nc -u -w1 $BCAST $PORT 2>/dev/null || true
+    usleep 40000 2>/dev/null || sleep 0.05
 done
 __EOF_STREAM__
 chmod +x /usr/bin/vitalfi-stream
