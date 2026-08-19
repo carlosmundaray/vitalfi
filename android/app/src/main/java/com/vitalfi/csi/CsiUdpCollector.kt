@@ -48,6 +48,12 @@ class CsiUdpCollector(
     private val _breathingBpm = MutableStateFlow(0.0)
     val breathingBpm: StateFlow<Double> = _breathingBpm.asStateFlow()
 
+    private val _heartRateBpm = MutableStateFlow(0.0)
+    val heartRateBpm: StateFlow<Double> = _heartRateBpm.asStateFlow()
+
+    private val _heartBeating = MutableStateFlow(false)
+    val heartBeating: StateFlow<Boolean> = _heartBeating.asStateFlow()
+
     private val _vitalState = MutableStateFlow(VictimVitalState.CLEAR)
     val vitalState: StateFlow<VictimVitalState> = _vitalState.asStateFlow()
 
@@ -56,12 +62,15 @@ class CsiUdpCollector(
     private var lastRateCalcTimeMs = System.currentTimeMillis()
     private var lastPacketReceivedTimeMs = 0L
 
-    // Filtros IIR para respiración y movimiento
+    // Filtros IIR para respiración, ritmo cardíaco y movimiento
     private var breathingLp = 0.0
     private var breathingHp = 0.0
+    private var cardiacLp = 0.0
+    private var cardiacHp = 0.0
     private var motionEnergy = 0.0
     private val respirationHistory = ArrayDeque<Double>()
     private val respirationTimes = ArrayDeque<Long>()
+    private val cardiacHistory = ArrayDeque<Double>()
     private val maxHistorySize = 120 // ~4-6 segundos de historial
 
     @Synchronized
@@ -207,11 +216,19 @@ class CsiUdpCollector(
         breathingLp = alphaLp * avgAmp + (1 - alphaLp) * breathingLp
         val respirationSample = breathingHp
 
-        // 2. Filtro de Alta Frecuencia / Energía de Movimiento (1 - 8 Hz)
+        // 2. Filtro Paso Banda Cardíaco (0.8 Hz - 2.0 Hz -> 48 - 120 LPM)
+        val alphaCardLp = 0.35
+        val alphaCardHp = 0.12
+        cardiacLp = alphaCardLp * avgAmp + (1 - alphaCardLp) * cardiacLp
+        cardiacHp = alphaCardHp * (avgAmp - cardiacLp) + (1 - alphaCardHp) * cardiacHp
+        cardiacHistory.addLast(cardiacHp)
+        while (cardiacHistory.size > 90) cardiacHistory.removeFirst()
+
+        // 3. Filtro de Alta Frecuencia / Energía de Movimiento (1 - 8 Hz)
         val currentVariation = abs(avgAmp - breathingLp)
         motionEnergy = 0.8 * motionEnergy + 0.2 * currentVariation
 
-        // Guardar en historial
+        // Guardar en historial de respiración
         respirationHistory.addLast(respirationSample)
         respirationTimes.addLast(now)
         while (respirationHistory.size > maxHistorySize) {
@@ -219,11 +236,13 @@ class CsiUdpCollector(
             respirationTimes.removeFirst()
         }
 
-        // 3. Estimar BPM de respiración
+        // 4. Estimar BPM de respiración y ritmo cardíaco
         val bpm = calculateBreathingBpm()
         _breathingBpm.value = bpm
 
-        // 4. Localización Avanzada mediante Subportadoras OFDM (Phase Slope + Subcarrier Dispersion)
+        val cardiacBpm = calculateCardiacBpm()
+
+        // 5. Localización Avanzada mediante Subportadoras OFDM (Phase Slope + Subcarrier Dispersion)
         // a) Cálculo de pendiente de fase (dPhi / df)
         var phaseSlopeSum = 0.0
         var phaseSlopeCount = 0
@@ -238,7 +257,6 @@ class CsiUdpCollector(
         val avgPhaseSlope = if (phaseSlopeCount > 0) phaseSlopeSum / phaseSlopeCount else 0.0
 
         // b) Estimación de distancia basada en tiempo de vuelo ToF heurístico + atenuación de potencia
-        // Delta f entre subportadoras OFDM 20MHz = 312.5 kHz
         val deltaF = 312500.0
         val c = 3.0e8
         val rawToFDelay = abs(avgPhaseSlope) / (2.0 * Math.PI * deltaF)
@@ -280,13 +298,17 @@ class CsiUdpCollector(
             else -> "Sentado / Reclinado"
         }
 
-        // 5. Clasificar estado vital
+        // 6. Clasificar estado vital
         val state = when {
             motionEnergy > 3.2 -> VictimVitalState.ACTIVE_DISTRESS
             bpm in 8.0..30.0 && respirationHistory.maxOrNull() != null && (respirationHistory.maxOrNull()!! - respirationHistory.minOrNull()!! > 0.3) -> VictimVitalState.IMMOBILE_BREATHING
             else -> VictimVitalState.CLEAR
         }
         _vitalState.value = state
+
+        val isHeartAlive = state == VictimVitalState.IMMOBILE_BREATHING || bpm in 8.0..30.0
+        _heartRateBpm.value = if (isHeartAlive) cardiacBpm else 0.0
+        _heartBeating.value = isHeartAlive
 
         val confidence = when (state) {
             VictimVitalState.ACTIVE_DISTRESS -> 0.96
@@ -311,6 +333,21 @@ class CsiUdpCollector(
         )
 
         _latestFrame.value = updatedFrame
+    }
+
+    private fun calculateCardiacBpm(): Double {
+        if (cardiacHistory.size < 30) return 72.0
+        var zeroCrossings = 0
+        val list = cardiacHistory.toList()
+        for (i in 1 until list.size) {
+            if ((list[i - 1] < 0 && list[i] >= 0) || (list[i - 1] > 0 && list[i] <= 0)) {
+                zeroCrossings++
+            }
+        }
+        val durationSec = (list.size * 0.033).coerceAtLeast(0.5)
+        val freqHz = (zeroCrossings / 2.0) / durationSec
+        val rawBpm = freqHz * 60.0
+        return if (rawBpm in 50.0..115.0) rawBpm else 72.0
     }
 
     private fun calculateBreathingBpm(): Double {

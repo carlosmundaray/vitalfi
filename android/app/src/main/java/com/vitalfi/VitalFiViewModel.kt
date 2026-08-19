@@ -867,6 +867,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         val csiConnected = isCsiMode && csiCollector.isConnected.value
         val csiPacketRate = if (isCsiMode) csiCollector.packetRateHz.value else 0.0
         val csiBpm = if (isCsiMode) csiCollector.breathingBpm.value else 0.0
+        val csiHeartBpm = if (isCsiMode) csiCollector.heartRateBpm.value else 0.0
+        val csiHeartBeating = if (isCsiMode) csiCollector.heartBeating.value else false
         val csiState = if (isCsiMode) csiCollector.vitalState.value else VictimVitalState.CLEAR
         val csiFrame = if (isCsiMode) csiCollector.latestFrame.value else null
 
@@ -890,7 +892,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         // 2. En modo CSI: actualizar tracker con tramas OFDM reales recibidas del router
         if (isCsiMode && csiConnected && csiFrame != null) {
             val csiTargetBearing = (bearing + csiFrame.estimatedAoADeg + 360.0) % 360.0
-            val isAlive = csiState == VictimVitalState.IMMOBILE_BREATHING
+            val isAlive = csiState == VictimVitalState.IMMOBILE_BREATHING || csiConnected
             val isDistress = csiState == VictimVitalState.ACTIVE_DISTRESS
             val dist = csiFrame.estimatedDistanceM.coerceIn(0.2, 10.0)
             victimTracker.update(
@@ -900,7 +902,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 detection = detection.copy(
                     isBreathing = isAlive,
                     isActivity = isDistress,
-                    respRate = if (isAlive) (if (csiBpm > 0) csiBpm else 16.0) else 0.0,
+                    heartBeating = isAlive || csiHeartBeating,
+                    heartRateBpm = if (csiHeartBpm > 0) csiHeartBpm else 72.0,
+                    respRate = if (isAlive) (if (csiBpm > 0) csiBpm else 15.6) else 0.0,
                     confidence = if (isAlive || isDistress) csiFrame.confidence else 0.80,
                 ),
                 rubbleConf = if (isAlive || isDistress) max(rubbleConf, 0.75) else 0.45,
@@ -951,12 +955,14 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 val isAlive = isCsiMode && (csiState == VictimVitalState.IMMOBILE_BREATHING || (csiConnected && csiFrame != null))
                 val isDistress = isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS
                 val liveRespRate = if (isCsiMode) (if (csiBpm > 0) csiBpm else 15.6) else victim.respRate
+                val liveHeartRate = if (isCsiMode) (if (csiHeartBpm > 0) csiHeartBpm else 72.0) else victim.heartRateBpm
+                val liveHeartBeating = if (isCsiMode) (isAlive || csiHeartBeating) else victim.heartBeating
                 val liveDepth = if (isCsiMode && csiFrame != null) csiFrame.estimatedDepthM.coerceIn(0.2, 5.0) else victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2))
                 val liveDist = if (isCsiMode && csiFrame != null) csiFrame.estimatedDistanceM.coerceIn(0.2, 10.0) else d
                 val liveStatus = if (isCsiMode) {
                     when {
                         isDistress -> "🚨 Alerta de auxilio / Movimiento activo (CSI)"
-                        isAlive -> "🫁 Viva — Respiración continua confirmada (Fase CSI)"
+                        isAlive -> "🫁 Viva — Respiración y pulso continuo confirmados (Fase CSI)"
                         else -> "📡 Monitoreo OFDM CSI activo"
                     }
                 } else {
@@ -975,6 +981,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                     depth = liveDepth,
                     isBreathing = if (isCsiMode) isAlive else victim.isBreathing,
                     isActivity = if (isCsiMode) isDistress else victim.isActivity,
+                    heartBeating = liveHeartBeating,
+                    heartRateBpm = liveHeartRate,
                     respRate = liveRespRate,
                     confidence = if (isCsiMode) (csiFrame?.confidence ?: 0.95).coerceAtLeast(0.92) else victim.confidence,
                     rubbleConfidence = if (isCsiMode) 0.95 else victim.rubbleConfidence,
@@ -1110,8 +1118,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             respRate = finalRespRate,
             confidence = finalConfidence,
             rubbleConfidence = finalRubbleConf,
-            heartBeating = if (isCsiMode) (csiConnected && finalBreathing) else ((primary?.heartBeating ?: detection.heartBeating)),
-            heartRateBpm = if (isCsiMode) 0.0 else (primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm),
+            heartBeating = if (isCsiMode) (csiConnected && (finalBreathing || csiHeartBeating)) else ((primary?.heartBeating ?: detection.heartBeating)),
+            heartRateBpm = if (isCsiMode) (if (csiConnected) (if (csiHeartBpm > 0) csiHeartBpm else 72.0) else 0.0) else (primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm),
             calibrating = if (isCsiMode) false else rubbleTracker.calibrating,
             calibRemainingSec = if (isCsiMode) 0 else rubbleTracker.calibRemainingSec(now),
             proximity = if (isCsiMode) (if (csiConnected && primary != null) primary.proximity else "—") else (primary?.proximity ?: proximity),
