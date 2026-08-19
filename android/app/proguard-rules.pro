@@ -15,3 +15,13 @@
 # Mantener Kotlinx Coroutines
 -keepnames class kotlinx.coroutines.** { *; }
 -dontwarn kotlinx.coroutines.**
+
+# Mantener CameraX y Camera2 para Modo AR
+-keep class androidx.camera.** { *; }
+-dontwarn androidx.camera.**
+-keep class com.google.common.util.concurrent.** { *; }
+-dontwarn com.google.common.util.concurrent.**
+-keep class androidx.concurrent.futures.** { *; }
+-dontwarn androidx.concurrent.futures.**
+-keep class androidx.camera.camera2.Camera2Config { *; }
+-keep class androidx.camera.core.CameraXConfig { *; }
