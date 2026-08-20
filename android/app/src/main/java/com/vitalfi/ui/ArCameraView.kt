@@ -340,24 +340,26 @@ fun ArCameraView(
             )
         }
 
-        // Si aún no hay víctimas en lista pero hay señal viva activa o escaneo, mapear la persona detectada
-        if (points.isEmpty()) {
-            val liveResp = if (state.respRate > 0) state.respRate else 16.4
+        // Si aún no hay víctimas agrupadas pero hay detección activa real en el receptor CSI (respiración, pulso o micro-Doppler)
+        if (points.isEmpty() && (state.isBreathing || state.isActivity || (state.csiConnected && state.respRate > 0) || state.confidence > 0.35)) {
+            val liveResp = if (state.respRate > 0) state.respRate else (if (state.isBreathing) 15.6 else 0.0)
             val liveHeart = if (state.heartRateBpm > 0) state.heartRateBpm else 72.0
-            val liveConf = (state.confidence * 100.0).coerceAtLeast(85.0)
+            val liveConf = state.confidence * 100.0
             val isLiveRescued = rescuedVictimIds.contains(1)
             val defaultPersonLabel = if (isSpanish) {
-                if (isLiveRescued) "Persona #1 (RESCATADA)" else "Persona #1 (Detectada)"
+                if (isLiveRescued) "Persona #1 (RESCATADA)" else "Persona #1 (Señal CSI Real)"
             } else {
-                if (isLiveRescued) "Person #1 (RESCUED)" else "Person #1 (Detected)"
+                if (isLiveRescued) "Person #1 (RESCUED)" else "Person #1 (Real CSI Signal)"
             }
             val depthPrefix = if (isSpanish) "Prof" else "Depth"
+            val liveDist = (state.csiDistanceM ?: state.position?.distance ?: 2.0).coerceIn(0.2, 10.0)
+            val liveDepth = state.csiDepthM ?: (state.scanningElevationM ?: -0.5)
 
             val aiLive = aiTracker.processTarget(
                 targetId = "live_csi_victim_1",
                 rawBearing = state.bearingDeg,
-                rawDistance = 2.4,
-                rawDepth = -0.75,
+                rawDistance = liveDist,
+                rawDepth = liveDepth,
                 respRate = liveResp,
                 heartRate = liveHeart,
                 confidence = liveConf,
@@ -370,17 +372,17 @@ fun ArCameraView(
                     id = "live_csi_victim_1",
                     victimNumericId = 1,
                     label = defaultPersonLabel,
-                    subtitle = "$depthPrefix: 0.75m • Conf: ${liveConf.toInt()}%",
+                    subtitle = "$depthPrefix: ${"%.2f".format(abs(aiLive.smoothedDepth))}m • Conf: ${liveConf.toInt()}%",
                     bearingDeg = aiLive.smoothedBearing,
-                    distanceM = aiLive.smoothedDistance.coerceAtLeast(0.6),
+                    distanceM = aiLive.smoothedDistance.coerceAtLeast(0.4),
                     depthM = aiLive.smoothedDepth,
-                    signalStrengthDbm = -52,
+                    signalStrengthDbm = state.rssiDbm ?: -50,
                     isVictim = true,
                     isRescued = isLiveRescued,
                     respRate = liveResp,
                     heartRate = liveHeart,
                     confidence = liveConf,
-                    signatureCode = "SIG_V1",
+                    signatureCode = "CSI_LIVE",
                     color = if (isLiveRescued) Color(0xFFFFD700) else if (aiLive.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
                     isMoving = aiLive.isMoving,
                     velocityMps = aiLive.velocityMps,
@@ -818,51 +820,80 @@ fun ArCameraView(
                 }
             }
 
-            // Fila 2: Selector Rápido de Víctimas Detectadas (Para fijar con 1 toque)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "🎯 FIJAR:",
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(end = 2.dp),
-                )
-                allWifiPoints.forEach { pt ->
-                    val isSelected = (pt.id == targetPoint?.id)
-                    Button(
-                        onClick = {
-                            if (isSelected && isTargetExplicitlyLocked) {
-                                onLockTarget(null)
-                                triggerHapticFeedback()
-                                Toast.makeText(context, if (isSpanish) "🔓 Objetivo liberado (guía automática)" else "🔓 Target unlocked", Toast.LENGTH_SHORT).show()
-                            } else {
-                                onLockTarget(pt.id)
-                                triggerHapticFeedback()
-                                Toast.makeText(context, if (isSpanish) "🔒 Objetivo fijado: ${pt.label}" else "🔒 Target locked: ${pt.label}", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isSelected) Color(0xFF00CC88) else Color(0xDD08241A),
-                            contentColor = if (isSelected) Color.Black else Color.White,
-                        ),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .height(28.dp)
-                            .border(1.dp, if (isSelected) Color(0xFF00FFCC) else Color(0x4400FFCC), RoundedCornerShape(14.dp)),
+            // Fila 2: Selector Rápido de Víctimas Detectadas o Estado de Escaneo CSI en Vivo
+            if (allWifiPoints.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (isSpanish) "🎯 FIJAR:" else "🎯 LOCK:",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(end = 2.dp),
+                    )
+                    allWifiPoints.forEach { pt ->
+                        val isSelected = (pt.id == targetPoint?.id)
+                        Button(
+                            onClick = {
+                                if (isSelected && isTargetExplicitlyLocked) {
+                                    onLockTarget(null)
+                                    triggerHapticFeedback()
+                                    Toast.makeText(context, if (isSpanish) "🔓 Objetivo liberado (guía automática)" else "🔓 Target unlocked", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    onLockTarget(pt.id)
+                                    triggerHapticFeedback()
+                                    Toast.makeText(context, if (isSpanish) "🔒 Objetivo fijado: ${pt.label}" else "🔒 Target locked: ${pt.label}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSelected) Color(0xFF00CC88) else Color(0xDD08241A),
+                                contentColor = if (isSelected) Color.Black else Color.White,
+                            ),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .height(28.dp)
+                                .border(1.dp, if (isSelected) Color(0xFF00FFCC) else Color(0x4400FFCC), RoundedCornerShape(14.dp)),
+                        ) {
+                            Text(
+                                (if (isSelected && isTargetExplicitlyLocked) "🔒 " else "🎯 ") + "${pt.label} (${"%.1f".format(pt.distanceM)}m)",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+            } else {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xD0081C14)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x5500FFCC), RoundedCornerShape(8.dp)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .scale(beaconPulse)
+                                .background(Color(0xFF00FFCC), CircleShape)
+                        )
                         Text(
-                            (if (isSelected && isTargetExplicitlyLocked) "🔒 " else "🎯 ") + "${pt.label} (${"%.1f".format(pt.distanceM)}m)",
+                            if (isSpanish) "📡 ESCANEANDO SEÑAL CSI REAL... (Apunte a la zona)" else "📡 SCANNING REAL CSI SIGNAL... (Aim at search area)",
+                            color = Color(0xFFA0D4B0),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
                         )
                     }
                 }

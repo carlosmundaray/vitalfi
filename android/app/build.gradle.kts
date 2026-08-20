@@ -19,8 +19,8 @@ android {
         applicationId = "com.vitalfi"
         minSdk = 21
         targetSdk = 36
-        versionCode = 56
-        versionName = "1.3.49"
+        versionCode = 57
+        versionName = "1.3.50"
         resourceConfigurations += listOf(
             "ar", "bn", "cs", "de", "el", "en", "es", "fa", "fil", "fr",
             "he", "hi", "id", "in", "it", "iw", "ja", "ko", "nl", "pl",
