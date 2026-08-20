@@ -142,6 +142,10 @@ fun MainScreen(
     onSetSensingEngineMode: (SensingEngineMode) -> Unit = {},
     onSetOpenWrtUdpPort: (Int) -> Unit = {},
     onToggleArCamera: () -> Unit = {},
+    onLockArTarget: (String?) -> Unit = {},
+    onRescueArVictim: (victimId: Int, label: String, depthM: Double, respRate: Double, heartRate: Double, confidence: Double, signatureCode: String) -> Unit = { _, _, _, _, _, _, _ -> },
+    onClearRescuedVictims: () -> Unit = {},
+    onRemoveRescuedVictim: (String) -> Unit = {},
     onMarkRubbleZone: () -> Unit,
     onClearRubbleZone: () -> Unit,
     onExcludeRescuer: () -> Unit,
@@ -484,6 +488,10 @@ fun MainScreen(
         ArCameraView(
             state = state,
             onClose = onToggleArCamera,
+            onLockTarget = onLockArTarget,
+            onRescueVictim = onRescueArVictim,
+            onClearRescuedVictims = onClearRescuedVictims,
+            onRemoveRescuedVictim = onRemoveRescuedVictim,
         )
     }
 }
@@ -1638,7 +1646,7 @@ private fun StatusCard(state: VitalFiUiState) {
                     shape = RoundedCornerShape(6.dp),
                 ) {
                     Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Confianza", color = Color(0xFF88AA88), fontSize = 10.sp)
+                        Text(stringResource(R.string.victim_vital_confidence), color = Color(0xFF88AA88), fontSize = 9.sp, maxLines = 1)
                         Text(
                             "${(state.confidence * 100).roundToInt()}%",
                             color = if (state.confidence > 0.6) Cyan else Color.White,
@@ -1656,7 +1664,7 @@ private fun StatusCard(state: VitalFiUiState) {
                     shape = RoundedCornerShape(6.dp),
                 ) {
                     Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Proximidad", color = Color(0xFF88AA88), fontSize = 10.sp)
+                        Text(stringResource(R.string.victim_zone), color = Color(0xFF88AA88), fontSize = 9.sp, maxLines = 1)
                         Text(
                             localizedProx,
                             color = Color(0xFFFFCC00),
@@ -1674,7 +1682,7 @@ private fun StatusCard(state: VitalFiUiState) {
                     shape = RoundedCornerShape(6.dp),
                 ) {
                     Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Escombros", color = Color(0xFF88AA88), fontSize = 10.sp)
+                        Text(stringResource(R.string.victim_rubble_confidence), color = Color(0xFF88AA88), fontSize = 9.sp, maxLines = 1)
                         Text(
                             "${(state.rubbleConfidence * 100).roundToInt()}%",
                             color = if (state.rubbleConfidence > 0.4) Color(0xFFFF9966) else Color.White,

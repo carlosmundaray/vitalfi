@@ -130,6 +130,8 @@ class MainActivity : ComponentActivity() {
                     CompositionLocalProvider(
                         LocalConfiguration provides localizedConfig,
                         LocalContext provides localizedContext,
+                        androidx.activity.compose.LocalActivityResultRegistryOwner provides this@MainActivity,
+                        androidx.activity.compose.LocalOnBackPressedDispatcherOwner provides this@MainActivity,
                     ) {
                         MainScreen(
                             state = state,
@@ -162,6 +164,12 @@ class MainActivity : ComponentActivity() {
                         onSetSensingEngineMode = { viewModel.setSensingEngineMode(it) },
                         onSetOpenWrtUdpPort = { viewModel.setOpenWrtUdpPort(it) },
                         onToggleArCamera = { viewModel.toggleArCamera() },
+                        onLockArTarget = { viewModel.lockVictimTarget(it) },
+                        onRescueArVictim = { victimId, label, depthM, respRate, heartRate, conf, sig ->
+                            viewModel.rescueVictim(victimId, label, depthM, respRate, heartRate, conf, sig)
+                        },
+                        onClearRescuedVictims = { viewModel.clearRescuedVictims() },
+                        onRemoveRescuedVictim = { viewModel.removeRescuedVictim(it) },
                         onMarkRubbleZone = { viewModel.markRubbleZoneAtCurrentBearing() },
                         onClearRubbleZone = { viewModel.clearRubbleZone() },
                         onExcludeRescuer = { viewModel.excludeRescuerAtCurrentBearing() },
@@ -180,7 +188,20 @@ class MainActivity : ComponentActivity() {
                         onSetRubbleZoneRadius = { viewModel.setRubbleZoneRadiusDeg(it) },
                         onSetDefaultWifiMode = { viewModel.setDefaultWifiMode(it) },
                         onSetColorblindMode = { viewModel.setColorblindMode(it) },
-                        onSetAppLanguage = { viewModel.setAppLanguage(it) },
+                        onSetAppLanguage = { lang ->
+                            viewModel.setAppLanguage(lang)
+                            val locale = getAppLocale(lang)
+                            Locale.setDefault(locale)
+                            val conf = Configuration(resources.configuration).apply {
+                                setLocale(locale)
+                                setLayoutDirection(locale)
+                            }
+                            @Suppress("DEPRECATION")
+                            resources.updateConfiguration(conf, resources.displayMetrics)
+                            @Suppress("DEPRECATION")
+                            applicationContext.resources.updateConfiguration(conf, applicationContext.resources.displayMetrics)
+                            recreate()
+                        },
                     )
                 }
             }

@@ -21,6 +21,7 @@ import com.vitalfi.export.CsvExporter
 import com.vitalfi.export.SessionLogEntry
 import com.vitalfi.ml.SignatureModel
 import com.vitalfi.sensor.CompassReader
+import com.vitalfi.sensor.GpsLocationReader
 import com.vitalfi.sensor.WalkStepReader
 import com.vitalfi.settings.SettingsStore
 import com.vitalfi.ui.RadarLayers
@@ -132,6 +133,12 @@ data class VitalFiUiState(
     val rfSilhouette: com.vitalfi.ai.RfSilhouetteGrid? = null,
     val showRfCamera: Boolean = false,
     val showArCamera: Boolean = false,
+    val currentGpsLat: Double? = null,
+    val currentGpsLon: Double? = null,
+    val currentGpsAlt: Double? = null,
+    val currentGpsDms: String = "",
+    val rescuedVictims: List<com.vitalfi.dsp.RescuedVictimRecord> = emptyList(),
+    val lockedTargetId: String? = null,
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
@@ -140,6 +147,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     private val compass = CompassReader(app)
     private val walkSteps = WalkStepReader(app)
     private val barometer = com.vitalfi.sensor.BarometerReader(app)
+    private val gpsReader = com.vitalfi.sensor.GpsLocationReader(app)
     private val victimTracker = MultiVictimTracker()
     private val rubbleTracker = RubbleConfidenceTracker()
     private val personIdentities = PersonIdentityRegistry()
@@ -156,6 +164,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     private val sessionLog = mutableListOf<SessionLogEntry>()
     private val positionTrail = mutableListOf<TrailPoint3D>()
     private val alertedVictimIds = mutableSetOf<Int>()
+    private val rescuedVictimList = mutableListOf<com.vitalfi.dsp.RescuedVictimRecord>().apply {
+        addAll(settingsStore.loadRescuedVictims())
+    }
 
     private val _uiState = MutableStateFlow(
         VitalFiUiState(
@@ -189,6 +200,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             sensingEngineMode = settingsStore.sensingEngineMode,
             openWrtUdpPort = settingsStore.openWrtUdpPort,
             openWrtRouterIp = settingsStore.openWrtRouterIp,
+            rescuedVictims = settingsStore.loadRescuedVictims(),
         ),
     )
     val uiState: StateFlow<VitalFiUiState> = _uiState.asStateFlow()
@@ -212,6 +224,17 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         walkSteps.start()
         startCompassUpdates()
         barometer.start()
+
+        gpsReader.onLocationChanged = { data ->
+            _uiState.value = _uiState.value.copy(
+                currentGpsLat = data.latitude,
+                currentGpsLon = data.longitude,
+                currentGpsAlt = data.altitudeM,
+                currentGpsDms = data.fullGms,
+            )
+        }
+        gpsReader.start()
+
         if (collector.mode == WifiCollectMode.CONNECTED || !collector.targetSsid.isNullOrBlank()) {
             collector.start(viewModelScope)
         }
@@ -265,6 +288,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         compass.stop()
         walkSteps.stop()
         barometer.stop()
+        gpsReader.stop()
     }
 
     override fun onCleared() {
@@ -389,6 +413,89 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleArCamera(show: Boolean? = null) {
         val next = show ?: !_uiState.value.showArCamera
         _uiState.value = _uiState.value.copy(showArCamera = next)
+    }
+
+    fun lockVictimTarget(id: String?) {
+        _uiState.value = _uiState.value.copy(lockedTargetId = id)
+    }
+
+    fun rescueVictim(
+        victimId: Int,
+        label: String,
+        depthM: Double,
+        respRate: Double,
+        heartRate: Double,
+        confidence: Double,
+        signatureCode: String = "",
+        customNotes: String = "Rescatado en vivo mediante modo AR",
+    ): com.vitalfi.dsp.RescuedVictimRecord {
+        val currentLat = _uiState.value.currentGpsLat
+        val currentLon = _uiState.value.currentGpsLon
+        val gpsData = if (currentLat != null && currentLon != null) {
+            val latGms = GpsLocationReader.formatLatitudeGms(currentLat)
+            val lonGms = GpsLocationReader.formatLongitudeGms(currentLon)
+            val full = _uiState.value.currentGpsDms.ifBlank { "$latGms $lonGms" }
+            GpsLocationReader.GpsData(
+                latitude = currentLat,
+                longitude = currentLon,
+                altitudeM = _uiState.value.currentGpsAlt ?: 0.0,
+                latitudeGms = latGms,
+                longitudeGms = lonGms,
+                fullGms = full,
+                isGpsActive = true,
+            )
+        } else {
+            gpsReader.getCurrentGpsData()
+        }
+        val record = com.vitalfi.dsp.RescuedVictimRecord(
+            id = "rescue_${System.currentTimeMillis()}_$victimId",
+            victimId = victimId,
+            label = label.ifBlank { "Víctima #$victimId" },
+            timestampMs = System.currentTimeMillis(),
+            latitudeGms = gpsData.latitudeGms,
+            longitudeGms = gpsData.longitudeGms,
+            fullGms = gpsData.fullGms,
+            latitude = gpsData.latitude,
+            longitude = gpsData.longitude,
+            altitudeM = gpsData.altitudeM,
+            depthM = depthM,
+            respRate = respRate,
+            heartRate = heartRate,
+            confidence = confidence,
+            signatureCode = signatureCode,
+            rescueNotes = customNotes,
+        )
+
+        rescuedVictimList.add(0, record)
+        settingsStore.saveRescuedVictims(rescuedVictimList)
+        _uiState.value = _uiState.value.copy(
+            rescuedVictims = rescuedVictimList.toList(),
+            toastMessage = "✅ ¡VÍCTIMA RESCATADA! Coordenada GMS registrada: ${gpsData.fullGms}",
+        )
+
+        // Alerta sonora y háptica de rescate exitoso
+        if (_uiState.value.alertSoundEnabled) {
+            alertPlayer.playTrappedAlert()
+        }
+
+        return record
+    }
+
+    fun clearRescuedVictims() {
+        rescuedVictimList.clear()
+        settingsStore.saveRescuedVictims(emptyList())
+        _uiState.value = _uiState.value.copy(
+            rescuedVictims = emptyList(),
+            toastMessage = "Historial de rescates vaciado",
+        )
+    }
+
+    fun removeRescuedVictim(id: String) {
+        rescuedVictimList.removeAll { it.id == id }
+        settingsStore.saveRescuedVictims(rescuedVictimList)
+        _uiState.value = _uiState.value.copy(
+            rescuedVictims = rescuedVictimList.toList(),
+        )
     }
 
     fun markRubbleZoneAtCurrentBearing() {
