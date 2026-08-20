@@ -4,7 +4,7 @@
 
 Las APK firmadas para usuarios estan en [`../releases/`](../releases/README.md).
 
-Version actual: **1.3.50** — `releases/VitalFi-v1.3.50-signed.apk`
+Version actual: **1.3.51** — `releases/VitalFi-v1.3.51-signed.apk`
 
 ## Keystore (local)
 

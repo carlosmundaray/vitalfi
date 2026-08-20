@@ -34,6 +34,9 @@ data class PersonAiInference(
     val smoothedDistance: Double,      // Distancia filtrada suave para AR
     val smoothedDepth: Double,         // Profundidad filtrada suave
     val aiConfidenceTag: String,       // Etiqueta para el HUD AR
+    val isAtGroundZero: Boolean = false,       // true si está a <= 0.85m del Punto Cero
+    val groundZeroDistanceM: Double = 0.0,     // Distancia restante al Punto Cero
+    val groundZeroConvergence: Float = 0.0f,   // 0.0 a 1.0 (Certeza de convergencia)
 )
 
 /**
@@ -174,7 +177,12 @@ class DistilledPersonAiTracker {
             else -> PersonMotionState.SEARCHING
         }
 
+        // 6. Estimación y Fijación de PUNTO CERO (Ground Zero / Epicentro de Rescate)
+        val isAtGroundZero = track.distance <= 0.85
+        val groundZeroConvergence = (1.0f - (track.distance.toFloat() / 2.5f)).coerceIn(0.0f, 1.0f)
+
         val tag = when {
+            isAtGroundZero -> "🛑 ¡PUNTO CERO! (EXCAVAR ~${"%.2f".format(abs(track.depth))}m)"
             isMoving -> "🏃 EN MOVIMIENTO (~${"%.1f".format(speedMps)} m/s)"
             motionState == PersonMotionState.FAINT_TRAPPED -> "🧱 ATRAPADO BAJO ESCOMBROS"
             isBreathing -> "🫁 VITAL ACTIVO (${(humanProbability * 100).toInt()}% IA)"
@@ -191,6 +199,9 @@ class DistilledPersonAiTracker {
             smoothedDistance = track.distance,
             smoothedDepth = track.depth,
             aiConfidenceTag = tag,
+            isAtGroundZero = isAtGroundZero,
+            groundZeroDistanceM = track.distance,
+            groundZeroConvergence = groundZeroConvergence,
         )
     }
 
