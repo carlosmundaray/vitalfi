@@ -277,13 +277,24 @@ fun ArCameraView(
 
     val curBearing: Double = phoneBearing
     val isSpanish = remember(state.appLanguage) { state.appLanguage.isBlank() || state.appLanguage.startsWith("es") }
+    val aiTracker = remember { com.vitalfi.ml.DistilledPersonAiTracker() }
 
-    // 2. Mapear PERSONAS DETECTADAS por Wi-Fi CSI
-    val allWifiPoints = remember(state.victims, state.isBreathing, state.respRate, state.heartRateBpm, state.confidence, state.bearingDeg, state.rescuedVictims, isSpanish) {
+    // 2. Mapear PERSONAS DETECTADAS por Wi-Fi CSI con IA Destilada y Filtro Cinemático Kalman
+    val allWifiPoints = remember(
+        state.victims,
+        state.isBreathing,
+        state.respRate,
+        state.heartRateBpm,
+        state.confidence,
+        state.bearingDeg,
+        state.rescuedVictims,
+        state.rubbleConfidence,
+        isSpanish,
+    ) {
         val points = mutableListOf<ArWifiPoint>()
         val rescuedVictimIds = state.rescuedVictims.map { it.victimId }.toSet()
 
-        state.victims.forEachIndexed { index, victim ->
+        state.victims.forEach { victim ->
             val isAlreadyRescued = rescuedVictimIds.contains(victim.id)
             val personLabel = if (isSpanish) {
                 if (isAlreadyRescued) "Persona #${victim.id} (RESCATADA)" else "Persona #${victim.id} (Viva)"
@@ -291,23 +302,40 @@ fun ArCameraView(
                 if (isAlreadyRescued) "Person #${victim.id} (RESCUED)" else "Person #${victim.id} (Alive)"
             }
             val depthPrefix = if (isSpanish) "Prof" else "Depth"
+
+            // Inferencia de IA Destilada Offline & Suavizado Cinemático en tiempo real
+            val ai = aiTracker.processTarget(
+                targetId = "victim_${victim.id}",
+                rawBearing = victim.bearing,
+                rawDistance = victim.distance.coerceAtLeast(0.6),
+                rawDepth = victim.depth,
+                respRate = if (victim.respRate > 0) victim.respRate else 16.0,
+                heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
+                confidence = victim.confidence,
+                isBreathing = victim.isBreathing,
+                rubbleConf = victim.rubbleConfidence,
+            )
+
             points.add(
                 ArWifiPoint(
                     id = "victim_${victim.id}",
                     victimNumericId = victim.id,
                     label = personLabel,
-                    subtitle = "$depthPrefix: ${"%.2f".format(abs(victim.depth))}m • Conf: ${victim.confidence.toInt()}%",
-                    bearingDeg = victim.bearing,
-                    distanceM = victim.distance.coerceAtLeast(0.6),
-                    depthM = victim.depth,
+                    subtitle = "$depthPrefix: ${"%.2f".format(abs(ai.smoothedDepth))}m • Conf: ${victim.confidence.toInt()}%",
+                    bearingDeg = ai.smoothedBearing,
+                    distanceM = ai.smoothedDistance.coerceAtLeast(0.6),
+                    depthM = ai.smoothedDepth,
                     signalStrengthDbm = -50,
                     isVictim = true,
                     isRescued = isAlreadyRescued,
                     respRate = if (victim.respRate > 0) victim.respRate else 16.0,
                     heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
-                    confidence = victim.confidence,
+                    confidence = (ai.humanProbability * 100.0).coerceAtLeast(victim.confidence),
                     signatureCode = victim.signatureCode,
-                    color = if (isAlreadyRescued) Color(0xFFFFD700) else Color(0xFF00FFCC),
+                    color = if (isAlreadyRescued) Color(0xFFFFD700) else if (ai.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
+                    isMoving = ai.isMoving,
+                    velocityMps = ai.velocityMps,
+                    aiConfidenceTag = ai.aiConfidenceTag,
                 )
             )
         }
@@ -325,15 +353,27 @@ fun ArCameraView(
             }
             val depthPrefix = if (isSpanish) "Prof" else "Depth"
 
+            val aiLive = aiTracker.processTarget(
+                targetId = "live_csi_victim_1",
+                rawBearing = state.bearingDeg,
+                rawDistance = 2.4,
+                rawDepth = -0.75,
+                respRate = liveResp,
+                heartRate = liveHeart,
+                confidence = liveConf,
+                isBreathing = state.isBreathing,
+                rubbleConf = state.rubbleConfidence,
+            )
+
             points.add(
                 ArWifiPoint(
                     id = "live_csi_victim_1",
                     victimNumericId = 1,
                     label = defaultPersonLabel,
                     subtitle = "$depthPrefix: 0.75m • Conf: ${liveConf.toInt()}%",
-                    bearingDeg = state.bearingDeg,
-                    distanceM = 2.4,
-                    depthM = -0.75,
+                    bearingDeg = aiLive.smoothedBearing,
+                    distanceM = aiLive.smoothedDistance.coerceAtLeast(0.6),
+                    depthM = aiLive.smoothedDepth,
                     signalStrengthDbm = -52,
                     isVictim = true,
                     isRescued = isLiveRescued,
@@ -341,7 +381,10 @@ fun ArCameraView(
                     heartRate = liveHeart,
                     confidence = liveConf,
                     signatureCode = "SIG_V1",
-                    color = if (isLiveRescued) Color(0xFFFFD700) else Color(0xFF00FFCC),
+                    color = if (isLiveRescued) Color(0xFFFFD700) else if (aiLive.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
+                    isMoving = aiLive.isMoving,
+                    velocityMps = aiLive.velocityMps,
+                    aiConfidenceTag = aiLive.aiConfidenceTag,
                 )
             )
         }
@@ -613,6 +656,8 @@ fun ArCameraView(
                     color = target.color,
                     isExplicitlyLocked = isTargetExplicitlyLocked,
                     isSpanish = isSpanish,
+                    isMoving = target.isMoving,
+                    velocityMps = target.velocityMps,
                 )
             }
 
@@ -1634,6 +1679,9 @@ private data class ArWifiPoint(
     val confidence: Double = 0.0,
     val signatureCode: String = "",
     val color: Color = Color(0xFF00FFCC),
+    val isMoving: Boolean = false,
+    val velocityMps: Float = 0.0f,
+    val aiConfidenceTag: String = "",
 )
 
 /** Dibuja la retícula táctica central */
@@ -1691,6 +1739,8 @@ private fun DrawScope.drawArGroundNavigationTrail(
     color: Color = Color(0xFF00FFCC),
     isExplicitlyLocked: Boolean = false,
     isSpanish: Boolean = true,
+    isMoving: Boolean = false,
+    velocityMps: Float = 0.0f,
 ) {
     val startPt = Offset(cx, h - 15f)
     val endPt = Offset(targetX, targetY)
@@ -1699,8 +1749,8 @@ private fun DrawScope.drawArGroundNavigationTrail(
     drawLine(
         brush = Brush.verticalGradient(
             colors = listOf(
-                if (isExplicitlyLocked) Color(0x6600FFCC) else color.copy(alpha = 0.05f),
-                if (isExplicitlyLocked) Color(0x9900FFCC) else color.copy(alpha = 0.35f)
+                if (isExplicitlyLocked) (if (isMoving) Color(0x7700E5FF) else Color(0x6600FFCC)) else color.copy(alpha = 0.05f),
+                if (isExplicitlyLocked) (if (isMoving) Color(0xAA00E5FF) else Color(0x9900FFCC)) else color.copy(alpha = 0.35f)
             ),
             startY = targetY,
             endY = h,
@@ -1715,7 +1765,7 @@ private fun DrawScope.drawArGroundNavigationTrail(
     drawLine(
         brush = Brush.verticalGradient(
             colors = listOf(
-                if (isExplicitlyLocked) Color(0xFF00FFFF) else color.copy(alpha = 0.40f),
+                if (isExplicitlyLocked) (if (isMoving) Color(0xFF00FFFF) else Color(0xFF00FFCC)) else color.copy(alpha = 0.40f),
                 if (isExplicitlyLocked) Color(0xFFFFFFFF) else color.copy(alpha = 0.95f)
             ),
             startY = targetY,
@@ -1755,13 +1805,13 @@ private fun DrawScope.drawArGroundNavigationTrail(
     if (isExplicitlyLocked) {
         val ringPulse = (progress * 28f)
         drawCircle(
-            color = Color(0xFF00FFCC).copy(alpha = (1f - progress).coerceIn(0.1f, 0.8f)),
+            color = (if (isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC)).copy(alpha = (1f - progress).coerceIn(0.1f, 0.8f)),
             radius = 18f + ringPulse,
             center = endPt,
             style = Stroke(width = 2.5f)
         )
         drawCircle(
-            color = Color(0xFF00FFCC),
+            color = if (isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
             radius = 8f,
             center = endPt,
         )
@@ -1771,8 +1821,8 @@ private fun DrawScope.drawArGroundNavigationTrail(
         val midX = (startPt.x + endPt.x) / 2f
         val midY = (startPt.y + endPt.y) / 2f
         val paintDist = android.graphics.Paint().apply {
-            this.color = if (isExplicitlyLocked) android.graphics.Color.parseColor("#00FFCC") else android.graphics.Color.WHITE
-            this.textSize = if (isExplicitlyLocked) 23f else 21f
+            this.color = if (isExplicitlyLocked) (if (isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFCC")) else android.graphics.Color.WHITE
+            this.textSize = if (isExplicitlyLocked) 22f else 21f
             this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
             this.textAlign = android.graphics.Paint.Align.CENTER
             this.isAntiAlias = true
@@ -1783,11 +1833,15 @@ private fun DrawScope.drawArGroundNavigationTrail(
             this.isAntiAlias = true
         }
         val labelText = if (isExplicitlyLocked) {
-            if (isSpanish) "🔒 LÁSER FIJADO · ${"%.1f".format(distanceM)}m" else "🔒 LOCKED LASER · ${"%.1f".format(distanceM)}m"
+            if (isMoving) {
+                if (isSpanish) "🔒 RASTREANDO · ${"%.1f".format(distanceM)}m (~${"%.1f".format(velocityMps)}m/s)" else "🔒 TRACKING · ${"%.1f".format(distanceM)}m (~${"%.1f".format(velocityMps)}m/s)"
+            } else {
+                if (isSpanish) "🔒 LÁSER FIJADO · ${"%.1f".format(distanceM)}m" else "🔒 LOCKED LASER · ${"%.1f".format(distanceM)}m"
+            }
         } else {
             "▲ ${"%.1f".format(distanceM)}m"
         }
-        val boxWidth = if (isExplicitlyLocked) 88f else 58f
+        val boxWidth = if (isExplicitlyLocked && isMoving) 120f else if (isExplicitlyLocked) 88f else 58f
         drawContext.canvas.nativeCanvas.drawRoundRect(
             midX - boxWidth, midY - 22f, midX + boxWidth, midY + 9f, 8f, 8f, paintDistBg
         )
@@ -1824,7 +1878,7 @@ private fun DrawScope.drawArSonarWaves(
     }
 }
 
-/** Renderiza el Punto / Orbe Holográfico 3D con indicador distintivo cuando está fijado */
+/** Renderiza el Punto / Orbe Holográfico 3D con IA Destilada e indicador de movimiento */
 private fun DrawScope.drawArWifiNodePoint(
     sx: Float,
     sy: Float,
@@ -1836,16 +1890,17 @@ private fun DrawScope.drawArWifiNodePoint(
     isSpanish: Boolean = true,
 ) {
     val perspectiveScale = (2.4f / point.distanceM.toFloat().coerceIn(0.6f, 12.0f)).coerceIn(0.30f, 2.4f)
-    val baseColor = if (isExplicitlyLocked) Color(0xFF00FFCC) else point.color
+    val baseColor = if (isExplicitlyLocked) (if (point.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC)) else point.color
     val orbRadius = (14f * perspectiveScale * (if (isExplicitlyLocked) pulse * 1.15f else pulse)).coerceIn(5f, 36f)
 
     // Columna vertical de luz / Haz holográfico
     val columnHeight = (80f * perspectiveScale).coerceIn(24f, 150f)
     if (isExplicitlyLocked) {
         val topBeam = (70f * perspectiveScale).coerceIn(25f, 140f)
+        val beamColor = if (point.isMoving) Color(0xAA00E5FF) else Color(0xAA00FFCC)
         drawLine(
             brush = Brush.verticalGradient(
-                colors = listOf(Color.Transparent, Color(0xAA00FFCC), Color(0xFFFFFFFF), Color(0xAA00FFCC), Color.Transparent),
+                colors = listOf(Color.Transparent, beamColor, Color(0xFFFFFFFF), beamColor, Color.Transparent),
                 startY = sy - topBeam,
                 endY = sy + columnHeight + 20f,
             ),
@@ -1870,8 +1925,8 @@ private fun DrawScope.drawArWifiNodePoint(
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
-                (if (isExplicitlyLocked) Color(0xFF00FFCC) else baseColor).copy(alpha = if (isExplicitlyLocked) 0.90f else 0.75f),
-                (if (isExplicitlyLocked) Color(0x5500FFCC) else baseColor).copy(alpha = if (isExplicitlyLocked) 0.35f else 0.15f),
+                baseColor.copy(alpha = if (isExplicitlyLocked) 0.90f else 0.75f),
+                baseColor.copy(alpha = if (isExplicitlyLocked) 0.35f else 0.15f),
                 Color.Transparent
             ),
             center = Offset(sx, sy),
@@ -1883,7 +1938,7 @@ private fun DrawScope.drawArWifiNodePoint(
 
     // Orbe central
     drawCircle(
-        color = if (isExplicitlyLocked) Color(0xFF00FFCC) else baseColor,
+        color = baseColor,
         radius = orbRadius,
         center = Offset(sx, sy),
     )
@@ -1898,10 +1953,11 @@ private fun DrawScope.drawArWifiNodePoint(
         val bracketRadius = orbRadius * 2.2f
         val numBrackets = 4
         val bracketSweep = 44f
+        val bracketColor = if (point.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC)
         for (i in 0 until numBrackets) {
             val startAngle = lockRotationDeg + i * 90f - (bracketSweep / 2f)
             drawArc(
-                color = Color(0xFF00FFCC),
+                color = bracketColor,
                 startAngle = startAngle,
                 sweepAngle = bracketSweep,
                 useCenter = false,
@@ -1922,7 +1978,7 @@ private fun DrawScope.drawArWifiNodePoint(
         }
         drawPath(
             path = diamondPath,
-            color = Color(0xFF00FFCC).copy(alpha = 0.45f),
+            color = bracketColor.copy(alpha = 0.45f),
             style = Stroke(width = (2.0f * perspectiveScale).coerceIn(1.2f, 4f), cap = StrokeCap.Round),
         )
     } else {
@@ -1935,9 +1991,10 @@ private fun DrawScope.drawArWifiNodePoint(
         )
     }
 
+    val hasAiTag = point.aiConfidenceTag.isNotBlank()
+    val badgeHeight = (if (hasAiTag) (68f * perspectiveScale) else if (isExplicitlyLocked) (56f * perspectiveScale) else (48f * perspectiveScale)).coerceIn(36f, 96f)
     val labelY = sy - orbRadius * (if (isExplicitlyLocked) 2.2f else 1.4f) - (14f * perspectiveScale)
-    val badgeWidth = (if (isExplicitlyLocked) 230f * perspectiveScale else 210f * perspectiveScale).coerceIn(145f, 330f)
-    val badgeHeight = (if (isExplicitlyLocked) 56f * perspectiveScale else 48f * perspectiveScale).coerceIn(36f, 78f)
+    val badgeWidth = (if (hasAiTag || isExplicitlyLocked) 245f * perspectiveScale else 210f * perspectiveScale).coerceIn(155f, 350f)
 
     val paintBg = android.graphics.Paint().apply {
         this.color = if (isExplicitlyLocked) {
@@ -1954,13 +2011,13 @@ private fun DrawScope.drawArWifiNodePoint(
         this.color = if (point.isRescued) {
             android.graphics.Color.parseColor("#FFD700")
         } else if (isExplicitlyLocked) {
-            android.graphics.Color.parseColor("#00FFFF")
+            if (point.isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFFF")
         } else if (isAimAligned) {
             android.graphics.Color.parseColor("#00FFCC")
         } else {
             android.graphics.Color.WHITE
         }
-        this.textSize = (21f * perspectiveScale).coerceIn(13f, 29f)
+        this.textSize = (20f * perspectiveScale).coerceIn(12f, 28f)
         this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
         this.textAlign = android.graphics.Paint.Align.CENTER
         this.isAntiAlias = true
@@ -1973,7 +2030,7 @@ private fun DrawScope.drawArWifiNodePoint(
         } else {
             android.graphics.Color.parseColor("#FFCC00")
         }
-        this.textSize = (16f * perspectiveScale).coerceIn(10f, 22f)
+        this.textSize = (15f * perspectiveScale).coerceIn(10f, 21f)
         this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.NORMAL)
         this.textAlign = android.graphics.Paint.Align.CENTER
         this.isAntiAlias = true
@@ -1990,7 +2047,7 @@ private fun DrawScope.drawArWifiNodePoint(
     // Borde brillante en la tarjeta cuando está fijado
     if (isExplicitlyLocked) {
         val paintBorder = android.graphics.Paint().apply {
-            this.color = android.graphics.Color.parseColor("#00FFCC")
+            this.color = if (point.isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFCC")
             this.style = android.graphics.Paint.Style.STROKE
             this.strokeWidth = (2.5f * perspectiveScale).coerceIn(1.5f, 4f)
             this.isAntiAlias = true
@@ -2005,16 +2062,35 @@ private fun DrawScope.drawArWifiNodePoint(
     }
 
     val displayLabel = if (isExplicitlyLocked) "🔒 ${point.label}" else point.label
+    val line1Y = if (hasAiTag) labelY - badgeHeight * 0.68f else labelY - badgeHeight * 0.54f
+    val line2Y = if (hasAiTag) labelY - badgeHeight * 0.38f else labelY - badgeHeight * 0.16f
+
     drawContext.canvas.nativeCanvas.drawText(
         displayLabel,
         sx,
-        labelY - badgeHeight * 0.54f,
+        line1Y,
         paintText
     )
     drawContext.canvas.nativeCanvas.drawText(
         "🎯 ${"%.1f".format(point.distanceM)}m • ⬇ ${"%.1f".format(abs(point.depthM))}m",
         sx,
-        labelY - badgeHeight * 0.16f,
+        line2Y,
         paintSub
     )
+
+    if (hasAiTag) {
+        val paintAi = android.graphics.Paint().apply {
+            this.color = if (point.isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFCC")
+            this.textSize = (13f * perspectiveScale).coerceIn(9f, 17f)
+            this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+            this.textAlign = android.graphics.Paint.Align.CENTER
+            this.isAntiAlias = true
+        }
+        drawContext.canvas.nativeCanvas.drawText(
+            point.aiConfidenceTag,
+            sx,
+            labelY - badgeHeight * 0.10f,
+            paintAi
+        )
+    }
 }
