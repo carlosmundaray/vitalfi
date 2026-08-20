@@ -151,6 +151,66 @@ class SettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadRescuedVictims(): List<com.vitalfi.dsp.RescuedVictimRecord> {
+        val jsonStr = prefs.getString(KEY_RESCUED_VICTIMS, null) ?: return emptyList()
+        val list = mutableListOf<com.vitalfi.dsp.RescuedVictimRecord>()
+        try {
+            val jsonArray = org.json.JSONArray(jsonStr)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    com.vitalfi.dsp.RescuedVictimRecord(
+                        id = obj.optString("id", "rescue_${System.currentTimeMillis()}_$i"),
+                        victimId = obj.optInt("victimId", 1),
+                        label = obj.optString("label", "Víctima"),
+                        timestampMs = obj.optLong("timestampMs", System.currentTimeMillis()),
+                        latitudeGms = obj.optString("latitudeGms", ""),
+                        longitudeGms = obj.optString("longitudeGms", ""),
+                        fullGms = obj.optString("fullGms", ""),
+                        latitude = obj.optDouble("latitude", 0.0),
+                        longitude = obj.optDouble("longitude", 0.0),
+                        altitudeM = obj.optDouble("altitudeM", 0.0),
+                        depthM = obj.optDouble("depthM", 0.0),
+                        respRate = obj.optDouble("respRate", 0.0),
+                        heartRate = obj.optDouble("heartRate", 0.0),
+                        confidence = obj.optDouble("confidence", 0.0),
+                        signatureCode = obj.optString("signatureCode", ""),
+                        rescueNotes = obj.optString("rescueNotes", ""),
+                    )
+                )
+            }
+        } catch (_: Throwable) {}
+        return list
+    }
+
+    fun saveRescuedVictims(victims: List<com.vitalfi.dsp.RescuedVictimRecord>) {
+        try {
+            val jsonArray = org.json.JSONArray()
+            for (v in victims) {
+                val obj = org.json.JSONObject().apply {
+                    put("id", v.id)
+                    put("victimId", v.victimId)
+                    put("label", v.label)
+                    put("timestampMs", v.timestampMs)
+                    put("latitudeGms", v.latitudeGms)
+                    put("longitudeGms", v.longitudeGms)
+                    put("fullGms", v.fullGms)
+                    put("latitude", v.latitude)
+                    put("longitude", v.longitude)
+                    put("altitudeM", v.altitudeM)
+                    put("depthM", v.depthM)
+                    put("respRate", v.respRate)
+                    put("heartRate", v.heartRate)
+                    put("confidence", v.confidence)
+                    put("signatureCode", v.signatureCode)
+                    put("rescueNotes", v.rescueNotes)
+                }
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString(KEY_RESCUED_VICTIMS, jsonArray.toString()).apply()
+        } catch (_: Throwable) {}
+    }
+
     companion object {
         private const val PREFS_NAME = "vitalfi_settings"
         private const val KEY_ALERT_SOUND = "alert_sound_enabled"
@@ -178,5 +238,6 @@ class SettingsStore(context: Context) {
         private const val KEY_LAYER_TRAIL = "radar_layer_trail"
         private const val KEY_LAYER_LABELS = "radar_layer_labels"
         private const val KEY_LAYER_DEPTH_RAYS = "radar_layer_depth_rays"
+        private const val KEY_RESCUED_VICTIMS = "saved_rescued_victims_json"
     }
 }
