@@ -323,7 +323,7 @@ fun ArCameraView(
                     label = personLabel,
                     subtitle = "$depthPrefix: ${"%.2f".format(abs(ai.smoothedDepth))}m • Conf: ${victim.confidence.toInt()}%",
                     bearingDeg = ai.smoothedBearing,
-                    distanceM = ai.smoothedDistance.coerceAtLeast(0.6),
+                    distanceM = ai.smoothedDistance.coerceAtLeast(0.4),
                     depthM = ai.smoothedDepth,
                     signalStrengthDbm = -50,
                     isVictim = true,
@@ -332,10 +332,12 @@ fun ArCameraView(
                     heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
                     confidence = (ai.humanProbability * 100.0).coerceAtLeast(victim.confidence),
                     signatureCode = victim.signatureCode,
-                    color = if (isAlreadyRescued) Color(0xFFFFD700) else if (ai.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
+                    color = if (isAlreadyRescued) Color(0xFFFFD700) else if (ai.isAtGroundZero) Color(0xFFFF0055) else if (ai.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
                     isMoving = ai.isMoving,
                     velocityMps = ai.velocityMps,
                     aiConfidenceTag = ai.aiConfidenceTag,
+                    isAtGroundZero = ai.isAtGroundZero,
+                    groundZeroConvergence = ai.groundZeroConvergence,
                 )
             )
         }
@@ -383,10 +385,12 @@ fun ArCameraView(
                     heartRate = liveHeart,
                     confidence = liveConf,
                     signatureCode = "CSI_LIVE",
-                    color = if (isLiveRescued) Color(0xFFFFD700) else if (aiLive.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
+                    color = if (isLiveRescued) Color(0xFFFFD700) else if (aiLive.isAtGroundZero) Color(0xFFFF0055) else if (aiLive.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
                     isMoving = aiLive.isMoving,
                     velocityMps = aiLive.velocityMps,
                     aiConfidenceTag = aiLive.aiConfidenceTag,
+                    isAtGroundZero = aiLive.isAtGroundZero,
+                    groundZeroConvergence = aiLive.groundZeroConvergence,
                 )
             )
         }
@@ -674,14 +678,27 @@ fun ArCameraView(
                     val sy = (cy + (pt.depthM * 40f).toFloat()).coerceIn(h * 0.28f, h * 0.76f)
                     val isCurrentTarget = (pt.id == targetPoint?.id)
 
-                    // Ondas de Sonar y Zona de Escombros en el piso
-                    drawArSonarWaves(
-                        sx = sx,
-                        sy = sy + 30f,
-                        progress = pulseWave,
-                        distanceM = pt.distanceM.toFloat(),
-                        color = pt.color,
-                    )
+                    // Si está en zona cercana (< 2.2m), proyectar el PUNTO CERO / EPICENTRO en el suelo
+                    if (pt.distanceM <= 2.2) {
+                        drawArGroundZeroEpicenter(
+                            sx = sx,
+                            sy = sy + 30f,
+                            depthM = pt.depthM,
+                            pulse = beaconPulse,
+                            isAtGroundZero = pt.isAtGroundZero,
+                            convergence = pt.groundZeroConvergence,
+                            isSpanish = isSpanish,
+                        )
+                    } else {
+                        // Ondas de Sonar normales a mayor distancia
+                        drawArSonarWaves(
+                            sx = sx,
+                            sy = sy + 30f,
+                            progress = pulseWave,
+                            distanceM = pt.distanceM.toFloat(),
+                            color = pt.color,
+                        )
+                    }
 
                     // Orbe Holográfico 3D con indicador táctico de Fijado
                     drawArWifiNodePoint(
@@ -1011,6 +1028,57 @@ fun ArCameraView(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // 4.5. ALERTA CRÍTICA DE PUNTO CERO (Para detenerse de inmediato y no seguir caminando)
+        if (targetPoint != null && targetPoint.isAtGroundZero) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = if (isPanelExpanded) 220.dp else 145.dp, start = 14.dp, end = 14.dp)
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xF2770020)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(2.dp, Color(0xFFFF0055), RoundedCornerShape(12.dp)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .scale(beaconPulse)
+                                    .background(Color(0xFFFF0055), CircleShape)
+                            )
+                            Text(
+                                if (isSpanish) "🛑 ¡DETÉNGASE! PUNTO CERO ALCANZADO" else "🛑 STOP! GROUND ZERO REACHED",
+                                color = Color(0xFFFFEE44),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                        Text(
+                            if (isSpanish) "⬇ VÍCTIMA DIRECTAMENTE DEBAJO · EXCAVE A ${"%.2f".format(abs(targetPoint.depthM))}m DE PROFUNDIDAD" else "⬇ VICTIM DIRECTLY BELOW · DIG AT ${"%.2f".format(abs(targetPoint.depthM))}m DEPTH",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
                     }
                 }
             }
@@ -1668,26 +1736,26 @@ private enum class ProximityZone(
     val borderColor: Color,
     val textColor: Color,
 ) {
-    OVER_VICTIM(Color(0xF000472E), Color(0xFF00FFCC), Color(0xFF00FFCC)),
+    OVER_VICTIM(Color(0xF0770020), Color(0xFFFF0055), Color(0xFFFFEE44)),
     VERY_CLOSE(Color(0xEE4D2800), Color(0xFFFF9900), Color(0xFFFFCC00)),
     APPROACHING(Color(0xDD3A2800), Color(0xFFFFCC00), Color(0xFFFFDD44)),
     DISTANT(Color(0xDD00241A), Color(0x6600FFCC), Color(0xFFA0C4A0));
 
     fun titleText(distM: Double, isSpanish: Boolean = true): String {
-        val d = "%.1f".format(distM)
+        val d = "%.2f".format(distM)
         return if (isSpanish) {
             when (this) {
-                OVER_VICTIM -> "🔥 ¡ZONA EXACTA! VÍCTIMA AQUÍ (${d}m)"
-                VERY_CLOSE -> "⚠️ ¡ZONA MUY CERCA! (${d}m) — REVISA ESCOMBROS"
-                APPROACHING -> "🟠 APROXIMÁNDOSE A LA VÍCTIMA (~${d}m)"
-                DISTANT -> "🔵 ZONA DISTANTE (~${d}m) — SIGA LA GUÍA"
+                OVER_VICTIM -> "🛑 ¡DETÉNGASE! PUNTO CERO ALCANZADO (${d}m)"
+                VERY_CLOSE -> "🎯 APROXIMÁNDOSE A PUNTO CERO (${d}m)"
+                APPROACHING -> "🟠 EN CAMINO AL EPICENTRO (~${d}m)"
+                DISTANT -> "🔵 RUMBO A LA ZONA (~${d}m) — SIGA EL LÁSER"
             }
         } else {
             when (this) {
-                OVER_VICTIM -> "🔥 EXACT ZONE! VICTIM HERE (${d}m)"
-                VERY_CLOSE -> "⚠️ VERY CLOSE ZONE! (${d}m) — CHECK RUBBLE"
-                APPROACHING -> "🟠 APPROACHING VICTIM (~${d}m)"
-                DISTANT -> "🔵 DISTANT ZONE (~${d}m) — FOLLOW GUIDE"
+                OVER_VICTIM -> "🛑 STOP! GROUND ZERO REACHED (${d}m)"
+                VERY_CLOSE -> "🎯 APPROACHING GROUND ZERO (${d}m)"
+                APPROACHING -> "🟠 ON ROUTE TO EPICENTER (~${d}m)"
+                DISTANT -> "🔵 HEADING TO TARGET (~${d}m) — FOLLOW LASER"
             }
         }
     }
@@ -1713,7 +1781,112 @@ private data class ArWifiPoint(
     val isMoving: Boolean = false,
     val velocityMps: Float = 0.0f,
     val aiConfidenceTag: String = "",
+    val isAtGroundZero: Boolean = false,
+    val groundZeroConvergence: Float = 0.0f,
 )
+
+/** Dibuja el Marcador Táctico de PUNTO CERO directamente en el suelo sobre la víctima */
+private fun DrawScope.drawArGroundZeroEpicenter(
+    sx: Float,
+    sy: Float,
+    depthM: Double,
+    pulse: Float,
+    isAtGroundZero: Boolean,
+    convergence: Float,
+    isSpanish: Boolean = true,
+) {
+    val baseRadius = (55f + convergence * 35f).coerceIn(40f, 100f)
+    val ringColor = if (isAtGroundZero) Color(0xFFFF0055) else Color(0xFF00FFCC)
+    val beaconColor = if (isAtGroundZero) Color(0xFFFF2266) else Color(0xFF00E5FF)
+
+    // 1. Círculos concéntricos de impacto / Diana de Punto Cero en el suelo
+    for (i in 1..3) {
+        val r = baseRadius * (i / 3f)
+        drawOval(
+            color = ringColor.copy(alpha = if (isAtGroundZero) (0.95f - i * 0.15f) else (0.65f - i * 0.15f)),
+            topLeft = Offset(sx - r, sy - r * 0.32f),
+            size = Size(r * 2f, r * 0.64f),
+            style = Stroke(width = if (i == 3) 3.6f else 2.0f),
+        )
+    }
+
+    // 2. Cruz táctica sobre la diana
+    val crossLen = baseRadius * 1.35f
+    drawLine(
+        color = ringColor,
+        start = Offset(sx - crossLen, sy),
+        end = Offset(sx + crossLen, sy),
+        strokeWidth = 2.4f,
+    )
+    drawLine(
+        color = ringColor,
+        start = Offset(sx, sy - crossLen * 0.32f),
+        end = Offset(sx, sy + crossLen * 0.32f),
+        strokeWidth = 2.4f,
+    )
+
+    // 3. Columna / Baliza vertical que penetra hacia el suelo
+    val pillarHeight = 100f
+    drawLine(
+        brush = Brush.verticalGradient(
+            colors = listOf(beaconColor.copy(alpha = 0.9f), Color.White, beaconColor.copy(alpha = 0.2f), Color.Transparent),
+            startY = sy - pillarHeight,
+            endY = sy + 25f,
+        ),
+        start = Offset(sx, sy - pillarHeight),
+        end = Offset(sx, sy + 25f),
+        strokeWidth = if (isAtGroundZero) 6.5f else 4.0f,
+        cap = StrokeCap.Round,
+    )
+
+    // 4. Cartel flotante de PUNTO CERO / EXCAVAR
+    val badgeW = 230f
+    val badgeH = 50f
+    val badgeY = sy - pillarHeight - 10f
+
+    val paintBg = android.graphics.Paint().apply {
+        color = if (isAtGroundZero) android.graphics.Color.argb(245, 90, 0, 24) else android.graphics.Color.argb(235, 0, 48, 36)
+        style = android.graphics.Paint.Style.FILL
+        isAntiAlias = true
+    }
+    val paintBorder = android.graphics.Paint().apply {
+        color = if (isAtGroundZero) android.graphics.Color.parseColor("#FF0055") else android.graphics.Color.parseColor("#00FFCC")
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 3f
+        isAntiAlias = true
+    }
+    val paintText = android.graphics.Paint().apply {
+        color = if (isAtGroundZero) android.graphics.Color.parseColor("#FFFF55") else android.graphics.Color.parseColor("#00FFFF")
+        textSize = 20f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+    }
+    val paintSub = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        textSize = 14f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.NORMAL)
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+    }
+
+    drawContext.canvas.nativeCanvas.drawRoundRect(
+        sx - badgeW / 2f, badgeY - badgeH, sx + badgeW / 2f, badgeY, 10f, 10f, paintBg
+    )
+    drawContext.canvas.nativeCanvas.drawRoundRect(
+        sx - badgeW / 2f, badgeY - badgeH, sx + badgeW / 2f, badgeY, 10f, 10f, paintBorder
+    )
+
+    val title = if (isAtGroundZero) {
+        if (isSpanish) "🛑 ¡PUNTO CERO!" else "🛑 GROUND ZERO!"
+    } else {
+        if (isSpanish) "🎯 EPICENTRO VÍCTIMA" else "🎯 VICTIM EPICENTER"
+    }
+    val sub = if (isSpanish) "⬇ EXCAVAR A ~${"%.2f".format(abs(depthM))}m" else "⬇ DIG AT ~${"%.2f".format(abs(depthM))}m"
+
+    drawContext.canvas.nativeCanvas.drawText(title, sx, badgeY - badgeH * 0.55f, paintText)
+    drawContext.canvas.nativeCanvas.drawText(sub, sx, badgeY - badgeH * 0.16f, paintSub)
+}
 
 /** Dibuja la retícula táctica central */
 private fun DrawScope.drawArLockReticle(
