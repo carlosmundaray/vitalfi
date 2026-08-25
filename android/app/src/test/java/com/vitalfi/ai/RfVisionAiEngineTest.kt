@@ -46,9 +46,12 @@ class RfVisionAiEngineTest {
 
         assertNotNull(pose)
         assertNotNull(grid)
-        assertEquals("Tendido (Horizontal)", pose!!.postureLabel)
-        assertTrue(pose.confidence >= 0.90f)
+        // Ahora el label incluye "Ilustrativo" para no engañar rescatistas
+        assertTrue(pose!!.postureLabel.contains("Ilustrativo"))
+        assertTrue(pose.postureLabel.contains("Tendido"))
+        assertTrue(pose.isIllustrative)
         assertTrue(pose.heartPulsing)
+        assertEquals(72.0, pose.heartBpm, 0.01)  // Pasa el valor real, no inventa
         assertEquals(256, grid!!.intensities.size)
     }
 
@@ -75,7 +78,10 @@ class RfVisionAiEngineTest {
 
         assertNotNull(pose)
         assertNotNull(grid)
-        assertTrue(pose!!.postureLabel.contains("Auxilio"))
-        assertTrue(pose.confidence >= 0.95f)
+        assertTrue(pose!!.postureLabel.contains("Ilustrativo"))
+        assertTrue(pose.postureLabel.contains("Auxilio"))
+        assertTrue(pose.isIllustrative)
+        // Confianza baja porque es ilustrativo, NO detección real
+        assertTrue(pose.confidence <= 0.30f)
     }
 }
