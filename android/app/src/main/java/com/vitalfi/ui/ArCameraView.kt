@@ -2203,6 +2203,7 @@ private fun DrawScope.drawArGroundNavigationTrail(
             }
             this.style = android.graphics.Paint.Style.FILL
             this.isAntiAlias = true
+        }
         val paintDistBorder = android.graphics.Paint().apply {
             this.color = when {
                 distanceM <= 1.0f -> android.graphics.Color.parseColor("#FF3300")
