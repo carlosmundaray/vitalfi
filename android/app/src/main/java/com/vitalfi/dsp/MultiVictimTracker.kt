@@ -26,6 +26,9 @@ data class TrappedVictim(
     val bodyDimension: String = "",
     val bodyPosture: String = "",
     val rcsAreaM2: Double = 0.0,
+    val gpsLat: Double? = null,
+    val gpsLon: Double? = null,
+    val gpsGms: String = "",
 )
 
 /**

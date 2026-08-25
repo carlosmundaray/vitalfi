@@ -51,6 +51,11 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.foundation.layout.Spacer
+import com.vitalfi.sensor.GpsLocationReader
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -129,6 +134,8 @@ fun MainScreen(
     onExportCsv: () -> Unit,
     onDismissToast: () -> Unit,
     onSelectVictim: (Int) -> Unit,
+    onTogglePinVictim: (Int) -> Unit = {},
+    onInspectVictim: (Int) -> Unit = {},
     onDismissVictim: () -> Unit,
     onRenameVictim: (Int, String) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
@@ -292,7 +299,11 @@ fun MainScreen(
                 onClearExclusions = onClearExclusions,
             )
 
-            VictimsSummaryCard(state, onSelectVictim)
+            VictimsSummaryCard(
+                state = state,
+                onTogglePinVictim = onTogglePinVictim,
+                onInspectVictim = onInspectVictim,
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -406,7 +417,14 @@ fun MainScreen(
         ForceUpdateDialog(
             updateInfo = updateInfo,
             onOpenUrl = { url ->
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Throwable) {
+                    Toast.makeText(context, "No se pudo abrir el enlace", Toast.LENGTH_SHORT).show()
+                }
             },
         )
     }
@@ -415,7 +433,14 @@ fun MainScreen(
         AboutDialog(
             onDismiss = { showAbout = false },
             onOpenUrl = { url ->
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Throwable) {
+                    Toast.makeText(context, "No se pudo abrir el enlace", Toast.LENGTH_SHORT).show()
+                }
             },
         )
     }
@@ -450,10 +475,13 @@ fun MainScreen(
         )
     }
 
-    state.selectedVictim?.let { victim ->
+    val activeVictimForDialog = state.inspectingVictim ?: (if (state.selectedVictim != null && state.pinnedVictimId == null) state.selectedVictim else null)
+    activeVictimForDialog?.let { victim ->
         VictimDetailDialog(
             victim = victim,
+            isPinned = state.pinnedVictimId == victim.id,
             onDismiss = onDismissVictim,
+            onTogglePin = { onTogglePinVictim(victim.id) },
             onRename = { name -> onRenameVictim(victim.id, name) },
             phoneBearingDeg = state.bearingDeg,
             colorblind = state.colorblindMode,
@@ -1734,30 +1762,75 @@ private fun NavigationHint(state: VitalFiUiState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> Unit) {
+private fun VictimsSummaryCard(
+    state: VitalFiUiState,
+    onTogglePinVictim: (Int) -> Unit,
+    onInspectVictim: (Int) -> Unit,
+) {
     if (state.victims.isEmpty()) return
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF101810)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                stringResource(R.string.victims_trapped_count, state.victims.size),
-                color = RadarGreen,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.victims_trapped_count, state.victims.size),
+                    color = RadarGreen,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                )
+                if (state.pinnedVictimId != null) {
+                    val pinned = state.victims.find { it.id == state.pinnedVictimId }
+                    if (pinned != null) {
+                        Text(
+                            "📌 Ruta activa: ${pinned.label}",
+                            color = Cyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 state.victims.forEach { victim ->
+                    val isPinned = state.pinnedVictimId == victim.id
+                    val isSelected = isPinned || state.selectedVictim?.id == victim.id
                     FilterChip(
-                        selected = state.selectedVictim?.id == victim.id,
-                        onClick = { onSelectVictim(victim.id) },
+                        selected = isSelected,
+                        onClick = { onTogglePinVictim(victim.id) },
+                        leadingIcon = {
+                            if (isPinned) {
+                                Text("📌", fontSize = 12.sp)
+                            }
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { onInspectVictim(victim.id) },
+                                modifier = Modifier.size(20.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = "Detalles",
+                                    tint = if (isPinned) Cyan else Color.Gray,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                        },
                         label = {
                             val kind = victimStatusKind(victim)
+                            val pinText = if (isPinned) " [FIJADA]" else ""
+                            val coordsText = if (victim.gpsLat != null) " · 📍${"%.4f".format(victim.gpsLat)}°" else ""
                             Text(
-                                "${victim.label} ${victimStatusIconLabel(kind)} ${"%.2f".format(victim.distance)}m · ↓${"%.2f".format(kotlin.math.abs(victim.depth))}m",
+                                "${victim.label}$pinText ${victimStatusIconLabel(kind)} ${"%.2f".format(victim.distance)}m · ↓${"%.2f".format(kotlin.math.abs(victim.depth))}m$coordsText",
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
+                                fontWeight = if (isPinned) FontWeight.Bold else FontWeight.Normal,
                             )
                         },
                     )
@@ -1775,12 +1848,15 @@ private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> U
 @Composable
 private fun VictimDetailDialog(
     victim: TrappedVictim,
+    isPinned: Boolean = false,
     onDismiss: () -> Unit,
+    onTogglePin: () -> Unit,
     onRename: (String) -> Unit,
     phoneBearingDeg: Double,
     colorblind: Boolean = false,
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val kind = victimStatusKind(victim)
     val color = victimColor(victim, colorblind)
     val rel = describePersonPosition(context, victim.x, victim.y, victim.depth, phoneBearingDeg)
@@ -1795,12 +1871,17 @@ private fun VictimDetailDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    "${victimStatusIconLabel(kind)} · ${victim.label}",
-                    color = color,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "${victimStatusIconLabel(kind)} · ${victim.label}",
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                    )
+                    if (isPinned) {
+                        Text("📌", fontSize = 16.sp)
+                    }
+                }
                 Text(
                     if (isCsiData) "🛰️ WiFi-CSI" else "📱 RSSI",
                     color = if (isCsiData) Color(0xFF00FFCC) else Color(0xFFFFCC00),
@@ -1857,22 +1938,158 @@ private fun VictimDetailDialog(
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                         )
-                        VictimDetailRow("Distancia desde ti", "🎯 ${"%.2f".format(victim.distance)} m")
+                        VictimDetailRow(stringResource(R.string.label_distance_from_you), "🎯 ${"%.2f".format(victim.distance)} m")
                         VictimDetailRow(
-                            "Profundidad bajo escombros",
-                            if (isCsiData) "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m (Exacta ToF)"
-                            else "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m (Estimada)",
+                            stringResource(R.string.label_depth_under_rubble),
+                            if (isCsiData) "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m"
+                            else "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m",
                         )
                         VictimDetailRow(
-                            "Rumbo / Dirección",
+                            "🧭",
                             "🧭 ${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)} (${rel.horizontal})",
                         )
-                        VictimDetailRow("Distancia directa 3D", "📐 ${"%.2f".format(rel.slantRangeM)} m")
-                        VictimDetailRow("Zona de Proximidad", "${victim.proximity} (~${"%.2f".format(victim.distance)} m)")
+                        VictimDetailRow("📐 3D", "📐 ${"%.2f".format(rel.slantRangeM)} m")
+                        VictimDetailRow(stringResource(R.string.label_proximity_zone), "${victim.proximity} (~${"%.2f".format(victim.distance)} m)")
                     }
                 }
 
-                // 3. Tarjeta de Signos Vitales
+                // 3. Tarjeta de Coordenadas Geográficas (Latitud, Longitud, GMS y Acciones)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0C1620)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "📍 COORDENADAS GEOGRÁFICAS (GPS)",
+                                color = Color(0xFF33CCFF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            if (victim.gpsLat != null && victim.gpsLon != null) {
+                                Text(
+                                    "🛰️ GPS Fix",
+                                    color = Color(0xFF00FF88),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+
+                        if (victim.gpsLat != null && victim.gpsLon != null) {
+                            VictimDetailRow(
+                                stringResource(R.string.victim_latitude),
+                                GpsLocationReader.formatLatitudeDecimal(victim.gpsLat),
+                            )
+                            VictimDetailRow(
+                                stringResource(R.string.victim_longitude),
+                                GpsLocationReader.formatLongitudeDecimal(victim.gpsLon),
+                            )
+                            if (victim.gpsGms.isNotBlank()) {
+                                VictimDetailRow(
+                                    stringResource(R.string.victim_gps_gms),
+                                    victim.gpsGms,
+                                )
+                            }
+                        } else {
+                            Text(
+                                "📡 Coordenadas en cálculo (esperando posición satelital del rescatista)...",
+                                color = Color(0xFFAAAAAA),
+                                fontSize = 11.sp,
+                            )
+                        }
+
+                        Spacer(Modifier.height(3.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            // Botón Fijar / Desfijar Ruta en Radar
+                            Button(
+                                onClick = {
+                                    onTogglePin()
+                                    onDismiss()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isPinned) Color(0xFF663311) else Color(0xFF006655),
+                                    contentColor = if (isPinned) Color(0xFFFFCC00) else Color(0xFF00FFCC),
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    if (isPinned) stringResource(R.string.victim_unpin_route) else stringResource(R.string.victim_pin_route),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+
+                            // Botón Copiar Coordenadas
+                            if (victim.gpsLat != null && victim.gpsLon != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val textToCopy = "Víctima ${victim.label}: ${GpsLocationReader.formatDecimalCoordinates(victim.gpsLat, victim.gpsLon)} (${victim.gpsGms})"
+                                        clipboardManager.setText(AnnotatedString(textToCopy))
+                                        Toast.makeText(context, context.getString(R.string.victim_coords_copied), Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                ) {
+                                    Text("📋 Copiar", color = Color.White, fontSize = 11.sp)
+                                }
+
+                                // Botón Abrir en Google Maps / GPS
+                                OutlinedButton(
+                                    onClick = {
+                                        val lat = victim.gpsLat
+                                        val lon = victim.gpsLon
+                                        if (lat == null || lon == null) return@OutlinedButton
+                                        var mapOpened = false
+                                        try {
+                                            val geoUri = Uri.parse(GpsLocationReader.buildGoogleMapsGeoUri(lat, lon, victim.label))
+                                            val mapIntent = Intent(Intent.ACTION_VIEW, geoUri).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(mapIntent)
+                                            mapOpened = true
+                                        } catch (_: Throwable) {}
+
+                                        if (!mapOpened) {
+                                            try {
+                                                val webUri = Uri.parse(GpsLocationReader.buildGoogleMapsWebUrl(lat, lon))
+                                                val webIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(webIntent)
+                                                mapOpened = true
+                                            } catch (_: Throwable) {}
+                                        }
+
+                                        if (!mapOpened) {
+                                            val textToCopy = "Víctima ${victim.label}: ${GpsLocationReader.formatDecimalCoordinates(lat, lon)} (${victim.gpsGms})"
+                                            clipboardManager.setText(AnnotatedString(textToCopy))
+                                            Toast.makeText(context, "No se encontró app de mapas. Coordenadas copiadas al portapapeles.", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                ) {
+                                    Text("🗺️ Mapas", color = Color(0xFF00FFCC), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Tarjeta de Signos Vitales
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF101815)),
                     shape = RoundedCornerShape(8.dp),
@@ -1887,21 +2104,21 @@ private fun VictimDetailDialog(
                             fontFamily = FontFamily.Monospace,
                         )
                         VictimDetailRow(
-                            "Respiración",
-                            if (victim.isBreathing) "🫁 SÍ — ${"%.1f".format(if (victim.respRate > 0) victim.respRate else 15.6)} rpm"
-                            else "No detectada",
+                            stringResource(R.string.label_respiration),
+                            if (victim.isBreathing) "🫁 ${"%.1f".format(if (victim.respRate > 0) victim.respRate else 15.6)} rpm"
+                            else stringResource(R.string.label_not_detected_f),
                         )
                         VictimDetailRow(
-                            "Pulso Cardíaco",
-                            if (victim.heartBeating) "❤️ SÍ — ${"%.0f".format(if (victim.heartRateBpm > 0) victim.heartRateBpm else 72.0)} lpm"
-                            else "No detectado",
+                            stringResource(R.string.label_cardiac_pulse),
+                            if (victim.heartBeating) "❤️ ${"%.0f".format(if (victim.heartRateBpm > 0) victim.heartRateBpm else 72.0)} lpm"
+                            else stringResource(R.string.label_not_detected_m),
                         )
-                        VictimDetailRow("Confianza Vital", "${"%.0f".format(victim.confidence * 100)}%")
-                        VictimDetailRow("Confianza Escombros", "${"%.0f".format(victim.rubbleConfidence * 100)}%")
+                        VictimDetailRow(stringResource(R.string.label_vital_confidence), "${"%.0f".format(victim.confidence * 100)}%")
+                        VictimDetailRow(stringResource(R.string.label_rubble_confidence), "${"%.0f".format(victim.rubbleConfidence * 100)}%")
                     }
                 }
 
-                // 4. Tarjeta de Perfil y Dimensiones Corporales (CSI)
+                // 5. Tarjeta de Perfil y Dimensiones Corporales (CSI)
                 if (isCsiData) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1C18)),
@@ -1910,22 +2127,22 @@ private fun VictimDetailDialog(
                     ) {
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(
-                                "📏 PERFIL Y ENVERGADURA BIOMÉTRICA",
+                                "📏 CSI",
                                 color = Color(0xFF66FF99),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                             )
-                            VictimDetailRow("Envergadura Corporal", "📏 ${victim.bodyDimension.ifBlank { "1.74 m × 0.54 m (Adulto)" }}")
-                            VictimDetailRow("Postura bajo Escombros", "🧘 ${victim.bodyPosture.ifBlank { "Tendido (Horizontal)" }}")
+                            VictimDetailRow(stringResource(R.string.label_body_span), "📏 ${victim.bodyDimension.ifBlank { "1.74 m × 0.54 m" }}")
+                            VictimDetailRow(stringResource(R.string.label_posture_under_rubble), "🧘 ${victim.bodyPosture.ifBlank { "—" }}")
                             if (victim.rcsAreaM2 > 0.0) {
-                                VictimDetailRow("Sección de Radar (RCS)", "👤 ${"%.2f".format(victim.rcsAreaM2)} m²")
+                                VictimDetailRow("RCS", "👤 ${"%.2f".format(victim.rcsAreaM2)} m²")
                             }
                         }
                     }
                 }
 
-                // 5. Etiqueta / Nombre Táctico
+                // 6. Etiqueta / Nombre Táctico
                 OutlinedTextField(
                     value = nameDraft,
                     onValueChange = { nameDraft = it.take(28) },
@@ -2080,6 +2297,7 @@ fun RadarView(
                 tagPaint,
                 showLabels = layers.labels,
                 colorblind = colorblind,
+                pulsePhase = sonarPulse,
             )
         }
     }

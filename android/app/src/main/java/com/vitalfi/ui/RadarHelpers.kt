@@ -707,25 +707,48 @@ fun DrawScope.drawNavigationGuide2D(
     )
 }
 
-/** Camino grueso tú → persona (búsqueda del tesoro, sin barrido giratorio). */
-private fun DrawScope.drawTreasurePathToPerson(
+/** Ruta táctica militar animada hacia la persona fijada (rescate y aproximación). */
+fun DrawScope.drawPinnedRescueRoute2D(
     from: Offset,
     to: Offset,
     distanceM: Double,
     color: Color,
-    aligned: Boolean,
+    pulsePhase: Float = 0f,
+    labelPaint: android.graphics.Paint,
 ) {
-    drawLine(color.copy(alpha = 0.16f), from, to, strokeWidth = 22f)
-    drawLine(color.copy(alpha = if (aligned) 0.95f else 0.75f), from, to, strokeWidth = if (aligned) 4.5f else 3.2f)
     val dx = to.x - from.x
     val dy = to.y - from.y
-    val len = hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(1f)
+    val len = kotlin.math.hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(1f)
     val ux = dx / len
     val uy = dy / len
+
+    // 1. Halo resplandeciente exterior de la ruta
+    val glowAlpha = (0.20f + 0.10f * kotlin.math.sin(pulsePhase * Math.PI.toFloat() * 2f)).coerceIn(0.10f, 0.40f)
+    drawLine(color.copy(alpha = glowAlpha), from, to, strokeWidth = 24f)
+
+    // 2. Línea principal de rumbo
+    drawLine(color.copy(alpha = 0.95f), from, to, strokeWidth = 4.0f)
+
+    // 3. Chevrones animados de avance en la dirección de la persona
+    val chevronCount = (len / 48f).toInt().coerceIn(2, 6)
+    for (i in 1..chevronCount) {
+        val fraction = ((i.toFloat() / (chevronCount + 1)) + pulsePhase * 0.4f) % 1.0f
+        if (fraction in 0.10f..0.92f) {
+            val px = from.x + ux * len * fraction
+            val py = from.y + uy * len * fraction
+            val arrowTip = Offset(px, py)
+            val left = Offset(px - ux * 10f - uy * 7f, py - uy * 10f + ux * 7f)
+            val right = Offset(px - ux * 10f + uy * 7f, py - uy * 10f - ux * 7f)
+            drawLine(Color.White.copy(alpha = 0.85f), left, arrowTip, strokeWidth = 2.8f)
+            drawLine(Color.White.copy(alpha = 0.85f), right, arrowTip, strokeWidth = 2.8f)
+        }
+    }
+
+    // 4. Flecha terminal apuntando a la persona fijada
     val tip = to
-    val back = Offset(tip.x - ux * 16f, tip.y - uy * 16f)
-    val left = Offset(back.x - uy * 9f, back.y + ux * 9f)
-    val right = Offset(back.x + uy * 9f, back.y - ux * 9f)
+    val back = Offset(tip.x - ux * 18f, tip.y - uy * 18f)
+    val left = Offset(back.x - uy * 10f, back.y + ux * 10f)
+    val right = Offset(back.x + uy * 10f, back.y - ux * 10f)
     drawPath(
         Path().apply {
             moveTo(tip.x, tip.y)
@@ -735,38 +758,51 @@ private fun DrawScope.drawTreasurePathToPerson(
         },
         color,
     )
-    drawCircle(color.copy(alpha = 0.95f), 7f, to)
+    drawCircle(color.copy(alpha = 0.95f), 8f, to)
+
+    // 5. Badge flotante de distancia táctica a mitad de camino
     val mid = Offset((from.x + to.x) / 2f, (from.y + to.y) / 2f)
-    val badgeWidth = 72f
-    val badgeHeight = 24f
-    
+    val badgeWidth = 96f
+    val badgeHeight = 28f
+
     drawRoundRect(
-        color = Color.Black.copy(alpha = 0.75f),
-        topLeft = Offset(mid.x - badgeWidth / 2f, mid.y - badgeHeight / 2f),
-        size = androidx.compose.ui.geometry.Size(badgeWidth, badgeHeight),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
-    )
-    drawRoundRect(
-        color = color.copy(alpha = 0.8f),
+        color = Color(0xFF07120B).copy(alpha = 0.92f),
         topLeft = Offset(mid.x - badgeWidth / 2f, mid.y - badgeHeight / 2f),
         size = androidx.compose.ui.geometry.Size(badgeWidth, badgeHeight),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
-        style = Stroke(width = 1.2f)
+    )
+    drawRoundRect(
+        color = color.copy(alpha = 0.92f),
+        topLeft = Offset(mid.x - badgeWidth / 2f, mid.y - badgeHeight / 2f),
+        size = androidx.compose.ui.geometry.Size(badgeWidth, badgeHeight),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+        style = Stroke(width = 1.6f),
     )
 
-    val paint = android.graphics.Paint().apply {
+    val paint = android.graphics.Paint(labelPaint).apply {
         this.color = android.graphics.Color.WHITE
-        textSize = 14f
+        textSize = 13f
         isFakeBoldText = true
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
     drawContext.canvas.nativeCanvas.drawText(
-        "${"%.1f".format(distanceM)} m",
+        "📌 ${"%.2f".format(distanceM)} m",
         mid.x,
         mid.y + 5f,
         paint,
     )
+}
+
+/** Camino grueso tú → persona (búsqueda del tesoro, sin barrido giratorio). */
+private fun DrawScope.drawTreasurePathToPerson(
+    from: Offset,
+    to: Offset,
+    distanceM: Double,
+    color: Color,
+    aligned: Boolean,
+) {
+    drawPinnedRescueRoute2D(from, to, distanceM, color, 0f, android.graphics.Paint())
 }
 
 /** Marca de señal muy cerca: NO ordena cavar (profundidad Wi‑Fi no confirmada). */
@@ -1542,6 +1578,7 @@ fun DrawScope.drawVictims2D(
     tagPaint: android.graphics.Paint,
     showLabels: Boolean = true,
     colorblind: Boolean = false,
+    pulsePhase: Float = 0f,
 ) {
     val (cx, cy) = radarCenter(viewport)
     val hasSelection = selectedVictimId != null
@@ -1560,13 +1597,25 @@ fun DrawScope.drawVictims2D(
         val tint = if (isDimmed) baseTint.copy(alpha = 0.25f) else baseTint
         val center = Offset(tx, ty)
 
-        // Línea táctica guía hacia la víctima
-        drawLine(
-            color = tint.copy(alpha = if (selected || atPointZero) 0.65f else if (isDimmed) 0.08f else 0.25f),
-            start = Offset(cx, cy),
-            end = center,
-            strokeWidth = if (selected || atPointZero) 2.5f else 1.2f,
-        )
+        if (selected) {
+            // RUTA TÁCTICA ACTIVA HACIA LA VÍCTIMA FIJADA
+            drawPinnedRescueRoute2D(
+                from = Offset(cx, cy),
+                to = center,
+                distanceM = victim.distance,
+                color = Color(0xFF00FFCC),
+                pulsePhase = pulsePhase,
+                labelPaint = labelPaint,
+            )
+        } else {
+            // Línea táctica estándar si no está seleccionada
+            drawLine(
+                color = tint.copy(alpha = if (atPointZero) 0.65f else if (isDimmed) 0.08f else 0.25f),
+                start = Offset(cx, cy),
+                end = center,
+                strokeWidth = if (atPointZero) 2.5f else 1.2f,
+            )
+        }
 
         // Anillo de pulso vital si está respirando
         if (victim.isBreathing && !isDimmed) {
@@ -1582,19 +1631,20 @@ fun DrawScope.drawVictims2D(
         drawVictimRadarDot(
             center = center,
             kind = kind,
-            color = tint,
+            color = if (selected) Color(0xFF00FFCC) else tint,
             selected = selected || atPointZero,
             label = if (showLabels && !isDimmed) victim.label else null,
             tagPaint = if (showLabels && !isDimmed) tagPaint else null,
         )
 
         if (selected || atPointZero) {
-            drawTargetBracket(center, 46f * viewport.zoom.coerceAtLeast(1.0f), tint)
+            drawTargetBracket(center, 48f * viewport.zoom.coerceAtLeast(1.0f), if (selected) Color(0xFF00FFCC) else tint)
         }
 
         if (showLabels && !isDimmed) {
             val isTrapped = victim.depth > 0.15 || victim.isBreathing
             val badge = when {
+                selected -> "📌 [FIJADA ${victim.label}]"
                 atPointZero -> "🎯 ¡PUNTO CERO!"
                 isTrapped -> "🎯 [ATRAPADA ${victim.label}]"
                 else -> "🚶 [Superficie ${victim.label}]"
@@ -1602,12 +1652,13 @@ fun DrawScope.drawVictims2D(
 
             drawContext.canvas.nativeCanvas.drawText(
                 badge,
-                tx - 44f,
+                tx - 48f,
                 ty + 22f,
                 android.graphics.Paint(labelPaint).apply {
                     textSize = 14f
                     isFakeBoldText = true
                     color = when {
+                        selected -> android.graphics.Color.parseColor("#00FFCC")
                         atPointZero -> android.graphics.Color.YELLOW
                         isTrapped -> android.graphics.Color.CYAN
                         else -> android.graphics.Color.LTGRAY
@@ -1630,9 +1681,24 @@ fun DrawScope.drawVictims2D(
                 android.graphics.Paint(labelPaint).apply {
                     textSize = 12f
                     isFakeBoldText = true
-                    color = if (victim.isBreathing) android.graphics.Color.CYAN else android.graphics.Color.LTGRAY
+                    color = if (selected) android.graphics.Color.WHITE else (if (victim.isBreathing) android.graphics.Color.CYAN else android.graphics.Color.LTGRAY)
                 },
             )
+
+            // Coordenadas geográficas GPS de la víctima
+            if (victim.gpsLat != null && victim.gpsLon != null) {
+                val coordsShort = "📍 ${"%.5f".format(victim.gpsLat)}°, ${"%.5f".format(victim.gpsLon)}°"
+                drawContext.canvas.nativeCanvas.drawText(
+                    coordsShort,
+                    tx - 58f,
+                    ty + 52f,
+                    android.graphics.Paint(labelPaint).apply {
+                        textSize = 10.5f
+                        isFakeBoldText = selected
+                        color = if (selected) android.graphics.Color.parseColor("#FFCC00") else android.graphics.Color.parseColor("#99CCAA")
+                    },
+                )
+            }
         }
     }
 }
@@ -1794,19 +1860,51 @@ fun DrawScope.drawVictims3D(
     colorblind: Boolean = false,
     showDepthRays: Boolean = false,
 ) {
+    val rescuerOrigin = project(0.0, 0.0, 0.0)
+
     for (victim in victims) {
         val selected = victim.id == selectedVictimId
         val kind = victimStatusKind(victim)
-        val victimTint = victimColor(victim, colorblind)
+        val victimTint = if (selected) Color(0xFF00FFCC) else victimColor(victim, colorblind)
         val atPointZero = victim.distance < 0.6
 
         val (rx, ry) = rotateMapCoords(victim.x, victim.y, bearingDeg)
         val groundProj = project(rx, ry, 0.0)
+        val undergroundProj = project(rx, ry, victim.depth)
         val absDepth = kotlin.math.abs(victim.depth)
         val depthColor = depthAccent(absDepth, atPointZero, colorblind)
 
-        // Rayas de profundidad: solo si el usuario activa «Rayas»
-        if (showDepthRays && !atPointZero) {
+        // Ruta de rescate 3D si la víctima está fijada
+        if (selected) {
+            // Línea sobre el terreno (rescatista -> superficie sobre la víctima)
+            drawLine(
+                Color(0xFF00FFCC).copy(alpha = 0.25f),
+                rescuerOrigin,
+                groundProj,
+                strokeWidth = 14f,
+            )
+            drawLine(
+                Color(0xFF00FFCC),
+                rescuerOrigin,
+                groundProj,
+                strokeWidth = 3.5f,
+            )
+            // Pilar vertical hacia el nivel enterrado
+            drawLine(
+                Color(0xFFFFCC00),
+                groundProj,
+                undergroundProj,
+                strokeWidth = 2.8f,
+            )
+            drawCircle(
+                Color(0xFFFFCC00).copy(alpha = 0.85f),
+                6f,
+                undergroundProj,
+            )
+        }
+
+        // Rayas de profundidad: si el usuario activa «Rayas» o si está fijada
+        if ((showDepthRays || selected) && !atPointZero) {
             val steps = 8
             for (i in 0 until steps step 2) {
                 val zStart = 0.0 + (victim.depth * i) / steps
@@ -1817,7 +1915,7 @@ fun DrawScope.drawVictims3D(
                     ptStart,
                     ptEnd,
                     absDepth,
-                    depthColor,
+                    if (selected) Color(0xFFFFCC00) else depthColor,
                     strokeWidth = if (selected) 3.5f else 2.2f,
                 )
             }
@@ -1838,13 +1936,21 @@ fun DrawScope.drawVictims3D(
         }
 
         if (showLabels) {
-            val statusLabel = if (atPointZero) "🎯 ¡PUNTO CERO!" else "${victim.label} · ${victimStatusIconLabel(kind)}"
+            val statusLabel = when {
+                selected -> "📌 [FIJADA ${victim.label}]"
+                atPointZero -> "🎯 ¡PUNTO CERO!"
+                else -> "${victim.label} · ${victimStatusIconLabel(kind)}"
+            }
             drawContext.canvas.nativeCanvas.drawText(
                 statusLabel,
                 groundProj.x - 40f,
                 groundProj.y + 28f,
                 android.graphics.Paint(tagPaint).apply {
-                    color = if (atPointZero) android.graphics.Color.YELLOW else android.graphics.Color.WHITE
+                    color = when {
+                        selected -> android.graphics.Color.parseColor("#00FFCC")
+                        atPointZero -> android.graphics.Color.YELLOW
+                        else -> android.graphics.Color.WHITE
+                    }
                     isFakeBoldText = true
                     textSize = 13f
                 },
@@ -1866,11 +1972,26 @@ fun DrawScope.drawVictims3D(
                 groundProj.x - 50f,
                 groundProj.y + 44f,
                 android.graphics.Paint(labelPaint).apply {
-                    color = if (victim.isBreathing) android.graphics.Color.CYAN else android.graphics.Color.LTGRAY
+                    color = if (selected) android.graphics.Color.WHITE else (if (victim.isBreathing) android.graphics.Color.CYAN else android.graphics.Color.LTGRAY)
                     isFakeBoldText = true
                     textSize = 12f
                 },
             )
+
+            // Coordenadas geográficas en 3D
+            if (victim.gpsLat != null && victim.gpsLon != null) {
+                val coordsShort = "📍 ${"%.5f".format(victim.gpsLat)}°, ${"%.5f".format(victim.gpsLon)}°"
+                drawContext.canvas.nativeCanvas.drawText(
+                    coordsShort,
+                    groundProj.x - 50f,
+                    groundProj.y + 58f,
+                    android.graphics.Paint(labelPaint).apply {
+                        textSize = 10f
+                        isFakeBoldText = selected
+                        color = if (selected) android.graphics.Color.parseColor("#FFCC00") else android.graphics.Color.parseColor("#99CCAA")
+                    },
+                )
+            }
         }
     }
 }

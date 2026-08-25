@@ -263,11 +263,13 @@ fun ArCameraView(
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
 
-        if (rotSensor != null) {
-            sensorManager?.registerListener(listener, rotSensor, SensorManager.SENSOR_DELAY_GAME)
-        } else if (accSensor != null && magSensor != null) {
-            sensorManager?.registerListener(listener, accSensor, SensorManager.SENSOR_DELAY_GAME)
-            sensorManager?.registerListener(listener, magSensor, SensorManager.SENSOR_DELAY_GAME)
+        if (sensorManager != null) {
+            if (rotSensor != null) {
+                sensorManager.registerListener(listener, rotSensor, SensorManager.SENSOR_DELAY_GAME)
+            } else if (accSensor != null && magSensor != null) {
+                sensorManager.registerListener(listener, accSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(listener, magSensor, SensorManager.SENSOR_DELAY_GAME)
+            }
         }
 
         onDispose {
@@ -276,10 +278,17 @@ fun ArCameraView(
     }
 
     val curBearing: Double = phoneBearing
-    val isSpanish = remember(state.appLanguage) { state.appLanguage.isBlank() || state.appLanguage.startsWith("es") }
+    val isSpanish = remember(state.appLanguage) {
+        if (state.appLanguage.isBlank()) {
+            Locale.getDefault().language.startsWith("es")
+        } else {
+            state.appLanguage.startsWith("es")
+        }
+    }
     val aiTracker = remember { com.vitalfi.ml.DistilledPersonAiTracker() }
+    val persistentPointsMap = remember { mutableMapOf<String, ArWifiPoint>() }
 
-    // 2. Mapear PERSONAS DETECTADAS por Wi-Fi CSI con IA Destilada y Filtro Cinemático Kalman
+    // 2. Mapear PERSONAS DETECTADAS por Wi-Fi CSI con IA Destilada y Filtro Cinemático Kalman (Persistencia Espacial Activa)
     val allWifiPoints = remember(
         state.victims,
         state.isBreathing,
@@ -291,7 +300,7 @@ fun ArCameraView(
         state.rubbleConfidence,
         isSpanish,
     ) {
-        val points = mutableListOf<ArWifiPoint>()
+        val currentFramePoints = mutableListOf<ArWifiPoint>()
         val rescuedVictimIds = state.rescuedVictims.map { it.victimId }.toSet()
 
         state.victims.forEach { victim ->
@@ -302,12 +311,42 @@ fun ArCameraView(
                 if (isAlreadyRescued) "Person #${victim.id} (RESCUED)" else "Person #${victim.id} (Alive)"
             }
             val depthPrefix = if (isSpanish) "Prof" else "Depth"
+            val isPinned = (state.pinnedVictimId == victim.id)
+
+            // BUG-FIX: Coordenadas GPS se anclan UNA SOLA VEZ y nunca se re-proyectan
+            val anchoredPrev = persistentPointsMap["victim_${victim.id}"]
+            val vLat: Double?
+            val vLon: Double?
+            if (anchoredPrev?.gpsLat != null && anchoredPrev.gpsLon != null) {
+                // Ya tenemos ancla fija → NUNCA re-proyectar
+                vLat = anchoredPrev.gpsLat
+                vLon = anchoredPrev.gpsLon
+            } else if (victim.gpsLat != null && victim.gpsLon != null && (victim.gpsLat != 0.0 || victim.gpsLon != 0.0)) {
+                // ViewModel ya calculó ancla fija
+                vLat = victim.gpsLat
+                vLon = victim.gpsLon
+            } else {
+                // Primera detección: calcular y fijar
+                val targetGps = GpsLocationReader.calculateTargetCoordinates(state.currentGpsLat, state.currentGpsLon, victim.distance, victim.bearing)
+                vLat = targetGps?.first
+                vLon = targetGps?.second
+            }
+
+            // BUG-FIX: Rumbo y distancia calculados desde GPS real del rescatista hacia el ancla FIJA (no re-proyectados)
+            val rescuerLat = state.currentGpsLat
+            val rescuerLon = state.currentGpsLon
+            val hasGeoAnchor = vLat != null && vLon != null && rescuerLat != null && rescuerLon != null && rescuerLat != 0.0
+            val geoBearing = if (hasGeoAnchor) GpsLocationReader.bearingBetweenDegrees(rescuerLat, rescuerLon, vLat, vLon) else victim.bearing
+            val geoDist = if (hasGeoAnchor) GpsLocationReader.distanceBetweenMeters(rescuerLat, rescuerLon, vLat!!, vLon!!) else victim.distance.toDouble()
+            // BUG-FIX: Usar distancia geodésica real (no minOf), para que suba si caminas hacia atrás
+            val rawEffectiveDist = if (hasGeoAnchor && geoDist in 0.05..50.0) geoDist else victim.distance
+            val rawEffectiveBearing = if (hasGeoAnchor) geoBearing else victim.bearing
 
             // Inferencia de IA Destilada Offline & Suavizado Cinemático en tiempo real
             val ai = aiTracker.processTarget(
                 targetId = "victim_${victim.id}",
-                rawBearing = victim.bearing,
-                rawDistance = victim.distance.coerceAtLeast(0.6),
+                rawBearing = rawEffectiveBearing,
+                rawDistance = rawEffectiveDist.coerceAtLeast(0.3),
                 rawDepth = victim.depth,
                 respRate = if (victim.respRate > 0) victim.respRate else 16.0,
                 heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
@@ -316,38 +355,50 @@ fun ArCameraView(
                 rubbleConf = victim.rubbleConfidence,
             )
 
-            points.add(
-                ArWifiPoint(
-                    id = "victim_${victim.id}",
-                    victimNumericId = victim.id,
-                    label = personLabel,
-                    subtitle = "$depthPrefix: ${"%.2f".format(abs(ai.smoothedDepth))}m • Conf: ${victim.confidence.toInt()}%",
-                    bearingDeg = ai.smoothedBearing,
-                    distanceM = ai.smoothedDistance.coerceAtLeast(0.4),
-                    depthM = ai.smoothedDepth,
-                    signalStrengthDbm = -50,
-                    isVictim = true,
-                    isRescued = isAlreadyRescued,
-                    respRate = if (victim.respRate > 0) victim.respRate else 16.0,
-                    heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
-                    confidence = (ai.humanProbability * 100.0).coerceAtLeast(victim.confidence),
-                    signatureCode = victim.signatureCode,
-                    color = if (isAlreadyRescued) Color(0xFFFFD700) else if (ai.isAtGroundZero) Color(0xFFFF0055) else if (ai.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
-                    isMoving = ai.isMoving,
-                    velocityMps = ai.velocityMps,
-                    aiConfidenceTag = ai.aiConfidenceTag,
-                    isAtGroundZero = ai.isAtGroundZero,
-                    groundZeroConvergence = ai.groundZeroConvergence,
-                )
+            val vGms = if (vLat != null && vLon != null) GpsLocationReader.formatCoordinatesGms(vLat, vLon) else victim.gpsGms
+            val geoSigCode = GpsLocationReader.generateGeoSignature(victim.id, vLat, vLon)
+
+            // BUG-FIX: Para víctimas fijadas, el bearing AR debe ser el geodésico puro sin Kalman
+            val finalBearing = if (isPinned && hasGeoAnchor) rawEffectiveBearing else ai.smoothedBearing
+            val finalDistance = if (isPinned && hasGeoAnchor) rawEffectiveDist.coerceAtLeast(0.3) else ai.smoothedDistance.coerceAtLeast(0.3)
+
+            val pt = ArWifiPoint(
+                id = "victim_${victim.id}",
+                victimNumericId = victim.id,
+                label = personLabel,
+                subtitle = "$depthPrefix: ${"%.2f".format(abs(ai.smoothedDepth))}m • Conf: ${victim.confidence.toInt()}%",
+                bearingDeg = finalBearing,
+                distanceM = finalDistance,
+                depthM = ai.smoothedDepth,
+                signalStrengthDbm = -50,
+                isVictim = true,
+                isRescued = isAlreadyRescued,
+                respRate = if (victim.respRate > 0) victim.respRate else 16.0,
+                heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
+                confidence = (ai.humanProbability * 100.0).coerceAtLeast(victim.confidence),
+                signatureCode = geoSigCode,
+                color = if (isAlreadyRescued) Color(0xFFFFD700) else if (isPinned) Color(0xFF00FFCC) else if (ai.isAtGroundZero) Color(0xFFFF0055) else if (ai.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
+                isMoving = ai.isMoving,
+                velocityMps = ai.velocityMps,
+                aiConfidenceTag = ai.aiConfidenceTag,
+                isAtGroundZero = ai.isAtGroundZero,
+                groundZeroConvergence = ai.groundZeroConvergence,
+                gpsLat = vLat,
+                gpsLon = vLon,
+                gpsGms = vGms,
+                isPinned = isPinned,
             )
+            currentFramePoints.add(pt)
+            persistentPointsMap[pt.id] = pt
         }
 
         // Si aún no hay víctimas agrupadas pero hay detección activa real en el receptor CSI (respiración, pulso o micro-Doppler)
-        if (points.isEmpty() && (state.isBreathing || state.isActivity || (state.csiConnected && state.respRate > 0) || state.confidence > 0.35)) {
+        if (currentFramePoints.isEmpty() && (state.isBreathing || state.isActivity || (state.csiConnected && state.respRate > 0) || state.confidence > 0.35)) {
             val liveResp = if (state.respRate > 0) state.respRate else (if (state.isBreathing) 15.6 else 0.0)
             val liveHeart = if (state.heartRateBpm > 0) state.heartRateBpm else 72.0
             val liveConf = state.confidence * 100.0
             val isLiveRescued = rescuedVictimIds.contains(1)
+            val isLivePinned = (state.pinnedVictimId == 1 || state.pinnedVictimId != null)
             val defaultPersonLabel = if (isSpanish) {
                 if (isLiveRescued) "Persona #1 (RESCATADA)" else "Persona #1 (Señal CSI Real)"
             } else {
@@ -355,12 +406,37 @@ fun ArCameraView(
             }
             val depthPrefix = if (isSpanish) "Prof" else "Depth"
             val liveDist = (state.csiDistanceM ?: state.position?.distance ?: 2.0).coerceIn(0.2, 10.0)
-            val liveDepth = state.csiDepthM ?: (state.scanningElevationM ?: -0.5)
+            val liveDepth = state.csiDepthM ?: state.scanningElevationM
+
+            // BUG-FIX: Coordenadas GPS del live CSI se anclan UNA SOLA VEZ
+            val prevLive = persistentPointsMap["live_csi_victim_1"]
+            val liveLat: Double?
+            val liveLon: Double?
+            if (prevLive?.gpsLat != null && prevLive.gpsLon != null) {
+                liveLat = prevLive.gpsLat
+                liveLon = prevLive.gpsLon
+            } else {
+                val liveGps = GpsLocationReader.calculateTargetCoordinates(state.currentGpsLat, state.currentGpsLon, liveDist, state.bearingDeg)
+                liveLat = liveGps?.first
+                liveLon = liveGps?.second
+            }
+
+            val rescuerLat = state.currentGpsLat
+            val rescuerLon = state.currentGpsLon
+            val hasLiveGeoAnchor = liveLat != null && liveLon != null && rescuerLat != null && rescuerLon != null && rescuerLat != 0.0
+            // BUG-FIX: Usar distancia geodésica real (no minOf)
+            val rawLiveGeoDist = if (hasLiveGeoAnchor) GpsLocationReader.distanceBetweenMeters(rescuerLat, rescuerLon, liveLat!!, liveLon!!) else liveDist
+            val rawLiveDist = if (hasLiveGeoAnchor && rawLiveGeoDist in 0.05..50.0) rawLiveGeoDist else liveDist
+            val rawLiveBearing = if (hasLiveGeoAnchor) {
+                GpsLocationReader.bearingBetweenDegrees(rescuerLat, rescuerLon, liveLat!!, liveLon!!)
+            } else {
+                state.bearingDeg
+            }
 
             val aiLive = aiTracker.processTarget(
                 targetId = "live_csi_victim_1",
-                rawBearing = state.bearingDeg,
-                rawDistance = liveDist,
+                rawBearing = rawLiveBearing,
+                rawDistance = rawLiveDist,
                 rawDepth = liveDepth,
                 respRate = liveResp,
                 heartRate = liveHeart,
@@ -369,48 +445,66 @@ fun ArCameraView(
                 rubbleConf = state.rubbleConfidence,
             )
 
-            points.add(
-                ArWifiPoint(
-                    id = "live_csi_victim_1",
-                    victimNumericId = 1,
-                    label = defaultPersonLabel,
-                    subtitle = "$depthPrefix: ${"%.2f".format(abs(aiLive.smoothedDepth))}m • Conf: ${liveConf.toInt()}%",
-                    bearingDeg = aiLive.smoothedBearing,
-                    distanceM = aiLive.smoothedDistance.coerceAtLeast(0.4),
-                    depthM = aiLive.smoothedDepth,
-                    signalStrengthDbm = state.rssiDbm ?: -50,
-                    isVictim = true,
-                    isRescued = isLiveRescued,
-                    respRate = liveResp,
-                    heartRate = liveHeart,
-                    confidence = liveConf,
-                    signatureCode = "CSI_LIVE",
-                    color = if (isLiveRescued) Color(0xFFFFD700) else if (aiLive.isAtGroundZero) Color(0xFFFF0055) else if (aiLive.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
-                    isMoving = aiLive.isMoving,
-                    velocityMps = aiLive.velocityMps,
-                    aiConfidenceTag = aiLive.aiConfidenceTag,
-                    isAtGroundZero = aiLive.isAtGroundZero,
-                    groundZeroConvergence = aiLive.groundZeroConvergence,
-                )
+            val liveGmsStr = if (liveLat != null && liveLon != null) GpsLocationReader.formatCoordinatesGms(liveLat, liveLon) else ""
+            val liveGeoSig = GpsLocationReader.generateGeoSignature(1, liveLat, liveLon)
+
+            // BUG-FIX: Para víctima fijada, bearing y distancia geodésicos puros sin Kalman
+            val finalLiveBearing = if (isLivePinned && hasLiveGeoAnchor) rawLiveBearing else aiLive.smoothedBearing
+            val finalLiveDistance = if (isLivePinned && hasLiveGeoAnchor) rawLiveDist.coerceAtLeast(0.3) else aiLive.smoothedDistance.coerceAtLeast(0.3)
+
+            val ptLive = ArWifiPoint(
+                id = "live_csi_victim_1",
+                victimNumericId = 1,
+                label = defaultPersonLabel,
+                subtitle = "$depthPrefix: ${"%.2f".format(abs(aiLive.smoothedDepth))}m • Conf: ${liveConf.toInt()}%",
+                bearingDeg = finalLiveBearing,
+                distanceM = finalLiveDistance,
+                depthM = aiLive.smoothedDepth,
+                signalStrengthDbm = state.rssiDbm ?: -50,
+                isVictim = true,
+                isRescued = isLiveRescued,
+                respRate = liveResp,
+                heartRate = liveHeart,
+                confidence = liveConf,
+                signatureCode = liveGeoSig,
+                color = if (isLiveRescued) Color(0xFFFFD700) else if (isLivePinned) Color(0xFF00FFCC) else if (aiLive.isAtGroundZero) Color(0xFFFF0055) else if (aiLive.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
+                isMoving = aiLive.isMoving,
+                velocityMps = aiLive.velocityMps,
+                aiConfidenceTag = aiLive.aiConfidenceTag,
+                isAtGroundZero = aiLive.isAtGroundZero,
+                groundZeroConvergence = aiLive.groundZeroConvergence,
+                gpsLat = liveLat,
+                gpsLon = liveLon,
+                gpsGms = liveGmsStr,
+                isPinned = isLivePinned,
             )
+            currentFramePoints.add(ptLive)
+            persistentPointsMap[ptLive.id] = ptLive
         }
-        points
+
+        // Retención Espacial Continua: Todos los puntos descubiertos al pasar la cámara se mantienen vivos en el mapa AR
+        persistentPointsMap.values.toList()
     }
 
     // Objetivo fijado / seleccionado (se mantiene fijo hasta llegar o hasta desfijar)
     val horizontalFovDeg = 64.0
-    val targetPoint = remember(allWifiPoints, curBearing, state.lockedTargetId) {
-        state.lockedTargetId?.let { id ->
+    val targetPoint = remember(allWifiPoints, curBearing, state.lockedTargetId, state.pinnedVictimId) {
+        val pinnedId = state.pinnedVictimId?.let { "victim_$it" }
+        val effectiveLockId = state.lockedTargetId ?: pinnedId
+        effectiveLockId?.let { id ->
             allWifiPoints.find { it.id == id || it.victimNumericId.toString() == id || it.id.endsWith(id) }
-        } ?: allWifiPoints.minByOrNull { pt ->
+        } ?: allWifiPoints.find { it.isPinned }
+        ?: allWifiPoints.minByOrNull { pt ->
             var diff = abs((pt.bearingDeg - curBearing) % 360.0)
             if (diff > 180.0) diff = 360.0 - diff
             diff
         } ?: allWifiPoints.firstOrNull()
     }
 
-    val isTargetExplicitlyLocked = (state.lockedTargetId != null && targetPoint != null &&
-            (state.lockedTargetId == targetPoint.id || state.lockedTargetId == targetPoint.victimNumericId.toString()))
+    val isTargetExplicitlyLocked = (targetPoint != null && (
+        targetPoint.isPinned ||
+        (state.lockedTargetId != null && (state.lockedTargetId == targetPoint.id || state.lockedTargetId == targetPoint.victimNumericId.toString()))
+    ))
 
     val deltaAngleDeg = targetPoint?.let { pt ->
         var diff = (pt.bearingDeg - curBearing) % 360.0
@@ -635,7 +729,7 @@ fun ArCameraView(
             // a) Retícula central táctica
             drawArLockReticle(cx, cy, isAimAligned, isTargetExplicitlyLocked, lockRingRotation)
 
-            // b) Línea Láser de Guía en el suelo hacia el objetivo (fijado o más cercano)
+            // b) Línea Láser de Guía en el suelo hacia el objetivo (se achica dinámicamente al acercarse)
             targetPoint?.let { target ->
                 val tDiff = run {
                     var diff = (target.bearingDeg - curBearing) % 360.0
@@ -649,7 +743,8 @@ fun ArCameraView(
                 } else {
                     if (tDiff < 0) 30f else w - 30f
                 }
-                val targetScreenY = (cy + (target.depthM * 40f).toFloat()).coerceIn(h * 0.38f, h * 0.72f)
+                val distNorm = (target.distanceM.toFloat() / 8.0f).coerceIn(0f, 1f)
+                val targetScreenY = (cy + (1.0f - distNorm) * (h * 0.36f) + (target.depthM * 18f).toFloat()).coerceIn(h * 0.38f, h * 0.84f)
 
                 drawArGroundNavigationTrail(
                     cx = cx,
@@ -667,7 +762,7 @@ fun ArCameraView(
                 )
             }
 
-            // c) Renderizar Puntos Wi-Fi CSI detectados en el campo de visión
+            // c) Renderizar Puntos Wi-Fi CSI detectados en el campo de visión (perspectiva 3D dinámica)
             allWifiPoints.forEach { pt ->
                 var diff = (pt.bearingDeg - curBearing) % 360.0
                 if (diff > 180.0) diff -= 360.0
@@ -675,7 +770,8 @@ fun ArCameraView(
 
                 if (abs(diff) <= (horizontalFovDeg / 2.0)) {
                     val sx = cx + (diff / (horizontalFovDeg / 2.0)).toFloat() * (w * 0.46f)
-                    val sy = (cy + (pt.depthM * 40f).toFloat()).coerceIn(h * 0.28f, h * 0.76f)
+                    val distNormPt = (pt.distanceM.toFloat() / 8.0f).coerceIn(0f, 1f)
+                    val sy = (cy + (1.0f - distNormPt) * (h * 0.33f) + (pt.depthM * 18f).toFloat()).coerceIn(h * 0.28f, h * 0.84f)
                     val isCurrentTarget = (pt.id == targetPoint?.id)
 
                     // Si está en zona cercana (< 2.2m), proyectar el PUNTO CERO / EPICENTRO en el suelo
@@ -688,6 +784,7 @@ fun ArCameraView(
                             isAtGroundZero = pt.isAtGroundZero,
                             convergence = pt.groundZeroConvergence,
                             isSpanish = isSpanish,
+                            gpsGms = pt.gpsGms,
                         )
                     } else {
                         // Ondas de Sonar normales a mayor distancia
@@ -1031,65 +1128,183 @@ fun ArCameraView(
                     }
                 }
             }
-        }
-
-        // 4.5. ALERTA CRÍTICA DE PUNTO CERO (Para detenerse de inmediato y no seguir caminando)
-        if (targetPoint != null && targetPoint.isAtGroundZero) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = if (isPanelExpanded) 220.dp else 145.dp, start = 14.dp, end = 14.dp)
-            ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xF2770020)),
-                    shape = RoundedCornerShape(12.dp),
+            // Fila 4: Panel Superior de RESCATAR y Telemetría (Despeja totalmente el suelo y láser)
+            targetPoint?.let { pt ->
+                // BOTÓN PRINCIPAL DE RESCATAR
+                Button(
+                    onClick = { executeRescue(pt) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (pt.isRescued) Color(0xFF998800) else if (proximityState == ProximityZone.OVER_VICTIM) Color(0xFF00EE99) else Color(0xFF00A86B),
+                        contentColor = Color.Black,
+                    ),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(2.dp, Color(0xFFFF0055), RoundedCornerShape(12.dp)),
+                        .height(44.dp)
+                        .border(
+                            1.5.dp,
+                            if (pt.isRescued) Color(0xFFFFD700) else if (proximityState == ProximityZone.OVER_VICTIM) Color(0xFF00FFCC) else Color(0xFF00CC88),
+                            RoundedCornerShape(10.dp)
+                        ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .scale(beaconPulse)
-                                    .background(Color(0xFFFF0055), CircleShape)
-                            )
-                            Text(
-                                if (isSpanish) "🛑 ¡DETÉNGASE! PUNTO CERO ALCANZADO" else "🛑 STOP! GROUND ZERO REACHED",
-                                color = Color(0xFFFFEE44),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Black,
-                                fontFamily = FontFamily.Monospace,
-                            )
-                        }
+                        Icon(
+                            imageVector = if (pt.isRescued) Icons.Default.CheckCircle else Icons.Default.GpsFixed,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
                         Text(
-                            if (isSpanish) "⬇ VÍCTIMA DIRECTAMENTE DEBAJO · EXCAVE A ${"%.2f".format(abs(targetPoint.depthM))}m DE PROFUNDIDAD" else "⬇ VICTIM DIRECTLY BELOW · DIG AT ${"%.2f".format(abs(targetPoint.depthM))}m DEPTH",
-                            color = Color.White,
-                            fontSize = 10.sp,
+                            if (pt.isRescued) "VÍCTIMA RESCATADA ✅ (GUARDAR NUEVO GMS)" else "🚨 RESCATAR ${pt.label.uppercase()} • REGISTRAR GMS",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
+                    }
+                }
+
+                // TARJETA DE TELEMETRÍA SUPERIOR COMPACTA O EXPANDIDA
+                if (!isPanelExpanded) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xF00B1E16),
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0x8800FFCC), RoundedCornerShape(12.dp))
+                            .clickable { isPanelExpanded = true },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    "🎯 ${"%.2f".format(pt.distanceM)}m",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "🫁 ${"%.1f".format(pt.respRate)}",
+                                    color = Color(0xFF00FFCC),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "❤️ ${pt.heartRate.toInt()}",
+                                    color = Color(0xFFFF6688),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "⬇ ${"%.2f".format(abs(pt.depthM))}m",
+                                    color = Color(0xFFFFCC00),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+
+                            Button(
+                                onClick = { isPanelExpanded = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0x4400FFCC), contentColor = Color(0xFF00FFCC)),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 1.dp),
+                                modifier = Modifier.height(24.dp),
+                                shape = RoundedCornerShape(6.dp),
+                            ) {
+                                Text("▲ MÁS", fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+                } else {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xF50D241A)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFF00FFCC), RoundedCornerShape(12.dp)),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "📍 ${pt.label} (${if (isTargetExplicitlyLocked) "FIJADO 🔒" else "SELECCIONADO"})",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Button(
+                                    onClick = { isPanelExpanded = false },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x66000000), contentColor = Color(0xFFA0C4A0)),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 1.dp),
+                                    modifier = Modifier.height(22.dp),
+                                    shape = RoundedCornerShape(6.dp),
+                                ) {
+                                    Text("✕ MIN", fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("DISTANCIA EXACTA", color = Color.Gray, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                    Text("🎯 ${"%.2f".format(pt.distanceM)} m", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("PROFUNDIDAD ESCOMBROS", color = Color.Gray, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                    Text("⬇ ${"%.2f".format(abs(pt.depthM))} m", color = Color(0xFFFFCC00), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("RESPIRACIÓN CSI", color = Color.Gray, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                    Text("🫁 ${"%.1f".format(pt.respRate)} rpm", color = Color(0xFF00FFCC), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("RITMO CARDÍACO", color = Color.Gray, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                    Text("❤️ ${pt.heartRate.toInt()} lpm", color = Color(0xFFFF6688), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+
+                            Column {
+                                Text("COORDENADA GPS GMS", color = Color.Gray, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                Text("📍 $liveGmsText", color = Color(0xFF00FFCC), fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // 5. Mini-Brújula Radar Táctica (Esquina inferior izquierda)
+        // 5. Mini-Brújula Radar Táctica (Esquina inferior izquierda - Totalmente despejada)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()
-                .padding(start = 12.dp, bottom = if (isPanelExpanded) 210.dp else 135.dp)
+                .padding(start = 14.dp, bottom = 24.dp)
                 .size(54.dp)
                 .background(Color(0xEE08140E), CircleShape)
                 .border(1.5.dp, Color(0xFF00FFCC), CircleShape),
@@ -1118,184 +1333,6 @@ fun ArCameraView(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center),
             )
-        }
-
-        // 6. Panel Inferior: Botón de RESCATAR y Telemetría
-        targetPoint?.let { pt ->
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // BOTÓN PRINCIPAL DE RESCATAR
-                Button(
-                    onClick = { executeRescue(pt) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (pt.isRescued) Color(0xFF998800) else if (proximityState == ProximityZone.OVER_VICTIM) Color(0xFF00EE99) else Color(0xFF00A86B),
-                        contentColor = Color.Black,
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .border(
-                            2.dp,
-                            if (pt.isRescued) Color(0xFFFFD700) else if (proximityState == ProximityZone.OVER_VICTIM) Color(0xFF00FFCC) else Color(0xFF00CC88),
-                            RoundedCornerShape(12.dp)
-                        ),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = if (pt.isRescued) Icons.Default.CheckCircle else Icons.Default.GpsFixed,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                        )
-                        Text(
-                            if (pt.isRescued) "VÍCTIMA RESCATADA ✅ (GUARDAR NUEVO GMS)" else "🚨 RESCATAR ${pt.label.uppercase()} • REGISTRAR GMS",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                }
-
-                // TARJETA DE TELEMETRÍA COMPACTA O EXPANDIDA
-                if (!isPanelExpanded) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xF00B1E16),
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0x8800FFCC), RoundedCornerShape(16.dp))
-                            .clickable { isPanelExpanded = true },
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Text(
-                                    "🎯 ${"%.1f".format(pt.distanceM)}m",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                Text(
-                                    "🫁 ${"%.1f".format(pt.respRate)}",
-                                    color = Color(0xFF00FFCC),
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                Text(
-                                    "❤️ ${pt.heartRate.toInt()}",
-                                    color = Color(0xFFFF6688),
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                Text(
-                                    "⬇ ${"%.1f".format(abs(pt.depthM))}m",
-                                    color = Color(0xFFFFCC00),
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                            }
-
-                            Button(
-                                onClick = { isPanelExpanded = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0x4400FFCC), contentColor = Color(0xFF00FFCC)),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(28.dp),
-                                shape = RoundedCornerShape(8.dp),
-                            ) {
-                                Text("▲ MÁS", fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                            }
-                        }
-                    }
-                } else {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xF50D241A)),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFF00FFCC), RoundedCornerShape(14.dp)),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    "📍 ${pt.label} (${if (isTargetExplicitlyLocked) "FIJADO 🔒" else "SELECCIONADO"})",
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Button(
-                                    onClick = { isPanelExpanded = false },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x66000000), contentColor = Color(0xFFA0C4A0)),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.height(26.dp),
-                                    shape = RoundedCornerShape(6.dp),
-                                ) {
-                                    Text("✕ MINIMIZAR", fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("DISTANCIA EXACTA", color = Color.Gray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                                    Text("🎯 ${"%.2f".format(pt.distanceM)} m (~${(pt.distanceM / 0.55).toInt()} pasos)", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("PROFUNDIDAD ESCOMBROS", color = Color.Gray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                                    Text("⬇ ${"%.2f".format(abs(pt.depthM))} m", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("RESPIRACIÓN CSI", color = Color.Gray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                                    Text("🫁 ${"%.1f".format(pt.respRate)} rpm", color = Color(0xFF00FFCC), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("RITMO CARDÍACO", color = Color.Gray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                                    Text("❤️ ${pt.heartRate.toInt()} lpm", color = Color(0xFFFF6688), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                }
-                            }
-
-                            Column {
-                                Text("COORDENADA GPS GMS DEL RESCATE", color = Color.Gray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                                Text("📍 $liveGmsText", color = Color(0xFF00FFCC), fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -1401,7 +1438,14 @@ fun ArCameraView(
                                         "Fecha/Hora: ${SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date(record.timestampMs))}"
                                     )
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Compartir rescate"))
+                                try {
+                                    val chooser = Intent.createChooser(shareIntent, "Compartir rescate").apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(chooser)
+                                } catch (_: Throwable) {
+                                    Toast.makeText(context, "No se pudo compartir", Toast.LENGTH_SHORT).show()
+                                }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF144D34), contentColor = Color.White),
                             modifier = Modifier.weight(1f),
@@ -1713,7 +1757,14 @@ fun ArCameraView(
                                     putExtra(Intent.EXTRA_SUBJECT, "Reporte de Rescates y Coordenadas GPS")
                                     putExtra(Intent.EXTRA_TEXT, fullReport.toString())
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Compartir Reporte"))
+                                try {
+                                    val chooser = Intent.createChooser(shareIntent, "Compartir Reporte").apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(chooser)
+                                } catch (_: Throwable) {
+                                    Toast.makeText(context, "No se pudo compartir", Toast.LENGTH_SHORT).show()
+                                }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFCC), contentColor = Color.Black),
                             modifier = Modifier.weight(0.65f),
@@ -1783,6 +1834,10 @@ private data class ArWifiPoint(
     val aiConfidenceTag: String = "",
     val isAtGroundZero: Boolean = false,
     val groundZeroConvergence: Float = 0.0f,
+    val gpsLat: Double? = null,
+    val gpsLon: Double? = null,
+    val gpsGms: String = "",
+    val isPinned: Boolean = false,
 )
 
 /** Dibuja el Marcador Táctico de PUNTO CERO directamente en el suelo sobre la víctima */
@@ -1794,8 +1849,9 @@ private fun DrawScope.drawArGroundZeroEpicenter(
     isAtGroundZero: Boolean,
     convergence: Float,
     isSpanish: Boolean = true,
+    gpsGms: String = "",
 ) {
-    val baseRadius = (55f + convergence * 35f).coerceIn(40f, 100f)
+    val baseRadius = (55f + convergence * 35f).coerceIn(40f, 100f) * (if (isAtGroundZero) (0.90f + pulse * 0.20f) else 1.0f)
     val ringColor = if (isAtGroundZero) Color(0xFFFF0055) else Color(0xFF00FFCC)
     val beaconColor = if (isAtGroundZero) Color(0xFFFF2266) else Color(0xFF00E5FF)
 
@@ -1826,7 +1882,7 @@ private fun DrawScope.drawArGroundZeroEpicenter(
     )
 
     // 3. Columna / Baliza vertical que penetra hacia el suelo
-    val pillarHeight = 100f
+    val pillarHeight = 105f
     drawLine(
         brush = Brush.verticalGradient(
             colors = listOf(beaconColor.copy(alpha = 0.9f), Color.White, beaconColor.copy(alpha = 0.2f), Color.Transparent),
@@ -1839,9 +1895,10 @@ private fun DrawScope.drawArGroundZeroEpicenter(
         cap = StrokeCap.Round,
     )
 
-    // 4. Cartel flotante de PUNTO CERO / EXCAVAR
-    val badgeW = 230f
-    val badgeH = 50f
+    // 4. Cartel flotante de PUNTO CERO / EXCAVAR con GPS
+    val hasGps = gpsGms.isNotBlank()
+    val badgeW = (if (hasGps) 260f else 230f)
+    val badgeH = (if (hasGps) 66f else 50f)
     val badgeY = sy - pillarHeight - 10f
 
     val paintBg = android.graphics.Paint().apply {
@@ -1857,15 +1914,22 @@ private fun DrawScope.drawArGroundZeroEpicenter(
     }
     val paintText = android.graphics.Paint().apply {
         color = if (isAtGroundZero) android.graphics.Color.parseColor("#FFFF55") else android.graphics.Color.parseColor("#00FFFF")
-        textSize = 20f
+        textSize = 19f
         typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
     val paintSub = android.graphics.Paint().apply {
         color = android.graphics.Color.WHITE
-        textSize = 14f
+        textSize = 13f
         typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.NORMAL)
+        textAlign = android.graphics.Paint.Align.CENTER
+        isAntiAlias = true
+    }
+    val paintGps = android.graphics.Paint().apply {
+        color = android.graphics.Color.parseColor("#00FFCC")
+        textSize = 11f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
         textAlign = android.graphics.Paint.Align.CENTER
         isAntiAlias = true
     }
@@ -1884,8 +1948,14 @@ private fun DrawScope.drawArGroundZeroEpicenter(
     }
     val sub = if (isSpanish) "⬇ EXCAVAR A ~${"%.2f".format(abs(depthM))}m" else "⬇ DIG AT ~${"%.2f".format(abs(depthM))}m"
 
-    drawContext.canvas.nativeCanvas.drawText(title, sx, badgeY - badgeH * 0.55f, paintText)
-    drawContext.canvas.nativeCanvas.drawText(sub, sx, badgeY - badgeH * 0.16f, paintSub)
+    if (hasGps) {
+        drawContext.canvas.nativeCanvas.drawText(title, sx, badgeY - badgeH * 0.68f, paintText)
+        drawContext.canvas.nativeCanvas.drawText(sub, sx, badgeY - badgeH * 0.40f, paintSub)
+        drawContext.canvas.nativeCanvas.drawText("📍 $gpsGms", sx, badgeY - badgeH * 0.12f, paintGps)
+    } else {
+        drawContext.canvas.nativeCanvas.drawText(title, sx, badgeY - badgeH * 0.55f, paintText)
+        drawContext.canvas.nativeCanvas.drawText(sub, sx, badgeY - badgeH * 0.16f, paintSub)
+    }
 }
 
 /** Dibuja la retícula táctica central */
@@ -1931,7 +2001,13 @@ private fun DrawScope.drawArLockReticle(
     }
 }
 
-/** Dibuja la línea láser de navegación sobre el suelo hacia el objetivo */
+/** Dibuja la línea láser de navegación sobre el suelo hacia el objetivo.
+ *  El haz se adapta dinámicamente a la distancia:
+ *    - LEJOS (>6m)  → fino, azul, chevrons lentos
+ *    - MEDIO (3-6m) → medio, cian/verde, chevrons moderados
+ *    - CERCA (1-3m) → grueso, naranja/verde intenso, chevrons rápidos
+ *    - ENCIMA (<1m) → máximo grosor, rojo/blanco, pulsación de alerta
+ */
 private fun DrawScope.drawArGroundNavigationTrail(
     cx: Float,
     h: Float,
@@ -1949,105 +2025,220 @@ private fun DrawScope.drawArGroundNavigationTrail(
     val startPt = Offset(cx, h - 15f)
     val endPt = Offset(targetX, targetY)
 
-    // Halo / Resplandor difuso exterior (más potente y vibrante si está fijado)
+    // ── Factor de proximidad: 1.0 = encima, 0.0 = lejos (>8m) ──
+    val proximityFactor = (1.0f - (distanceM / 8.0f)).coerceIn(0f, 1f)
+
+    // ── Colores adaptativos basados en distancia ──
+    val laserCoreColor: Color
+    val laserGlowColor: Color
+    val chevronColor: Color
+    when {
+        distanceM <= 1.0f -> {
+            // ENCIMA DEL PUNTO CERO — rojo intenso pulsante
+            val pulse = 0.7f + 0.3f * kotlin.math.sin((progress * Math.PI * 4).toFloat())
+            laserCoreColor = Color(0xFFFF3300).copy(alpha = pulse)
+            laserGlowColor = Color(0xBBFF4400).copy(alpha = pulse * 0.8f)
+            chevronColor   = Color(0xFFFFCC00).copy(alpha = pulse)
+        }
+        distanceM <= 3.0f -> {
+            // CERCA — naranja a verde brillante
+            val t = ((distanceM - 1f) / 2f).coerceIn(0f, 1f)
+            laserCoreColor = lerpColor(Color(0xFFFF8800), Color(0xFF00FFCC), t)
+            laserGlowColor = lerpColor(Color(0x99FF6600), Color(0x7700FFCC), t)
+            chevronColor   = lerpColor(Color(0xFFFFDD00), Color(0xFFFFFFFF), t)
+        }
+        distanceM <= 6.0f -> {
+            // APROXIMÁNDOSE — verde cian
+            val t = ((distanceM - 3f) / 3f).coerceIn(0f, 1f)
+            laserCoreColor = lerpColor(Color(0xFF00FFCC), Color(0xFF3388FF), t)
+            laserGlowColor = lerpColor(Color(0x7700FFCC), Color(0x443388FF), t)
+            chevronColor   = lerpColor(Color(0xFFFFFFFF), Color(0xCC88BBFF), t)
+        }
+        else -> {
+            // LEJOS — azul tenue
+            laserCoreColor = Color(0xFF3388FF).copy(alpha = 0.55f)
+            laserGlowColor = Color(0x332266CC)
+            chevronColor   = Color(0x9988AAFF)
+        }
+    }
+
+    // ── Overrides si está fijado explícitamente ──
+    val finalCoreColor = if (isExplicitlyLocked) {
+        if (isMoving) Color(0xFF00E5FF) else laserCoreColor
+    } else laserCoreColor
+    val finalGlowColor = if (isExplicitlyLocked) {
+        if (isMoving) Color(0x7700E5FF) else laserGlowColor
+    } else laserGlowColor
+
+    // ── Grosor adaptativo: más cerca = más grueso ──
+    val baseGlowWidth  = if (isExplicitlyLocked) 24f else (8f + proximityFactor * 28f)
+    val baseCoreWidth  = if (isExplicitlyLocked) 6.5f else (2f + proximityFactor * 7f)
+    // Pulso de grosor extra cuando está muy cerca
+    val widthPulse = if (distanceM <= 2.0f) {
+        1f + 0.25f * kotlin.math.sin((progress * Math.PI * 6).toFloat())
+    } else 1f
+
+    // 1. Halo / Resplandor difuso exterior
     drawLine(
         brush = Brush.verticalGradient(
             colors = listOf(
-                if (isExplicitlyLocked) (if (isMoving) Color(0x7700E5FF) else Color(0x6600FFCC)) else color.copy(alpha = 0.05f),
-                if (isExplicitlyLocked) (if (isMoving) Color(0xAA00E5FF) else Color(0x9900FFCC)) else color.copy(alpha = 0.35f)
+                finalGlowColor.copy(alpha = finalGlowColor.alpha * 0.3f),
+                finalGlowColor,
             ),
             startY = targetY,
             endY = h,
         ),
         start = startPt,
         end = endPt,
-        strokeWidth = if (isExplicitlyLocked) 24f else 12f,
+        strokeWidth = baseGlowWidth * widthPulse,
         cap = StrokeCap.Round,
     )
 
-    // Núcleo del Haz Láser sólido
+    // 2. Núcleo del Haz Láser sólido
     drawLine(
         brush = Brush.verticalGradient(
             colors = listOf(
-                if (isExplicitlyLocked) (if (isMoving) Color(0xFF00FFFF) else Color(0xFF00FFCC)) else color.copy(alpha = 0.40f),
-                if (isExplicitlyLocked) Color(0xFFFFFFFF) else color.copy(alpha = 0.95f)
+                finalCoreColor.copy(alpha = 0.50f),
+                finalCoreColor,
             ),
             startY = targetY,
             endY = h,
         ),
         start = startPt,
         end = endPt,
-        strokeWidth = if (isExplicitlyLocked) 6.5f else 4f,
+        strokeWidth = baseCoreWidth * widthPulse,
         cap = StrokeCap.Round,
     )
 
-    // Pulsos de energía direccionados (flechas chevrons hacia el objetivo)
-    val numChevrons = if (isExplicitlyLocked) 10 else 7
+    // 3. Chevrons direccionados — velocidad y cantidad adaptativas a la distancia
+    val numChevrons = when {
+        isExplicitlyLocked -> 10
+        distanceM <= 1.5f -> 14    // Muy rápido = muchos chevrons
+        distanceM <= 3.0f -> 10
+        distanceM <= 6.0f -> 7
+        else              -> 5     // Lejos = pocos chevrons
+    }
+    // Factor de velocidad: más cerca = chevrons se mueven más rápido
+    val speedMultiplier = when {
+        distanceM <= 1.0f -> 3.0f
+        distanceM <= 3.0f -> 2.0f
+        distanceM <= 6.0f -> 1.3f
+        else              -> 1.0f
+    }
+    val chevronProgress = (progress * speedMultiplier) % 1.0f
+
     for (i in 0 until numChevrons) {
-        val t = ((progress + i.toFloat() / numChevrons) % 1.0f)
+        val t = ((chevronProgress + i.toFloat() / numChevrons) % 1.0f)
         val curX = startPt.x + (endPt.x - startPt.x) * t
         val curY = startPt.y + (endPt.y - startPt.y) * t
-        val chevronWidth = ((if (isExplicitlyLocked) 36f else 30f) * (1.0f - t * 0.40f)).coerceAtLeast(12f)
+        val chevronWidth = ((12f + proximityFactor * 30f) * (1.0f - t * 0.40f)).coerceAtLeast(8f)
 
         val path = Path().apply {
             moveTo(curX - chevronWidth, curY + 16f)
             lineTo(curX, curY)
             lineTo(curX + chevronWidth, curY + 16f)
         }
+        val alpha = ((1.0f - t * 0.25f) * (0.4f + proximityFactor * 0.55f)).coerceIn(0.08f, 1f)
         drawPath(
             path = path,
             color = if (isExplicitlyLocked) {
-                Color(0xFFFFFFFF).copy(alpha = ((1.0f - t * 0.25f) * 0.95f).coerceIn(0.15f, 1f))
+                Color(0xFFFFFFFF).copy(alpha = alpha)
             } else {
-                color.copy(alpha = ((1.0f - t * 0.30f) * 0.90f).coerceIn(0.1f, 1f))
+                chevronColor.copy(alpha = alpha)
             },
-            style = Stroke(width = if (isExplicitlyLocked) 3.6f else 2.8f, cap = StrokeCap.Round),
+            style = Stroke(
+                width = (1.5f + proximityFactor * 3.5f) * widthPulse,
+                cap = StrokeCap.Round,
+            ),
         )
     }
 
-    // Anillo de impacto táctico en el suelo sobre el punto fijado
-    if (isExplicitlyLocked) {
-        val ringPulse = (progress * 28f)
+    // 4. Anillos de impacto progresivos en el punto target
+    //    Se vuelven más grandes y frecuentes conforme te acercas
+    if (isExplicitlyLocked || distanceM <= 4.0f) {
+        val ringCount = if (distanceM <= 1.5f) 3 else if (distanceM <= 3.0f) 2 else 1
+        for (r in 0 until ringCount) {
+            val rPhase = ((progress * speedMultiplier + r.toFloat() / ringCount) % 1.0f)
+            val maxRadius = 14f + proximityFactor * 30f
+            val ringRadius = 6f + rPhase * maxRadius
+            val ringAlpha = (1f - rPhase).coerceIn(0.05f, 0.85f) * proximityFactor.coerceAtLeast(0.3f)
+            drawCircle(
+                color = finalCoreColor.copy(alpha = ringAlpha),
+                radius = ringRadius,
+                center = endPt,
+                style = Stroke(width = 1.5f + proximityFactor * 2f),
+            )
+        }
+        // Punto central sólido (más grande cerca)
         drawCircle(
-            color = (if (isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC)).copy(alpha = (1f - progress).coerceIn(0.1f, 0.8f)),
-            radius = 18f + ringPulse,
-            center = endPt,
-            style = Stroke(width = 2.5f)
-        )
-        drawCircle(
-            color = if (isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
-            radius = 8f,
+            color = finalCoreColor,
+            radius = 4f + proximityFactor * 8f,
             center = endPt,
         )
     }
 
+    // 5. Etiqueta de distancia
     if (isInView) {
         val midX = (startPt.x + endPt.x) / 2f
         val midY = (startPt.y + endPt.y) / 2f
         val paintDist = android.graphics.Paint().apply {
-            this.color = if (isExplicitlyLocked) (if (isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFCC")) else android.graphics.Color.WHITE
-            this.textSize = if (isExplicitlyLocked) 22f else 21f
+            this.color = when {
+                distanceM <= 1.0f -> android.graphics.Color.parseColor("#FF3300")
+                isExplicitlyLocked && isMoving -> android.graphics.Color.parseColor("#00E5FF")
+                isExplicitlyLocked -> android.graphics.Color.parseColor("#00FFCC")
+                distanceM <= 3.0f -> android.graphics.Color.parseColor("#FFCC00")
+                else -> android.graphics.Color.WHITE
+            }
+            this.textSize = (18f + proximityFactor * 8f).coerceIn(18f, 28f)
             this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
             this.textAlign = android.graphics.Paint.Align.CENTER
             this.isAntiAlias = true
         }
         val paintDistBg = android.graphics.Paint().apply {
-            this.color = if (isExplicitlyLocked) android.graphics.Color.argb(235, 0, 48, 34) else android.graphics.Color.argb(200, 0, 36, 24)
+            this.color = when {
+                distanceM <= 1.0f -> android.graphics.Color.argb(240, 80, 0, 0)
+                distanceM <= 3.0f -> android.graphics.Color.argb(230, 60, 40, 0)
+                isExplicitlyLocked -> android.graphics.Color.argb(235, 0, 48, 34)
+                else -> android.graphics.Color.argb(180, 0, 28, 48)
+            }
             this.style = android.graphics.Paint.Style.FILL
             this.isAntiAlias = true
-        }
-        val labelText = if (isExplicitlyLocked) {
-            if (isMoving) {
-                if (isSpanish) "🔒 RASTREANDO · ${"%.1f".format(distanceM)}m (~${"%.1f".format(velocityMps)}m/s)" else "🔒 TRACKING · ${"%.1f".format(distanceM)}m (~${"%.1f".format(velocityMps)}m/s)"
-            } else {
-                if (isSpanish) "🔒 LÁSER FIJADO · ${"%.1f".format(distanceM)}m" else "🔒 LOCKED LASER · ${"%.1f".format(distanceM)}m"
+        val paintDistBorder = android.graphics.Paint().apply {
+            this.color = when {
+                distanceM <= 1.0f -> android.graphics.Color.parseColor("#FF3300")
+                distanceM <= 3.0f -> android.graphics.Color.parseColor("#FFCC00")
+                isExplicitlyLocked -> android.graphics.Color.parseColor("#00FFCC")
+                else -> android.graphics.Color.parseColor("#3388FF")
             }
-        } else {
-            "▲ ${"%.1f".format(distanceM)}m"
+            this.style = android.graphics.Paint.Style.STROKE
+            this.strokeWidth = 2.5f
+            this.isAntiAlias = true
         }
-        val boxWidth = if (isExplicitlyLocked && isMoving) 120f else if (isExplicitlyLocked) 88f else 58f
+        val labelText = if (distanceM <= 1.0f) {
+            if (isSpanish) "🛑 ¡PUNTO CERO! · ${"%.2f".format(distanceM)}m" else "🛑 GROUND ZERO! · ${"%.2f".format(distanceM)}m"
+        } else if (isExplicitlyLocked) {
+            if (isMoving) {
+                if (isSpanish) "🔒 RASTREANDO · ${"%.2f".format(distanceM)}m (~${"%.1f".format(velocityMps)}m/s)" else "🔒 TRACKING · ${"%.2f".format(distanceM)}m (~${"%.1f".format(velocityMps)}m/s)"
+            } else {
+                if (isSpanish) "🔒 LÁSER FIJADO · ${"%.2f".format(distanceM)}m" else "🔒 LOCKED LASER · ${"%.2f".format(distanceM)}m"
+            }
+        } else if (distanceM <= 3.0f) {
+            if (isSpanish) "⚠️ CERCA · ${"%.2f".format(distanceM)}m" else "⚠️ CLOSE · ${"%.2f".format(distanceM)}m"
+        } else {
+            "▲ ${"%.2f".format(distanceM)}m"
+        }
+        val boxWidth = when {
+            distanceM <= 1.0f -> 145f
+            isExplicitlyLocked && isMoving -> 135f
+            isExplicitlyLocked -> 105f
+            distanceM <= 3.0f -> 95f
+            else -> 68f
+        }
         drawContext.canvas.nativeCanvas.drawRoundRect(
             midX - boxWidth, midY - 22f, midX + boxWidth, midY + 9f, 8f, 8f, paintDistBg
+        )
+        drawContext.canvas.nativeCanvas.drawRoundRect(
+            midX - boxWidth, midY - 22f, midX + boxWidth, midY + 9f, 8f, 8f, paintDistBorder
         )
         drawContext.canvas.nativeCanvas.drawText(
             labelText,
@@ -2056,6 +2247,17 @@ private fun DrawScope.drawArGroundNavigationTrail(
             paintDist
         )
     }
+}
+
+/** Interpola linealmente entre dos colores Compose */
+private fun lerpColor(a: Color, b: Color, t: Float): Color {
+    val tt = t.coerceIn(0f, 1f)
+    return Color(
+        red   = a.red   + (b.red   - a.red)   * tt,
+        green = a.green + (b.green - a.green) * tt,
+        blue  = a.blue  + (b.blue  - a.blue)  * tt,
+        alpha = a.alpha + (b.alpha - a.alpha) * tt,
+    )
 }
 
 private fun DrawScope.drawArSonarWaves(
@@ -2082,7 +2284,7 @@ private fun DrawScope.drawArSonarWaves(
     }
 }
 
-/** Renderiza el Punto / Orbe Holográfico 3D con IA Destilada e indicador de movimiento */
+/** Renderiza el Punto / Orbe Holográfico 3D estilo Pokémon GO con IA Destilada, Coordenadas GPS e indicador de movimiento */
 private fun DrawScope.drawArWifiNodePoint(
     sx: Float,
     sy: Float,
@@ -2093,71 +2295,191 @@ private fun DrawScope.drawArWifiNodePoint(
     lockRotationDeg: Float = 0f,
     isSpanish: Boolean = true,
 ) {
+    val isPinnedOrLocked = point.isPinned || isExplicitlyLocked
     val perspectiveScale = (2.4f / point.distanceM.toFloat().coerceIn(0.6f, 12.0f)).coerceIn(0.30f, 2.4f)
-    val baseColor = if (isExplicitlyLocked) (if (point.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC)) else point.color
-    val orbRadius = (14f * perspectiveScale * (if (isExplicitlyLocked) pulse * 1.15f else pulse)).coerceIn(5f, 36f)
+    val baseColor = if (point.isRescued) {
+        Color(0xFFFFD700)
+    } else if (isPinnedOrLocked) {
+        if (point.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC)
+    } else {
+        point.color
+    }
 
-    // Columna vertical de luz / Haz holográfico
-    val columnHeight = (80f * perspectiveScale).coerceIn(24f, 150f)
-    if (isExplicitlyLocked) {
-        val topBeam = (70f * perspectiveScale).coerceIn(25f, 140f)
-        val beamColor = if (point.isMoving) Color(0xAA00E5FF) else Color(0xAA00FFCC)
-        drawLine(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color.Transparent, beamColor, Color(0xFFFFFFFF), beamColor, Color.Transparent),
-                startY = sy - topBeam,
-                endY = sy + columnHeight + 20f,
+    // 1. Animación de flotación suave 3D estilo Pokémon GO
+    val bobbingOffset = kotlin.math.sin((lockRotationDeg * 2.2f + point.victimNumericId * 50f) * (Math.PI.toFloat() / 180f)) * (9f * perspectiveScale)
+    val coreY = sy + bobbingOffset
+    val columnHeight = (85f * perspectiveScale).coerceIn(28f, 160f)
+    val groundY = sy + columnHeight
+
+    // 2. Plataforma Holográfica de Suelo 3D (Poké-Spawn Ground Rings)
+    val groundRadius = (32f * perspectiveScale).coerceIn(12f, 65f)
+    val ringAlpha = if (isPinnedOrLocked) 0.85f else 0.45f
+    // Anillo exterior en el suelo con perspectiva elíptica
+    drawOval(
+        color = baseColor.copy(alpha = ringAlpha),
+        topLeft = Offset(sx - groundRadius, groundY - groundRadius * 0.30f),
+        size = Size(groundRadius * 2f, groundRadius * 0.60f),
+        style = Stroke(width = (2.8f * perspectiveScale).coerceIn(1.5f, 5.0f)),
+    )
+    // Anillo interior concéntrico
+    drawOval(
+        color = baseColor.copy(alpha = ringAlpha * 0.55f),
+        topLeft = Offset(sx - groundRadius * 0.6f, groundY - groundRadius * 0.18f),
+        size = Size(groundRadius * 1.2f, groundRadius * 0.36f),
+        style = Stroke(width = (1.8f * perspectiveScale).coerceIn(1.0f, 3.5f)),
+    )
+    // Muescas cardinales giratorias en la base del suelo
+    if (isPinnedOrLocked) {
+        for (i in 0 until 4) {
+            val angleRad = (lockRotationDeg + i * 90f) * (Math.PI.toFloat() / 180f)
+            val nx = sx + groundRadius * kotlin.math.cos(angleRad)
+            val ny = groundY + groundRadius * 0.30f * kotlin.math.sin(angleRad)
+            drawCircle(Color.White, (3.2f * perspectiveScale).coerceIn(1.8f, 5.5f), Offset(nx, ny))
+        }
+    }
+
+    // 3. Columna de Luz Vertical / Haz de Baliza de Rescate (Beacon Beam)
+    if (isPinnedOrLocked) {
+        val topSkyBeam = (80f * perspectiveScale).coerceIn(30f, 160f)
+        val beamBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color.Transparent,
+                baseColor.copy(alpha = 0.50f),
+                Color.White.copy(alpha = 0.90f),
+                baseColor.copy(alpha = 0.80f),
+                baseColor.copy(alpha = 0.20f),
+                Color.Transparent
             ),
-            start = Offset(sx, sy - topBeam),
-            end = Offset(sx, sy + columnHeight + 20f),
-            strokeWidth = (4.0f * perspectiveScale).coerceIn(2.0f, 7.0f),
+            startY = coreY - topSkyBeam,
+            endY = groundY + 30f,
+        )
+        drawLine(
+            brush = beamBrush,
+            start = Offset(sx, coreY - topSkyBeam),
+            end = Offset(sx, groundY + 30f),
+            strokeWidth = (4.5f * perspectiveScale).coerceIn(2.5f, 8.5f),
+            cap = StrokeCap.Round,
         )
     } else {
         drawLine(
             brush = Brush.verticalGradient(
                 colors = listOf(baseColor.copy(alpha = 0.85f), Color.Transparent),
-                startY = sy,
-                endY = sy + columnHeight,
+                startY = coreY,
+                endY = groundY,
             ),
-            start = Offset(sx, sy),
-            end = Offset(sx, sy + columnHeight),
+            start = Offset(sx, coreY),
+            end = Offset(sx, groundY),
             strokeWidth = (2.2f * perspectiveScale).coerceIn(1.2f, 4.5f),
         )
     }
 
-    // Aura radial holográfica
+    // 4. Aura de energía radial y orbe central
+    val orbRadius = (16f * perspectiveScale * (if (isPinnedOrLocked) pulse * 1.15f else pulse)).coerceIn(6f, 42f)
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
-                baseColor.copy(alpha = if (isExplicitlyLocked) 0.90f else 0.75f),
-                baseColor.copy(alpha = if (isExplicitlyLocked) 0.35f else 0.15f),
+                baseColor.copy(alpha = if (isPinnedOrLocked) 0.95f else 0.70f),
+                baseColor.copy(alpha = if (isPinnedOrLocked) 0.40f else 0.15f),
                 Color.Transparent
             ),
-            center = Offset(sx, sy),
-            radius = orbRadius * (if (isExplicitlyLocked) 2.6f else 2.0f),
+            center = Offset(sx, coreY),
+            radius = orbRadius * (if (isPinnedOrLocked) 2.8f else 2.0f),
         ),
-        radius = orbRadius * (if (isExplicitlyLocked) 2.6f else 2.0f),
-        center = Offset(sx, sy),
+        radius = orbRadius * (if (isPinnedOrLocked) 2.8f else 2.0f),
+        center = Offset(sx, coreY),
     )
 
-    // Orbe central
-    drawCircle(
-        color = baseColor,
-        radius = orbRadius,
-        center = Offset(sx, sy),
-    )
-    drawCircle(
-        color = Color.White,
-        radius = (orbRadius * (if (isExplicitlyLocked) 0.55f else 0.45f)).coerceAtLeast(2.5f),
-        center = Offset(sx, sy),
-    )
+    // 5. Silueta Holográfica Humana Estilo Pokémon GO (Avatar 3D)
+    if (isPinnedOrLocked) {
+        val headR = (6.5f * perspectiveScale).coerceIn(3.5f, 15f)
+        val bodyW = (13f * perspectiveScale).coerceIn(6f, 28f)
+        val bodyH = (16f * perspectiveScale).coerceIn(8f, 32f)
 
-    // CORCHETES TÁCTICOS GIRATORIOS [ 🎯 ] Y DIAMANTE CUANDO EL OBJETIVO ESTÁ FIJADO
-    if (isExplicitlyLocked) {
-        val bracketRadius = orbRadius * 2.2f
+        // Cabeza del avatar
+        drawCircle(
+            color = Color.White,
+            radius = headR,
+            center = Offset(sx, coreY - bodyH * 0.65f),
+        )
+        drawCircle(
+            color = baseColor,
+            radius = headR * 1.35f,
+            center = Offset(sx, coreY - bodyH * 0.65f),
+            style = Stroke(width = 1.8f * perspectiveScale),
+        )
+
+        // Cuerpo / Torso holográfico
+        drawRoundRect(
+            color = baseColor.copy(alpha = 0.85f),
+            topLeft = Offset(sx - bodyW / 2f, coreY - bodyH * 0.15f),
+            size = Size(bodyW, bodyH * 0.85f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f * perspectiveScale, 4f * perspectiveScale),
+        )
+
+        // Corazón vital con pulso cardíaco en tiempo real
+        val heartPulse = 0.85f + 0.35f * kotlin.math.sin(lockRotationDeg * 0.12f).coerceAtLeast(0f)
+        drawCircle(
+            color = Color(0xFFFF2255),
+            radius = (3.8f * perspectiveScale * heartPulse).coerceIn(2f, 9f),
+            center = Offset(sx, coreY + bodyH * 0.15f),
+        )
+    } else {
+        // Orbe básico si no está fijada
+        drawCircle(color = baseColor, radius = orbRadius, center = Offset(sx, coreY))
+        drawCircle(color = Color.White, radius = (orbRadius * 0.50f).coerceAtLeast(2.5f), center = Offset(sx, coreY))
+    }
+
+    // 6. Anillo de Captura / Foco Dinámico estilo Pokémon GO (Catch Ring Animado que se contrae y expande)
+    if (isPinnedOrLocked) {
+        val outerRingRadius = orbRadius * 2.8f
+        // Color del anillo de captura estilo Pokémon GO: Verde = Muy Cerca/Alineado, Amarillo/Ámbar = Distancia Media, Rojo = Lejos
+        val catchRingColor = when {
+            point.distanceM <= 1.8 || isAimAligned -> Color(0xFF00FF66)
+            point.distanceM <= 4.0 -> Color(0xFFFFCC00)
+            else -> Color(0xFFFF3344)
+        }
+
+        // Anillo exterior blanco translúcido de referencia
+        drawCircle(
+            color = Color.White.copy(alpha = 0.65f),
+            radius = outerRingRadius,
+            center = Offset(sx, coreY),
+            style = Stroke(width = (2.0f * perspectiveScale).coerceIn(1.2f, 4f)),
+        )
+
+        // Anillo interior de captura que se CONTRAE hacia el centro estilo Pokémon GO
+        val ringPhase = ((lockRotationDeg * 2.5f) % 360f) / 360f
+        val contractingRadius = outerRingRadius * (1.0f - ringPhase * 0.75f)
+        val contractingAlpha = (0.35f + 0.65f * (1.0f - ringPhase)).coerceIn(0.2f, 1f)
+
+        drawCircle(
+            color = catchRingColor.copy(alpha = contractingAlpha),
+            radius = contractingRadius,
+            center = Offset(sx, coreY),
+            style = Stroke(width = (3.2f * perspectiveScale).coerceIn(2.0f, 6.5f)),
+        )
+
+        // Partículas de aura brillante que flotan hacia arriba estilo Pokémon GO spawn
+        for (p in 0 until 5) {
+            val pPhase = ((lockRotationDeg * 1.8f + p * 72f) % 360f) / 360f
+            val pAngleRad = (p * 72f + lockRotationDeg * 0.8f) * (Math.PI.toFloat() / 180f)
+            val pDist = groundRadius * 0.85f * (1.0f - pPhase * 0.3f)
+            val px = sx + pDist * kotlin.math.cos(pAngleRad)
+            val py = groundY - (pPhase * columnHeight * 1.2f)
+            val pAlpha = (1.0f - pPhase).coerceIn(0f, 1f) * 0.85f
+
+            drawCircle(
+                color = catchRingColor.copy(alpha = pAlpha),
+                radius = (3.0f * perspectiveScale * (1.0f - pPhase * 0.5f)).coerceIn(1.5f, 6f),
+                center = Offset(px, py),
+            )
+        }
+
+        // Corchetes tácticos giratorios
+        val bracketRadius = orbRadius * 2.4f
         val numBrackets = 4
-        val bracketSweep = 44f
-        val bracketColor = if (point.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC)
+        val bracketSweep = 40f
+        val bracketColor = if (point.isMoving) Color(0xFF00E5FF) else (if (point.isPinned) Color(0xFFFFCC00) else Color(0xFF00FFCC))
         for (i in 0 until numBrackets) {
             val startAngle = lockRotationDeg + i * 90f - (bracketSweep / 2f)
             drawArc(
@@ -2165,43 +2487,127 @@ private fun DrawScope.drawArWifiNodePoint(
                 startAngle = startAngle,
                 sweepAngle = bracketSweep,
                 useCenter = false,
-                topLeft = Offset(sx - bracketRadius, sy - bracketRadius),
+                topLeft = Offset(sx - bracketRadius, coreY - bracketRadius),
                 size = Size(bracketRadius * 2f, bracketRadius * 2f),
                 style = Stroke(width = (3.2f * perspectiveScale).coerceIn(2f, 6f), cap = StrokeCap.Round),
             )
         }
-
-        // Halo de diamante táctico
-        val dR = orbRadius * 2.8f
-        val diamondPath = Path().apply {
-            moveTo(sx, sy - dR)
-            lineTo(sx + dR, sy)
-            lineTo(sx, sy + dR)
-            lineTo(sx - dR, sy)
-            close()
-        }
-        drawPath(
-            path = diamondPath,
-            color = bracketColor.copy(alpha = 0.45f),
-            style = Stroke(width = (2.0f * perspectiveScale).coerceIn(1.2f, 4f), cap = StrokeCap.Round),
-        )
-    } else {
-        val isEngaged = isAimAligned
-        drawCircle(
-            color = if (isEngaged) Color.White else baseColor.copy(alpha = 0.85f),
-            radius = orbRadius * (if (isEngaged) 1.6f else 1.4f),
-            center = Offset(sx, sy),
-            style = Stroke(width = (2.0f * perspectiveScale).coerceIn(1.0f, 4.0f)),
-        )
     }
 
+    // 6. Gran PIN 3D Flotante Estilo Pokémon GO / Google Maps Live View AR (Clavado en el lugar exacto)
+    val pinHeadR = (17f * perspectiveScale).coerceIn(9f, 40f)
+    val pinHeight = pinHeadR * 2.6f
+    // La punta del PIN toca EXACTAMENTE la posición física de la persona (coreY)
+    val pinTipY = coreY
+    val pinCenterY = pinTipY - pinHeight + pinHeadR
+
+    // Forma geométrica 3D del PIN (Cabeza circular + Punta triangular inferior)
+    val pinPath = Path().apply {
+        moveTo(sx, pinTipY)
+        // Lado izquierdo hacia la curvatura de la cabeza
+        lineTo(sx - pinHeadR * 0.88f, pinCenterY + pinHeadR * 0.35f)
+        // Arco superior
+        arcTo(
+            rect = androidx.compose.ui.geometry.Rect(
+                left = sx - pinHeadR,
+                top = pinCenterY - pinHeadR,
+                right = sx + pinHeadR,
+                bottom = pinCenterY + pinHeadR
+            ),
+            startAngleDegrees = 150f,
+            sweepAngleDegrees = 240f,
+            forceMoveTo = false,
+        )
+        // Lado derecho de regreso a la punta inferior
+        lineTo(sx, pinTipY)
+        close()
+    }
+
+    val pinColor = if (point.isPinned) Color(0xFFFFCC00) else if (isPinnedOrLocked) Color(0xFF00FFCC) else Color(0xFFFF3366)
+    // Sombra y halo brillante del Pin
+    drawPath(
+        path = pinPath,
+        color = pinColor.copy(alpha = 0.35f),
+        style = Stroke(width = 6f * perspectiveScale),
+    )
+    // Relleno principal con degradado 3D del Pin
+    drawPath(
+        path = pinPath,
+        brush = Brush.verticalGradient(
+            colors = listOf(Color.White, pinColor, pinColor.copy(alpha = 0.85f)),
+            startY = pinCenterY - pinHeadR,
+            endY = pinTipY,
+        ),
+    )
+    // Borde brillante exterior
+    drawPath(
+        path = pinPath,
+        color = Color.White,
+        style = Stroke(width = (2.2f * perspectiveScale).coerceIn(1.2f, 4f)),
+    )
+
+    // Núcleo central del PIN con icono de persona o respiración
+    drawCircle(
+        color = Color(0xFF06140E),
+        radius = pinHeadR * 0.52f,
+        center = Offset(sx, pinCenterY),
+    )
+    drawCircle(
+        color = if (point.respRate > 0 || point.isVictim) Color(0xFF00FFCC) else Color.White,
+        radius = pinHeadR * 0.30f,
+        center = Offset(sx, pinCenterY),
+    )
+
+    // Medidor Flotante de Metros directamente sobre el Pin (Cuenta regresiva interactiva al caminar)
+    val meterBadgeWidth = (92f * perspectiveScale).coerceIn(58f, 155f)
+    val meterBadgeHeight = (25f * perspectiveScale).coerceIn(16f, 38f)
+    val meterBadgeY = pinCenterY - pinHeadR - (6f * perspectiveScale)
+
+    drawRoundRect(
+        color = Color(0xEE001E14),
+        topLeft = Offset(sx - meterBadgeWidth / 2f, meterBadgeY - meterBadgeHeight),
+        size = Size(meterBadgeWidth, meterBadgeHeight),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+    )
+    drawRoundRect(
+        color = pinColor,
+        topLeft = Offset(sx - meterBadgeWidth / 2f, meterBadgeY - meterBadgeHeight),
+        size = Size(meterBadgeWidth, meterBadgeHeight),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+        style = Stroke(width = 1.5f),
+    )
+
+    val paintMeter = android.graphics.Paint().apply {
+        this.color = android.graphics.Color.WHITE
+        this.textSize = (13f * perspectiveScale).coerceIn(9.5f, 19f)
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+        this.textAlign = android.graphics.Paint.Align.CENTER
+        this.isAntiAlias = true
+    }
+    val meterText = if (point.distanceM < 0.8) "🛑 ¡0.0m!" else "📍 ${"%.1f".format(point.distanceM)}m"
+    drawContext.canvas.nativeCanvas.drawText(
+        meterText,
+        sx,
+        meterBadgeY - meterBadgeHeight * 0.28f,
+        paintMeter
+    )
+
+    // 7. Tarjeta Táctica Flotante (Encounter HUD Card estilo Pokémon GO sobre el PIN)
     val hasAiTag = point.aiConfidenceTag.isNotBlank()
-    val badgeHeight = (if (hasAiTag) (68f * perspectiveScale) else if (isExplicitlyLocked) (56f * perspectiveScale) else (48f * perspectiveScale)).coerceIn(36f, 96f)
-    val labelY = sy - orbRadius * (if (isExplicitlyLocked) 2.2f else 1.4f) - (14f * perspectiveScale)
-    val badgeWidth = (if (hasAiTag || isExplicitlyLocked) 245f * perspectiveScale else 210f * perspectiveScale).coerceIn(155f, 350f)
+    val hasGps = point.gpsGms.isNotBlank() || (point.gpsLat != null && point.gpsLon != null)
+    val extraLines = (if (hasAiTag) 1 else 0) + (if (hasGps) 1 else 0)
+    val badgeHeight = (when (extraLines) {
+        2 -> (92f * perspectiveScale)
+        1 -> (74f * perspectiveScale)
+        else -> if (isPinnedOrLocked) (62f * perspectiveScale) else (50f * perspectiveScale)
+    }).coerceIn(38f, 128f)
+    val labelY = meterBadgeY - meterBadgeHeight - (10f * perspectiveScale)
+    val badgeWidth = (if (hasGps) 275f * perspectiveScale else if (hasAiTag || isPinnedOrLocked) 250f * perspectiveScale else 215f * perspectiveScale).coerceIn(170f, 395f)
 
     val paintBg = android.graphics.Paint().apply {
-        this.color = if (isExplicitlyLocked) {
+        this.color = if (point.isPinned) {
+            android.graphics.Color.argb(245, 0, 42, 32)
+        } else if (isPinnedOrLocked) {
             android.graphics.Color.argb(240, 0, 48, 34)
         } else if (isAimAligned) {
             android.graphics.Color.argb(220, 0, 42, 28)
@@ -2211,10 +2617,26 @@ private fun DrawScope.drawArWifiNodePoint(
         this.style = android.graphics.Paint.Style.FILL
         this.isAntiAlias = true
     }
+    val paintBorder = android.graphics.Paint().apply {
+        this.color = if (point.isPinned) {
+            android.graphics.Color.parseColor("#FFCC00")
+        } else if (point.isMoving) {
+            android.graphics.Color.parseColor("#00E5FF")
+        } else if (isPinnedOrLocked) {
+            android.graphics.Color.parseColor("#00FFCC")
+        } else {
+            android.graphics.Color.parseColor("#225533")
+        }
+        this.style = android.graphics.Paint.Style.STROKE
+        this.strokeWidth = (2.6f * perspectiveScale).coerceIn(1.5f, 4.5f)
+        this.isAntiAlias = true
+    }
     val paintText = android.graphics.Paint().apply {
         this.color = if (point.isRescued) {
             android.graphics.Color.parseColor("#FFD700")
-        } else if (isExplicitlyLocked) {
+        } else if (point.isPinned) {
+            android.graphics.Color.parseColor("#00FFCC")
+        } else if (isPinnedOrLocked) {
             if (point.isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFFF")
         } else if (isAimAligned) {
             android.graphics.Color.parseColor("#00FFCC")
@@ -2227,9 +2649,9 @@ private fun DrawScope.drawArWifiNodePoint(
         this.isAntiAlias = true
     }
     val paintSub = android.graphics.Paint().apply {
-        this.color = if (point.isRescued) {
-            android.graphics.Color.parseColor("#00FFCC")
-        } else if (isExplicitlyLocked) {
+        this.color = if (point.isPinned) {
+            android.graphics.Color.WHITE
+        } else if (isPinnedOrLocked) {
             android.graphics.Color.parseColor("#00FFCC")
         } else {
             android.graphics.Color.parseColor("#FFCC00")
@@ -2245,29 +2667,34 @@ private fun DrawScope.drawArWifiNodePoint(
         labelY - badgeHeight,
         sx + badgeWidth / 2f,
         labelY,
-        10f, 10f, paintBg
+        12f, 12f, paintBg
+    )
+    drawContext.canvas.nativeCanvas.drawRoundRect(
+        sx - badgeWidth / 2f,
+        labelY - badgeHeight,
+        sx + badgeWidth / 2f,
+        labelY,
+        12f, 12f, paintBorder
     )
 
-    // Borde brillante en la tarjeta cuando está fijado
-    if (isExplicitlyLocked) {
-        val paintBorder = android.graphics.Paint().apply {
-            this.color = if (point.isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFCC")
-            this.style = android.graphics.Paint.Style.STROKE
-            this.strokeWidth = (2.5f * perspectiveScale).coerceIn(1.5f, 4f)
-            this.isAntiAlias = true
-        }
-        drawContext.canvas.nativeCanvas.drawRoundRect(
-            sx - badgeWidth / 2f,
-            labelY - badgeHeight,
-            sx + badgeWidth / 2f,
-            labelY,
-            10f, 10f, paintBorder
-        )
+    val pinPrefix = if (point.isPinned) {
+        if (isSpanish) "📌 [ZONA #${point.victimNumericId} FIJADA] " else "📌 [ZONE #${point.victimNumericId} LOCKED] "
+    } else if (isExplicitlyLocked) {
+        if (isSpanish) "🎯 [ZONA #${point.victimNumericId}] " else "🎯 [ZONE #${point.victimNumericId}] "
+    } else {
+        ""
     }
-
-    val displayLabel = if (isExplicitlyLocked) "🔒 ${point.label}" else point.label
-    val line1Y = if (hasAiTag) labelY - badgeHeight * 0.68f else labelY - badgeHeight * 0.54f
-    val line2Y = if (hasAiTag) labelY - badgeHeight * 0.38f else labelY - badgeHeight * 0.16f
+    val displayLabel = "$pinPrefix${point.label}"
+    val line1Y = when (extraLines) {
+        2 -> labelY - badgeHeight * 0.76f
+        1 -> labelY - badgeHeight * 0.68f
+        else -> labelY - badgeHeight * 0.54f
+    }
+    val line2Y = when (extraLines) {
+        2 -> labelY - badgeHeight * 0.52f
+        1 -> labelY - badgeHeight * 0.38f
+        else -> labelY - badgeHeight * 0.16f
+    }
 
     drawContext.canvas.nativeCanvas.drawText(
         displayLabel,
@@ -2276,16 +2703,34 @@ private fun DrawScope.drawArWifiNodePoint(
         paintText
     )
     drawContext.canvas.nativeCanvas.drawText(
-        "🎯 ${"%.1f".format(point.distanceM)}m • ⬇ ${"%.1f".format(abs(point.depthM))}m",
+        "🎯 ${"%.2f".format(point.distanceM)}m • ⬇ ${"%.2f".format(kotlin.math.abs(point.depthM))}m • 🧭 ${point.bearingDeg.toInt()}°",
         sx,
         line2Y,
         paintSub
     )
 
+    if (hasGps) {
+        val paintGps = android.graphics.Paint().apply {
+            this.color = android.graphics.Color.parseColor("#FFCC00")
+            this.textSize = (12f * perspectiveScale).coerceIn(8.5f, 16f)
+            this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+            this.textAlign = android.graphics.Paint.Align.CENTER
+            this.isAntiAlias = true
+        }
+        val gpsLineY = if (hasAiTag) labelY - badgeHeight * 0.28f else labelY - badgeHeight * 0.10f
+        val gpsText = if (point.gpsGms.isNotBlank()) "📍 ${point.gpsGms}" else "📍 ${"%.5f".format(point.gpsLat ?: 0.0)}°, ${"%.5f".format(point.gpsLon ?: 0.0)}°"
+        drawContext.canvas.nativeCanvas.drawText(
+            gpsText,
+            sx,
+            gpsLineY,
+            paintGps
+        )
+    }
+
     if (hasAiTag) {
         val paintAi = android.graphics.Paint().apply {
             this.color = if (point.isMoving) android.graphics.Color.parseColor("#00E5FF") else android.graphics.Color.parseColor("#00FFCC")
-            this.textSize = (13f * perspectiveScale).coerceIn(9f, 17f)
+            this.textSize = (12f * perspectiveScale).coerceIn(8.5f, 15f)
             this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
             this.textAlign = android.graphics.Paint.Align.CENTER
             this.isAntiAlias = true
@@ -2293,7 +2738,7 @@ private fun DrawScope.drawArWifiNodePoint(
         drawContext.canvas.nativeCanvas.drawText(
             point.aiConfidenceTag,
             sx,
-            labelY - badgeHeight * 0.10f,
+            labelY - badgeHeight * 0.08f,
             paintAi
         )
     }

@@ -41,6 +41,14 @@ data class CsiPacketData(
     val rcsAreaM2: Double = 0.82,
     val subcarrierAmplitudesList: List<Float> = emptyList(),
     val respirationWave: List<Float> = emptyList(),
+    /** Distancia estimada por MUSIC ToF (super-resolución multipath). */
+    val musicDistanceM: Double = 0.0,
+    /** Distancia estimada por pendiente de fase limpia (CPE/SFO removed). */
+    val phaseDistanceM: Double = 0.0,
+    /** Confianza de la fusión de distancia (0.0 - 1.0). */
+    val distanceConfidence: Double = 0.0,
+    /** Número de caminos multipath detectados por MUSIC. */
+    val multipathCount: Int = 0,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -61,6 +69,10 @@ data class CsiPacketData(
         if (confidence != other.confidence) return false
         if (subcarrierAmplitudesList != other.subcarrierAmplitudesList) return false
         if (respirationWave != other.respirationWave) return false
+        if (musicDistanceM != other.musicDistanceM) return false
+        if (phaseDistanceM != other.phaseDistanceM) return false
+        if (distanceConfidence != other.distanceConfidence) return false
+        if (multipathCount != other.multipathCount) return false
 
         return true
     }
@@ -79,6 +91,10 @@ data class CsiPacketData(
         result = 31 * result + confidence.hashCode()
         result = 31 * result + subcarrierAmplitudesList.hashCode()
         result = 31 * result + respirationWave.hashCode()
+        result = 31 * result + musicDistanceM.hashCode()
+        result = 31 * result + phaseDistanceM.hashCode()
+        result = 31 * result + distanceConfidence.hashCode()
+        result = 31 * result + multipathCount.hashCode()
         return result
     }
 }
