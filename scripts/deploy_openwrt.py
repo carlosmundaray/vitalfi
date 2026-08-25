@@ -81,14 +81,15 @@ SERVICE_SCRIPT_SH = r'''cat << 'EOF' > /etc/init.d/vitalfi
 #!/bin/sh /etc/rc.common
 START=99
 STOP=10
+USE_PROCD=1
 
-start() {
-    killall -q vitalfi-stream 2>/dev/null
-    /usr/bin/vitalfi-stream 255.255.255.255 5500 >/dev/null 2>&1 &
-}
-
-stop() {
-    killall -q vitalfi-stream 2>/dev/null
+start_service() {
+    procd_open_instance
+    procd_set_param command /usr/bin/vitalfi-stream
+    procd_set_param respawn 3600 5 0
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
 }
 EOF
 chmod +x /etc/init.d/vitalfi

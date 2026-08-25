@@ -49,6 +49,26 @@ data class CsiPacketData(
     val distanceConfidence: Double = 0.0,
     /** Número de caminos multipath detectados por MUSIC. */
     val multipathCount: Int = 0,
+    /** Noise floor del canal en dBm (real, del router). */
+    val noiseFloorDbm: Double = -95.0,
+    /** Utilización del canal en % (0-100, real, del router). */
+    val channelUtilization: Double = 0.0,
+    /** SNR en dB (RSSI − noise floor, real). */
+    val snrDb: Double = 0.0,
+    /** Estaciones Wi-Fi conectadas al AP del router. */
+    val connectedStations: Int = 0,
+    /** true si los datos CSI provienen de hardware real (Atheros CSI Tool). */
+    val isRealCsi: Boolean = false,
+    /** Frecuencia central del canal en MHz. */
+    val channelFreqMhz: Int = 2437,
+    /** Ancho de banda del canal en MHz (20/40/80). */
+    val channelBwMhz: Int = 20,
+    /** Índice MCS de transmisión. */
+    val mcsIndex: Int = 0,
+    /** Identificador del router (para multi-router mesh). */
+    val routerId: Int = 0,
+    /** Uptime del router en ms (para sincronización temporal). */
+    val routerUptimeMs: Long = 0L,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -73,6 +93,16 @@ data class CsiPacketData(
         if (phaseDistanceM != other.phaseDistanceM) return false
         if (distanceConfidence != other.distanceConfidence) return false
         if (multipathCount != other.multipathCount) return false
+        if (noiseFloorDbm != other.noiseFloorDbm) return false
+        if (channelUtilization != other.channelUtilization) return false
+        if (snrDb != other.snrDb) return false
+        if (connectedStations != other.connectedStations) return false
+        if (isRealCsi != other.isRealCsi) return false
+        if (channelFreqMhz != other.channelFreqMhz) return false
+        if (channelBwMhz != other.channelBwMhz) return false
+        if (mcsIndex != other.mcsIndex) return false
+        if (routerId != other.routerId) return false
+        if (routerUptimeMs != other.routerUptimeMs) return false
 
         return true
     }
@@ -95,6 +125,16 @@ data class CsiPacketData(
         result = 31 * result + phaseDistanceM.hashCode()
         result = 31 * result + distanceConfidence.hashCode()
         result = 31 * result + multipathCount.hashCode()
+        result = 31 * result + noiseFloorDbm.hashCode()
+        result = 31 * result + channelUtilization.hashCode()
+        result = 31 * result + snrDb.hashCode()
+        result = 31 * result + connectedStations.hashCode()
+        result = 31 * result + isRealCsi.hashCode()
+        result = 31 * result + channelFreqMhz.hashCode()
+        result = 31 * result + channelBwMhz.hashCode()
+        result = 31 * result + mcsIndex.hashCode()
+        result = 31 * result + routerId.hashCode()
+        result = 31 * result + routerUptimeMs.hashCode()
         return result
     }
 }

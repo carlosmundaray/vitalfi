@@ -170,20 +170,97 @@ class CsiUdpCollector(
     }
 
     /**
-     * Parsea tramas binarias de CSI (Atheros / Nexmon / Genéricas).
+     * Parsea tramas binarias CSI con detección automática de protocolo:
+     * - Protocolo VF v2 (magic 0x5646 en offset 14-15): cabecera 24 bytes + N subportadoras
+     * - Protocolo legacy (sin magic): cabecera 16 bytes + subportadoras fijas
      */
     private fun parseCsiPacket(data: ByteArray, length: Int, timestampMs: Long): CsiPacketData {
         if (length < 16) {
             return CsiPacketData(timestampMs = timestampMs)
         }
 
+        // Detectar protocolo VF v2 por magic number en bytes 14-15
+        val isEnhanced = length >= 24 &&
+            (data[14].toInt() and 0xFF) == 0x46 &&
+            (data[15].toInt() and 0xFF) == 0x56
+
+        return if (isEnhanced) {
+            parseEnhancedPacket(data, length, timestampMs)
+        } else {
+            parseLegacyPacket(data, length, timestampMs)
+        }
+    }
+
+    /**
+     * Parsea paquetes del protocolo VF v2 (cabecera 24 bytes con metadatos reales del router).
+     */
+    private fun parseEnhancedPacket(data: ByteArray, length: Int, timestampMs: Long): CsiPacketData {
         val bb = ByteBuffer.wrap(data, 0, length).order(ByteOrder.LITTLE_ENDIAN)
 
-        // Cabecera básica: magic/seq, rssi
-        val seq = bb.int.toLong() and 0xFFFFFFFFL
-        val rawRssi = (bb.get().toInt() and 0xFF) - 100.0 // dBm aproximado
+        val seq        = bb.int.toLong() and 0xFFFFFFFFL         // [0..3]
+        val rawRssi    = (bb.get().toInt() and 0xFF) - 100.0     // [4]
+        val flags      = bb.get().toInt() and 0xFF               // [5]
+        val noiseFloor = (bb.get().toInt() and 0xFF) - 100.0     // [6]
+        val chanUtil   = (bb.get().toInt() and 0xFF).toDouble()  // [7]
+        val mcsRate    = bb.get().toInt() and 0xFF               // [8]
+        val stationCnt = bb.get().toInt() and 0xFF               // [9]
+        val snr        = (bb.get().toInt() and 0xFF).toDouble()  // [10]
+        val chanFreq   = bb.short.toInt() and 0xFFFF             // [11..12]
+        val bw         = bb.get().toInt() and 0xFF               // [13]
+        bb.short  // [14..15] magic (ya validado)
+        val numSc      = bb.get().toInt() and 0xFF               // [16]
+        val routerId   = bb.get().toInt() and 0xFF               // [17]
+        val routerTs   = bb.int.toLong() and 0xFFFFFFFFL         // [18..21]
+        bb.short  // [22..23] reserved
 
-        val subcarrierCount = min(56, max(30, (length - 16) / 4))
+        val isRealCsi  = (flags and 0x01) != 0
+        val hasNoise   = (flags and 0x02) != 0
+
+        // Parsear subportadoras reales (si las hay)
+        val actualSc = min(numSc, max(0, (length - 24) / 4))
+        val amplitudes = FloatArray(actualSc)
+        val phases = FloatArray(actualSc)
+
+        for (i in 0 until actualSc) {
+            if (bb.remaining() >= 4) {
+                val real = bb.short.toFloat()
+                val imag = bb.short.toFloat()
+                amplitudes[i] = sqrt(real * real + imag * imag)
+                phases[i] = atan2(imag, real)
+            } else break
+        }
+
+        return CsiPacketData(
+            timestampMs = timestampMs,
+            sequenceNumber = seq,
+            rssi = if (rawRssi in -100.0..-10.0) rawRssi else -65.0,
+            subcarrierAmplitudes = amplitudes,
+            subcarrierPhases = phases,
+            noiseFloorDbm = if (hasNoise) noiseFloor else -95.0,
+            channelUtilization = chanUtil,
+            snrDb = snr,
+            connectedStations = stationCnt,
+            isRealCsi = isRealCsi,
+            channelFreqMhz = if (chanFreq > 0) chanFreq else 2437,
+            channelBwMhz = if (bw > 0) bw else 20,
+            mcsIndex = mcsRate,
+            routerId = routerId,
+            routerUptimeMs = routerTs,
+        )
+    }
+
+    /**
+     * Parsea paquetes del protocolo legacy (16 bytes cabecera + subportadoras fijas).
+     */
+    private fun parseLegacyPacket(data: ByteArray, length: Int, timestampMs: Long): CsiPacketData {
+        val bb = ByteBuffer.wrap(data, 0, length).order(ByteOrder.LITTLE_ENDIAN)
+
+        val seq = bb.int.toLong() and 0xFFFFFFFFL
+        val rawRssi = (bb.get().toInt() and 0xFF) - 100.0
+
+        // Saltar al offset 16 donde realmente comienzan las subportadoras
+        bb.position(16)
+        val subcarrierCount = min(56, max(0, (length - 16) / 4))
         val amplitudes = FloatArray(subcarrierCount)
         val phases = FloatArray(subcarrierCount)
 
@@ -193,9 +270,7 @@ class CsiUdpCollector(
                 val imag = bb.short.toFloat()
                 amplitudes[i] = sqrt(real * real + imag * imag)
                 phases[i] = atan2(imag, real)
-            } else {
-                break
-            }
+            } else break
         }
 
         return CsiPacketData(
@@ -211,7 +286,20 @@ class CsiUdpCollector(
      * Procesa la señal de subportadoras para extraer respiración, movimiento y localización.
      */
     private fun processDsp(frame: CsiPacketData, now: Long) {
-        if (frame.subcarrierAmplitudes.isEmpty()) return
+        if (frame.subcarrierAmplitudes.isEmpty()) {
+            // Modo RSSI-only: emitir frame con estimación básica de distancia
+            val rssiDist = if (frame.snrDb > 0) {
+                10.0.pow((40.0 - frame.snrDb) / (10.0 * 2.0)).coerceIn(0.2, 12.0)
+            } else {
+                10.0.pow((-40.0 - frame.rssi) / (10.0 * 2.8)).coerceIn(0.2, 12.0)
+            }
+            val smoothedDist = distanceKalman.update(rssiDist, 0.3, now).coerceIn(0.2, 12.0)
+            _latestFrame.value = frame.copy(
+                estimatedDistanceM = smoothedDist,
+                confidence = 0.15,
+            )
+            return
+        }
 
         val n = frame.subcarrierAmplitudes.size
         // Señal promedio de subportadoras seleccionadas
@@ -270,7 +358,11 @@ class CsiUdpCollector(
         val multipathCount = musicResult?.multipathCount ?: 0
 
         // d) Distancia por RSSI log-distance (fallback estable)
-        val rssiDist = 10.0.pow((-40.0 - frame.rssi) / (10.0 * 2.8)).coerceIn(0.2, 12.0)
+        val rssiDist = if (frame.snrDb > 0) {
+            10.0.pow((40.0 - frame.snrDb) / (10.0 * 2.0)).coerceIn(0.2, 12.0)
+        } else {
+            10.0.pow((-40.0 - frame.rssi) / (10.0 * 2.8)).coerceIn(0.2, 12.0)
+        }
 
         // e) Fusión adaptativa multi-estimador con pesos basados en confianza
         //    MUSIC: domina cuando hay suficientes snapshots y buena separación eigenvalores
@@ -333,8 +425,8 @@ class CsiUdpCollector(
         _heartBeating.value = isHeartAlive
 
         val confidence = when (state) {
-            VictimVitalState.ACTIVE_DISTRESS -> 0.96
-            VictimVitalState.IMMOBILE_BREATHING -> 0.92
+            VictimVitalState.ACTIVE_DISTRESS -> if (frame.isRealCsi) 0.98 else 0.88
+            VictimVitalState.IMMOBILE_BREATHING -> if (frame.isRealCsi) 0.95 else 0.82
             VictimVitalState.CLEAR -> 0.05
         }
 
