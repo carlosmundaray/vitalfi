@@ -273,23 +273,25 @@ fun RfCameraView(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            "🫁 Respiración: ~${if (state.respRate > 0) "%.1f".format(state.respRate) else "15.6"} rpm",
+                            "🫁 Respiración: ${if (state.respRate > 0) "~%.1f rpm".format(state.respRate) else "— rpm"}",
                             color = Color(0xFF00FFCC),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
                         )
                         Text(
-                            "❤️ Pulso Cardíaco: ~${if (state.heartRateBpm > 0) "%.0f".format(state.heartRateBpm) else "72"} lpm",
-                            color = Color(0xFFFF6688),
+                            "❤️ Pulso Cardíaco: ${if (state.heartRateBpm > 0) "~%.0f lpm".format(state.heartRateBpm) else "— lpm"}",
+                            color = if (state.heartRateBpm > 0) Color(0xFFFF6688) else Color(0xFF888888),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
                         )
-                        Text(
-                            "👤 RCS: ${"%.2f".format(state.csiRcsAreaM2 ?: 0.82)} m²",
-                            color = Color(0xFFA0C4A0),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                        if (state.csiRcsAreaM2 != null && state.csiRcsAreaM2 > 0.0) {
+                            Text(
+                                "👤 RCS: ${"%.2f".format(state.csiRcsAreaM2)} m²",
+                                color = Color(0xFFA0C4A0),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
                     }
                 }
             }
