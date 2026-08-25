@@ -27,6 +27,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -97,7 +98,7 @@ struct ath_csi_hdr {
     int8_t   rssi_2;
     uint16_t payload_len;
     uint16_t csi_len;
-};
+} __attribute__((packed));
 #define ATH_CSI_HDR_SIZE 23
 
 /* ══════════════════════════════════════════════════════════════════════ */
