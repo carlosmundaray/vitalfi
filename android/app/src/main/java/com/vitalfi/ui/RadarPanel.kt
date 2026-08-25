@@ -64,6 +64,7 @@ import androidx.compose.ui.res.stringResource
 import com.vitalfi.R
 import com.vitalfi.wifi.SensingEngineMode
 import com.vitalfi.wifi.VictimVitalState
+import com.vitalfi.sensor.GpsLocationReader
 
 private val BgDark = Color(0xFF0A0F0A)
 private val Cyan = Color(0xFF00FFCC)
@@ -510,6 +511,44 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                                 )
                             }
                         }
+
+                        // Diagnóstico de fusión MUSIC + Phase + RSSI
+                        val conf = state.csiDistanceConfidence ?: 0.0
+                        val confColor = when {
+                            conf >= 0.7 -> Color(0xFF00FF88)
+                            conf >= 0.4 -> NavYellow
+                            else -> Color(0xFFFF6666)
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "MUSIC: ${"%.1f".format(state.csiMusicDistanceM ?: 0.0)}m",
+                                color = Color(0xFF66BBFF),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "Fase: ${"%.1f".format(state.csiPhaseDistanceM ?: 0.0)}m",
+                                color = Color(0xFFBB99FF),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "Conf: ${"%.0f".format(conf * 100)}%",
+                                color = confColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "MP:${state.csiMultipathCount}",
+                                color = Color(0xFF99CCCC),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
                     }
 
                     // Perfil Corporal y Dimensiones de la Persona Atrapada (CSI Profiling)
@@ -627,6 +666,31 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                     )
+                }
+            }
+
+            if (target != null) {
+                val isPinned = state.pinnedVictimId == target.id
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (isPinned) "📌 RUTA A: ${target.label}" else "🎯 OBJETIVO: ${target.label}",
+                        color = if (isPinned) Cyan else NavYellow,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    if (target.gpsLat != null && target.gpsLon != null) {
+                        Text(
+                            "📍 ${GpsLocationReader.formatDecimalCoordinates(target.gpsLat, target.gpsLon)}",
+                            color = Color(0xFFA0DCA0),
+                            fontSize = 10.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
                 }
             }
 

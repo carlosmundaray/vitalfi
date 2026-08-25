@@ -169,5 +169,143 @@ class GpsLocationReader(private val context: Context) {
         fun formatCoordinatesGms(lat: Double, lon: Double): String {
             return "${formatLatitudeGms(lat)} ${formatLongitudeGms(lon)}"
         }
+
+        /**
+         * Formatea coordenadas en grados decimales con indicador cardinal (N/S, E/W):
+         * Ejemplo: 10.495889° N, 66.886889° W
+         */
+        fun formatDecimalCoordinates(lat: Double, lon: Double): String {
+            val latH = if (lat >= 0) "N" else "S"
+            val lonH = if (lon >= 0) "E" else "W"
+            return "%.6f° %s, %.6f° %s".format(abs(lat), latH, abs(lon), lonH)
+        }
+
+        /**
+         * Formatea latitud decimal individual con 6 dígitos de precisión:
+         * Ejemplo: 10.495889° N
+         */
+        fun formatLatitudeDecimal(lat: Double): String {
+            val latH = if (lat >= 0) "N" else "S"
+            return "%.6f° %s".format(abs(lat), latH)
+        }
+
+        /**
+         * Formatea longitud decimal individual con 6 dígitos de precisión:
+         * Ejemplo: 66.886889° W
+         */
+        fun formatLongitudeDecimal(lon: Double): String {
+            val lonH = if (lon >= 0) "E" else "W"
+            return "%.6f° %s".format(abs(lon), lonH)
+        }
+
+        /**
+         * Genera el URI 'geo:' nativo de Android para abrir la ubicación en Google Maps u otra app de GPS:
+         * Ejemplo: geo:0,0?q=10.495889,-66.886889(Persona+1)
+         */
+        fun buildGoogleMapsGeoUri(lat: Double, lon: Double, label: String = "Victim"): String {
+            val safeLabel = UriUtils.encode(label)
+            return "geo:%.6f,%.6f?q=%.6f,%.6f(%s)".format(java.util.Locale.US, lat, lon, lat, lon, safeLabel)
+        }
+
+        /**
+         * Genera la URL universal de Google Maps para compartir o abrir en navegador:
+         */
+        fun buildGoogleMapsWebUrl(lat: Double, lon: Double): String {
+            return "https://www.google.com/maps/search/?api=1&query=%.6f,%.6f".format(java.util.Locale.US, lat, lon)
+        }
+
+        /**
+         * Calcula las coordenadas GPS exactas (Latitud, Longitud) de un objetivo/víctima
+         * a partir de la posición GPS del rescatista, la distancia en metros y el rumbo en grados.
+         */
+        fun calculateTargetCoordinates(
+            rescuerLat: Double?,
+            rescuerLon: Double?,
+            distanceM: Double,
+            bearingDeg: Double,
+        ): Pair<Double, Double>? {
+            if (rescuerLat == null || rescuerLon == null || (rescuerLat == 0.0 && rescuerLon == 0.0)) {
+                return null
+            }
+            val earthRadiusM = 6378137.0
+            val dByR = distanceM / earthRadiusM
+            val bearingRad = Math.toRadians(bearingDeg)
+            val lat1Rad = Math.toRadians(rescuerLat)
+            val lon1Rad = Math.toRadians(rescuerLon)
+
+            val lat2Rad = Math.asin(
+                Math.sin(lat1Rad) * Math.cos(dByR) +
+                Math.cos(lat1Rad) * Math.sin(dByR) * Math.cos(bearingRad)
+            )
+            val lon2Rad = lon1Rad + Math.atan2(
+                Math.sin(bearingRad) * Math.sin(dByR) * Math.cos(lat1Rad),
+                Math.cos(dByR) - Math.sin(lat1Rad) * Math.sin(lat2Rad)
+            )
+
+            val targetLat = Math.toDegrees(lat2Rad)
+            val targetLon = ((Math.toDegrees(lon2Rad) + 540.0) % 360.0) - 180.0
+            return Pair(targetLat, targetLon)
+        }
+
+        /**
+         * Calcula la distancia geodésica real en metros entre dos puntos geográficos (Fórmula de Haversine).
+         */
+        fun distanceBetweenMeters(
+            lat1: Double?,
+            lon1: Double?,
+            lat2: Double?,
+            lon2: Double?,
+        ): Double {
+            if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Double.MAX_VALUE
+            if (lat1 == 0.0 && lon1 == 0.0) return Double.MAX_VALUE
+            val earthRadiusM = 6378137.0
+            val dLat = Math.toRadians(lat2 - lat1)
+            val dLon = Math.toRadians(lon2 - lon1)
+            val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+            val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            return earthRadiusM * c
+        }
+
+        /**
+         * Calcula el rumbo azimutal real en grados [0°, 360°) desde el punto 1 hacia el punto 2.
+         */
+        fun bearingBetweenDegrees(
+            lat1: Double?,
+            lon1: Double?,
+            lat2: Double?,
+            lon2: Double?,
+        ): Double {
+            if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return 0.0
+            val lat1Rad = Math.toRadians(lat1)
+            val lat2Rad = Math.toRadians(lat2)
+            val dLon = Math.toRadians(lon2 - lon1)
+
+            val y = Math.sin(dLon) * Math.cos(lat2Rad)
+            val x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon)
+            val bearingRad = Math.atan2(y, x)
+            return (Math.toDegrees(bearingRad) + 360.0) % 360.0
+        }
+
+        /**
+         * Genera un Código de Firma Geo-Espacial Único e Inmutable para la persona detectada.
+         * Permite que el sistema reconozca siempre el mismo punto físico aunque el rescatista camine.
+         * Ejemplo: "GEO-PIN#1 [10.49589°N, 66.88689°W]"
+         */
+        fun generateGeoSignature(victimId: Int, lat: Double?, lon: Double?): String {
+            return if (lat != null && lon != null && (lat != 0.0 || lon != 0.0)) {
+                val latDir = if (lat >= 0) "N" else "S"
+                val lonDir = if (lon >= 0) "E" else "W"
+                "GEO-PIN#$victimId [%.5f°%s, %.5f°%s]".format(java.util.Locale.US, kotlin.math.abs(lat), latDir, kotlin.math.abs(lon), lonDir)
+            } else {
+                "GEO-PIN#$victimId [LOCAL-CSI]"
+            }
+        }
     }
+}
+
+private object UriUtils {
+    fun encode(s: String): String =
+        java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 }

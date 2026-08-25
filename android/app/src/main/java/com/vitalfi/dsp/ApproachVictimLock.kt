@@ -34,10 +34,13 @@ class ApproachVictimLock(
 
         val peak = maxOf(prev?.peakPersonSignal ?: 0.0, reflectionVar)
         val dist = if (prev != null) minOf(prev.distance, victim.distance) else victim.distance
+        // BUG-FIX: Una vez anclado, el bearing se congela casi completamente (alpha=0.03)
+        // para evitar que el rumbo de la persona se desplace al girar el teléfono
+        val bearingAlpha = if (prev != null) 0.03 else 1.0
         locks[victim.id] = Lock(
             id = victim.id,
             bearing = if (prev != null) {
-                smoothBearing(prev.bearing, victim.bearing, 0.18)
+                smoothBearing(prev.bearing, victim.bearing, bearingAlpha)
             } else {
                 victim.bearing
             },
@@ -123,7 +126,8 @@ class ApproachVictimLock(
 
         locks[id] = prev.copy(
             distance = d,
-            bearing = smoothBearing(prev.bearing, bearingDeg, if (cosFactor > 0.5) 0.10 else 0.04),
+            // BUG-FIX: Bearing casi congelado para evitar arrastre al girar el teléfono
+            bearing = smoothBearing(prev.bearing, bearingDeg, if (cosFactor > 0.5) 0.03 else 0.01),
             peakPersonSignal = maxOf(prev.peakPersonSignal, personSig),
             lastGoodMs = nowMs,
         )

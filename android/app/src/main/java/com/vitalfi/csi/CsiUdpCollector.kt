@@ -22,6 +22,7 @@ import kotlin.math.*
  * 2. Desempaqueta tramas de subportadoras OFDM (soporta Atheros ath9k / Nexmon).
  * 3. Aplica filtrado DSP para aislar respiración (0.15 - 0.4 Hz) y movimiento de auxilio (1 - 8 Hz).
  * 4. Clasifica el estado vital en 3 niveles: CLEAR, IMMOBILE_BREATHING, ACTIVE_DISTRESS.
+ * 5. Estimación de distancia por fusión adaptativa: MUSIC ToF + Phase Slope + RSSI.
  */
 import android.content.Context
 import android.net.wifi.WifiManager
@@ -72,6 +73,11 @@ class CsiUdpCollector(
     private val respirationTimes = ArrayDeque<Long>()
     private val cardiacHistory = ArrayDeque<Double>()
     private val maxHistorySize = 120 // ~4-6 segundos de historial
+
+    // Procesadores avanzados de distancia CSI
+    private val phaseProcessor = CsiPhaseProcessor()
+    private val musicRanging = CsiMusicRanging()
+    private val distanceKalman = CsiDistanceKalman()
 
     @Synchronized
     fun start(port: Int = defaultPort) {
@@ -158,6 +164,9 @@ class CsiUdpCollector(
         multicastLock = null
         _isConnected.value = false
         _packetRateHz.value = 0.0
+        phaseProcessor.reset()
+        musicRanging.reset()
+        distanceKalman.reset()
     }
 
     /**
@@ -242,33 +251,46 @@ class CsiUdpCollector(
 
         val cardiacBpm = calculateCardiacBpm()
 
-        // 5. Localización Avanzada mediante Subportadoras OFDM (Phase Slope + Subcarrier Dispersion)
-        // a) Cálculo de pendiente de fase (dPhi / df)
-        var phaseSlopeSum = 0.0
-        var phaseSlopeCount = 0
-        for (i in 1 until n) {
-            var dPhi = (frame.subcarrierPhases[i] - frame.subcarrierPhases[i - 1]).toDouble()
-            // Unwrapping de fase (-pi .. pi)
-            while (dPhi > Math.PI) dPhi -= 2.0 * Math.PI
-            while (dPhi < -Math.PI) dPhi += 2.0 * Math.PI
-            phaseSlopeSum += dPhi
-            phaseSlopeCount++
-        }
-        val avgPhaseSlope = if (phaseSlopeCount > 0) phaseSlopeSum / phaseSlopeCount else 0.0
+        // 5. Localización Avanzada: Fusión Adaptativa MUSIC + Phase Slope + RSSI
 
-        // b) Estimación de distancia basada en tiempo de vuelo ToF heurístico + atenuación de potencia
-        val deltaF = 312500.0
-        val c = 3.0e8
-        val rawToFDelay = abs(avgPhaseSlope) / (2.0 * Math.PI * deltaF)
-        val phaseDistance = (rawToFDelay * c * 0.5).coerceIn(0.2, 12.0)
-        
-        // Fusión con RSSI para estabilizar la distancia a través de escombros
+        // a) Limpieza de fases con CsiPhaseProcessor (CPE/SFO removal + unwrap)
+        val cleanedPhases = phaseProcessor.sanitizePhases(frame.subcarrierPhases)
+        val phaseCoherence = phaseProcessor.phaseCoherence(cleanedPhases)
+
+        // b) Distancia por pendiente de fase robusta (RANSAC-lite sobre fases limpias)
+        val robustSlope = phaseProcessor.phaseSlope(cleanedPhases)
+        val phaseDistance = phaseProcessor.distanceFromPhaseSlope(robustSlope)
+            .coerceIn(0.2, 12.0)
+
+        // c) Distancia por MUSIC ToF (super-resolución multipath)
+        musicRanging.addSnapshot(frame.subcarrierAmplitudes, cleanedPhases)
+        val musicResult = musicRanging.estimateDistance()
+        val musicDistance = musicResult?.primaryDistanceM?.coerceIn(0.2, 12.0) ?: phaseDistance
+        val musicConfidence = musicResult?.confidence ?: 0.0
+        val multipathCount = musicResult?.multipathCount ?: 0
+
+        // d) Distancia por RSSI log-distance (fallback estable)
         val rssiDist = 10.0.pow((-40.0 - frame.rssi) / (10.0 * 2.8)).coerceIn(0.2, 12.0)
-        val estimatedDist = if (phaseDistance in 0.3..8.0) {
-            0.7 * phaseDistance + 0.3 * rssiDist
-        } else {
-            rssiDist
-        }
+
+        // e) Fusión adaptativa multi-estimador con pesos basados en confianza
+        //    MUSIC: domina cuando hay suficientes snapshots y buena separación eigenvalores
+        //    Phase Slope: complementa cuando las fases son coherentes (bajo multipath)
+        //    RSSI: fallback siempre presente para estabilidad
+        val wMusic = 0.50 * musicConfidence.coerceIn(0.1, 1.0) *
+            (if (musicRanging.snapshotCount() >= 12) 1.0 else 0.4)
+        val wPhase = 0.30 * phaseCoherence.coerceIn(0.1, 1.0)
+        val wRssi = 0.20 // Siempre presente como ancla
+        val wTotal = wMusic + wPhase + wRssi
+
+        val fusedDistance = (wMusic * musicDistance + wPhase * phaseDistance + wRssi * rssiDist) / wTotal
+
+        // f) Confianza global de la fusión
+        val fusionConfidence = ((wMusic * musicConfidence + wPhase * phaseCoherence + wRssi * 0.3) / wTotal)
+            .coerceIn(0.0, 1.0)
+
+        // g) Suavizado temporal con Kalman 1D dedicado a distancia CSI
+        val estimatedDist = distanceKalman.update(fusedDistance, fusionConfidence, now)
+            .coerceIn(0.2, 12.0)
 
         // c) Estimación de AoA (Ángulo de llegada) relativo a partir de la asimetría de subportadoras
         val halfN = n / 2
@@ -330,6 +352,10 @@ class CsiUdpCollector(
             rcsAreaM2 = estimatedRcs,
             subcarrierAmplitudesList = frame.subcarrierAmplitudes.toList(),
             respirationWave = respirationHistory.takeLast(40).map { it.toFloat() },
+            musicDistanceM = musicDistance,
+            phaseDistanceM = phaseDistance,
+            distanceConfidence = fusionConfidence,
+            multipathCount = multipathCount,
         )
 
         _latestFrame.value = updatedFrame

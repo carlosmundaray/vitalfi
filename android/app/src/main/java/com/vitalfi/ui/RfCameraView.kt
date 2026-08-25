@@ -260,7 +260,8 @@ fun RfCameraView(
                             fontFamily = FontFamily.Monospace,
                         )
                         Text(
-                            "🎯 Distancia: ${"%.2f".format(state.csiDistanceM ?: 1.47)} m",
+                            "🎯 Distancia: ${"%.2f".format(state.csiDistanceM ?: 1.47)} m" +
+                                " (${"%.0f".format((state.csiDistanceConfidence ?: 0.0) * 100)}%)",
                             color = Color(0xFF00E6B8),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,

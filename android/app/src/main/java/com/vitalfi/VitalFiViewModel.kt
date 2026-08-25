@@ -71,6 +71,8 @@ data class VitalFiUiState(
     val position: PositionEstimate? = null,
     val victims: List<TrappedVictim> = emptyList(),
     val selectedVictim: TrappedVictim? = null,
+    val pinnedVictimId: Int? = null,
+    val inspectingVictim: TrappedVictim? = null,
     val heartBeating: Boolean = false,
     val heartRateBpm: Double = 0.0,
     val heatmap: List<HeatPoint> = emptyList(),
@@ -129,6 +131,14 @@ data class VitalFiUiState(
     val csiBodyCategory: String? = null,
     val csiRcsM2: Double? = null,
     val csiRcsAreaM2: Double? = null,
+    /** Distancia MUSIC ToF (super-resolución multipath). */
+    val csiMusicDistanceM: Double? = null,
+    /** Distancia por fase limpia (CPE/SFO removed). */
+    val csiPhaseDistanceM: Double? = null,
+    /** Confianza de la fusión adaptativa de distancia (0.0 - 1.0). */
+    val csiDistanceConfidence: Double? = null,
+    /** Número de caminos multipath detectados por MUSIC. */
+    val csiMultipathCount: Int = 0,
     val rfPose: com.vitalfi.ai.RfSkeletonPose? = null,
     val rfSilhouette: com.vitalfi.ai.RfSilhouetteGrid? = null,
     val showRfCamera: Boolean = false,
@@ -666,11 +676,52 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectVictim(id: Int) {
         val victim = _uiState.value.victims.find { it.id == id }
-        _uiState.value = _uiState.value.copy(selectedVictim = victim)
+        _uiState.value = _uiState.value.copy(
+            selectedVictim = victim,
+            inspectingVictim = victim,
+            pinnedVictimId = id,
+        )
+    }
+
+    /** Fija la ruta en el radar hacia una víctima específica. */
+    fun pinVictim(id: Int?) {
+        val victim = id?.let { vid -> _uiState.value.victims.find { it.id == vid } }
+        _uiState.value = _uiState.value.copy(
+            pinnedVictimId = id,
+            selectedVictim = victim,
+            toastMessage = if (victim != null) "📌 Ruta fijada hacia ${victim.label}" else "Ruta desfijada",
+        )
+    }
+
+    /** Alterna fijar/desfijar la víctima en el radar. */
+    fun togglePinVictim(id: Int) {
+        if (_uiState.value.pinnedVictimId == id) {
+            pinVictim(null)
+        } else {
+            pinVictim(id)
+        }
+    }
+
+    /** Abre el diálogo de detalles técnicos de la víctima sin forzar cambio de ruta. */
+    fun inspectVictim(id: Int) {
+        val victim = _uiState.value.victims.find { it.id == id }
+        _uiState.value = _uiState.value.copy(
+            inspectingVictim = victim,
+            selectedVictim = victim ?: _uiState.value.selectedVictim,
+        )
+    }
+
+    /** Cierra el diálogo de detalles manteniendo la ruta fijada si existía. */
+    fun dismissVictimDetails() {
+        _uiState.value = _uiState.value.copy(inspectingVictim = null)
     }
 
     fun clearVictimSelection() {
-        _uiState.value = _uiState.value.copy(selectedVictim = null)
+        _uiState.value = _uiState.value.copy(
+            selectedVictim = null,
+            inspectingVictim = null,
+            pinnedVictimId = null,
+        )
     }
 
     /** Nombre manual de campo (ej. "Niño norte"). Vacío = vuelve a Persona A/B. */
@@ -685,11 +736,18 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    private val victimGeoAnchors = mutableMapOf<Int, Pair<Double, Double>>()
+
     private fun applyIdentity(victim: TrappedVictim): TrappedVictim {
-        val code = personIdentities.shortCode(victim.id)
+        val lat = victim.gpsLat ?: victimGeoAnchors[victim.id]?.first
+        val lon = victim.gpsLon ?: victimGeoAnchors[victim.id]?.second
+        val code = GpsLocationReader.generateGeoSignature(victim.id, lat, lon)
         return victim.copy(
             label = personIdentities.displayLabel(victim.id),
             signatureCode = code,
+            gpsLat = lat,
+            gpsLon = lon,
+            gpsGms = if (lat != null && lon != null) GpsLocationReader.formatCoordinatesGms(lat, lon) else victim.gpsGms,
         )
     }
 
@@ -1017,17 +1075,32 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             val isAlive = csiState == VictimVitalState.IMMOBILE_BREATHING || csiConnected
             val isDistress = csiState == VictimVitalState.ACTIVE_DISTRESS
             val dist = csiFrame.estimatedDistanceM.coerceIn(0.2, 10.0)
+
+            // Modular strength con confianza real de la fusión CSI (MUSIC + Phase + RSSI)
+            val csiConf = csiFrame.distanceConfidence.coerceIn(0.15, 1.0)
+            val baseStrength = when {
+                isDistress -> 0.95
+                isAlive -> 0.90
+                else -> 0.65
+            }
+            // Confianza alta → strength completo; baja → tracker confía menos en este update
+            val adjustedStrength = baseStrength * (0.6 + 0.4 * csiConf)
+
             victimTracker.update(
                 bearingDeg = csiTargetBearing,
                 distanceM = dist,
-                strength = if (isDistress) 0.95 else if (isAlive) 0.90 else 0.65,
+                strength = adjustedStrength,
                 detection = detection.copy(
                     isBreathing = isAlive,
                     isActivity = isDistress,
                     heartBeating = isAlive || csiHeartBeating,
                     heartRateBpm = if (csiHeartBpm > 0) csiHeartBpm else 72.0,
                     respRate = if (isAlive) (if (csiBpm > 0) csiBpm else 15.6) else 0.0,
-                    confidence = if (isAlive || isDistress) csiFrame.confidence else 0.80,
+                    confidence = if (isAlive || isDistress) {
+                        max(csiFrame.confidence, csiConf)
+                    } else {
+                        0.80
+                    },
                 ),
                 rubbleConf = if (isAlive || isDistress) max(rubbleConf, 0.75) else 0.45,
                 nowMs = now,
@@ -1094,11 +1167,51 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 val bodyPos = if (isCsiMode && csiFrame != null) csiFrame.bodyPosture else victim.bodyPosture
                 val rcs = if (isCsiMode && csiFrame != null) csiFrame.rcsAreaM2 else victim.rcsAreaM2
 
+                val rescuerLat = _uiState.value.currentGpsLat
+                val rescuerLon = _uiState.value.currentGpsLon
+
+                // Anclaje Geo-Espacial Permanente: Si la víctima ya tiene un ancla geográfica fijada, se mantiene
+                val existingAnchor = victimGeoAnchors[victim.id]
+                val (targetLat, targetLon) = if (existingAnchor != null) {
+                    existingAnchor
+                } else {
+                    val computed = GpsLocationReader.calculateTargetCoordinates(rescuerLat, rescuerLon, liveDist, b)
+                    if (computed != null) {
+                        victimGeoAnchors[victim.id] = computed
+                        computed
+                    } else {
+                        Pair(victim.gpsLat, victim.gpsLon)
+                    }
+                }
+
+                // Si el rescatista camina físicamente, calcular la distancia geodésica real que se achica hacia el ancla fija
+                val actualDistance = if (targetLat != null && targetLon != null && rescuerLat != null && rescuerLon != null && rescuerLat != 0.0) {
+                    val geoDist = GpsLocationReader.distanceBetweenMeters(rescuerLat, rescuerLon, targetLat, targetLon)
+                    // BUG-FIX: Usar distancia geodésica REAL (no minOf), para reflejar la posición real del rescatista
+                    if (geoDist in 0.05..50.0) geoDist else liveDist
+                } else {
+                    liveDist
+                }
+
+                val actualBearing = if (targetLat != null && targetLon != null && rescuerLat != null && rescuerLon != null && rescuerLat != 0.0) {
+                    val geoBearing = GpsLocationReader.bearingBetweenDegrees(rescuerLat, rescuerLon, targetLat, targetLon)
+                    geoBearing
+                } else {
+                    b
+                }
+
+                val targetGms = if (targetLat != null && targetLon != null) {
+                    GpsLocationReader.formatCoordinatesGms(targetLat, targetLon)
+                } else {
+                    ""
+                }
+                val geoSig = GpsLocationReader.generateGeoSignature(victim.id, targetLat, targetLon)
+
                 victim.copy(
                     x = x,
                     y = y,
-                    bearing = b,
-                    distance = liveDist,
+                    bearing = actualBearing,
+                    distance = actualDistance,
                     proximity = proximityLabel,
                     depth = liveDepth,
                     isBreathing = if (isCsiMode) isAlive else victim.isBreathing,
@@ -1112,6 +1225,10 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                     bodyDimension = bodyDim,
                     bodyPosture = bodyPos,
                     rcsAreaM2 = rcs,
+                    gpsLat = targetLat,
+                    gpsLon = targetLon,
+                    gpsGms = targetGms,
+                    signatureCode = geoSig,
                 )
             }
         }
@@ -1261,8 +1378,12 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             compassLabel = compassLabel,
             position = position,
             victims = mappedVictims,
-            selectedVictim = prev.selectedVictim?.let { sel ->
-                mappedVictims.find { it.id == sel.id }
+            pinnedVictimId = prev.pinnedVictimId,
+            selectedVictim = (prev.pinnedVictimId ?: prev.selectedVictim?.id)?.let { vid ->
+                mappedVictims.find { it.id == vid }
+            },
+            inspectingVictim = prev.inspectingVictim?.let { ins ->
+                mappedVictims.find { it.id == ins.id } ?: ins
             },
             heatmap = if (isCsiMode && !csiConnected) emptyList() else victimTracker.heatmapPoints(),
             recentQuality = if (isCsiMode && !csiConnected) emptyList() else cachedRecentQuality,
@@ -1298,6 +1419,10 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             csiBodyCategory = if (csiConnected) csiFrame?.bodyCategory else null,
             csiRcsM2 = if (csiConnected) csiFrame?.rcsAreaM2 else null,
             csiRcsAreaM2 = if (csiConnected) csiFrame?.rcsAreaM2 else null,
+            csiMusicDistanceM = if (csiConnected) csiFrame?.musicDistanceM else null,
+            csiPhaseDistanceM = if (csiConnected) csiFrame?.phaseDistanceM else null,
+            csiDistanceConfidence = if (csiConnected) csiFrame?.distanceConfidence else null,
+            csiMultipathCount = if (csiConnected) csiFrame?.multipathCount ?: 0 else 0,
             rfPose = inferredPose,
             rfSilhouette = inferredSilhouette,
         )
