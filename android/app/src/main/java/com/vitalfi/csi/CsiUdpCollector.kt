@@ -287,16 +287,21 @@ class CsiUdpCollector(
      */
     private fun processDsp(frame: CsiPacketData, now: Long) {
         if (frame.subcarrierAmplitudes.isEmpty()) {
-            // Modo RSSI-only: emitir frame con estimación básica de distancia
+            // Modo RSSI-only: estimación básica de distancia, SIN datos inventados
             val rssiDist = if (frame.snrDb > 0) {
                 10.0.pow((40.0 - frame.snrDb) / (10.0 * 2.0)).coerceIn(0.2, 12.0)
             } else {
                 10.0.pow((-40.0 - frame.rssi) / (10.0 * 2.8)).coerceIn(0.2, 12.0)
             }
-            val smoothedDist = distanceKalman.update(rssiDist, 0.3, now).coerceIn(0.2, 12.0)
+            val smoothedDist = distanceKalman.update(rssiDist, 0.15, now).coerceIn(0.2, 12.0)
+            // RSSI-only: confianza baja, sin signos vitales, sin body profiling
+            _breathingBpm.value = 0.0
+            _heartRateBpm.value = 0.0
+            _heartBeating.value = false
+            _vitalState.value = VictimVitalState.CLEAR
             _latestFrame.value = frame.copy(
                 estimatedDistanceM = smoothedDist,
-                confidence = 0.15,
+                confidence = 0.10,
             )
             return
         }
@@ -384,49 +389,32 @@ class CsiUdpCollector(
         val estimatedDist = distanceKalman.update(fusedDistance, fusionConfidence, now)
             .coerceIn(0.2, 12.0)
 
-        // c) Estimación de AoA (Ángulo de llegada) relativo a partir de la asimetría de subportadoras
-        val halfN = n / 2
-        val leftEnergy = frame.subcarrierAmplitudes.take(halfN).average()
-        val rightEnergy = frame.subcarrierAmplitudes.drop(halfN).average()
-        val aoaOffsetDeg = ((rightEnergy - leftEnergy) / (avgAmp.coerceAtLeast(0.01)) * 35.0).coerceIn(-45.0, 45.0)
-
-        // d) Estimación de profundidad de escombros (atenuación de subportadoras altas vs bajas)
-        val highFreqAtten = (leftEnergy - rightEnergy).coerceAtLeast(0.0)
-        val estimatedDepth = (highFreqAtten * 0.45 + (100.0 + frame.rssi).coerceAtLeast(0.0) * 0.02).coerceIn(0.1, 4.5)
-
-        // e) Estimación de Dimensiones Corporales y Postura (CSI Body Profiling)
-        val totalAttenDb = ((-45.0 - frame.rssi) / 10.0).coerceAtLeast(0.1)
-        val dispersionCoeff = ((frame.subcarrierAmplitudes.maxOrNull() ?: 1.0f) - (frame.subcarrierAmplitudes.minOrNull() ?: 0.0f)).toDouble()
-        val estimatedRcs = (0.35 + dispersionCoeff * 0.04 + totalAttenDb * 0.08).coerceIn(0.25, 1.25)
-
-        val (category, heightEst, widthEst) = when {
-            estimatedRcs < 0.48 -> Triple("Infante / Pequeño", 1.15, 0.38)
-            estimatedRcs < 0.72 -> Triple("Joven / Mediano", 1.55, 0.46)
-            else -> Triple("Adulto", 1.74, 0.54)
-        }
-
-        val posture = when {
-            abs(aoaOffsetDeg) > 16.0 || dispersionCoeff > 10.0 -> "Tendido (Horizontal)"
-            motionEnergy > 3.0 -> "En lucha / Auxilio activo"
-            dispersionCoeff < 5.0 -> "Compacto (Fetal / En cuclillas)"
-            else -> "Sentado / Reclinado"
-        }
-
-        // 6. Clasificar estado vital
-        val state = when {
-            motionEnergy > 3.2 -> VictimVitalState.ACTIVE_DISTRESS
-            bpm in 8.0..30.0 && respirationHistory.maxOrNull() != null && (respirationHistory.maxOrNull()!! - respirationHistory.minOrNull()!! > 0.3) -> VictimVitalState.IMMOBILE_BREATHING
-            else -> VictimVitalState.CLEAR
+        // 6. Clasificar estado vital — SOLO con datos CSI reales
+        val state = if (!frame.isRealCsi) {
+            // Sin CSI real: SOLO detectar movimiento brusco por variación de amplitud
+            if (motionEnergy > 5.0) VictimVitalState.ACTIVE_DISTRESS
+            else VictimVitalState.CLEAR
+        } else {
+            when {
+                motionEnergy > 3.2 -> VictimVitalState.ACTIVE_DISTRESS
+                bpm in 8.0..30.0 && respirationHistory.maxOrNull() != null && (respirationHistory.maxOrNull()!! - respirationHistory.minOrNull()!! > 0.3) -> VictimVitalState.IMMOBILE_BREATHING
+                else -> VictimVitalState.CLEAR
+            }
         }
         _vitalState.value = state
 
-        val isHeartAlive = state == VictimVitalState.IMMOBILE_BREATHING || bpm in 8.0..30.0
-        _heartRateBpm.value = if (isHeartAlive) cardiacBpm else 0.0
-        _heartBeating.value = isHeartAlive
+        // Ritmo cardíaco: SOLO reportar si hay datos reales suficientes, NUNCA inventar
+        val isHeartAlive = frame.isRealCsi && (state == VictimVitalState.IMMOBILE_BREATHING || bpm in 8.0..30.0)
+        _heartRateBpm.value = if (isHeartAlive && cardiacBpm > 0.0) cardiacBpm else 0.0
+        _heartBeating.value = isHeartAlive && cardiacBpm > 0.0
 
+        // Confianza basada en calidad REAL de datos, NO hardcoded
+        val snrQuality = (frame.snrDb / 40.0).coerceIn(0.0, 1.0)  // SNR normalizado
+        val csiQuality = if (frame.isRealCsi) 0.6 else 0.1          // Bonus por CSI real
+        val baseConfidence = (snrQuality * 0.4 + csiQuality + fusionConfidence * 0.2).coerceIn(0.0, 1.0)
         val confidence = when (state) {
-            VictimVitalState.ACTIVE_DISTRESS -> if (frame.isRealCsi) 0.98 else 0.88
-            VictimVitalState.IMMOBILE_BREATHING -> if (frame.isRealCsi) 0.95 else 0.82
+            VictimVitalState.ACTIVE_DISTRESS -> (baseConfidence * 0.95).coerceIn(0.05, 0.85)
+            VictimVitalState.IMMOBILE_BREATHING -> (baseConfidence * 0.80).coerceIn(0.05, 0.70)
             VictimVitalState.CLEAR -> 0.05
         }
 
@@ -434,14 +422,7 @@ class CsiUdpCollector(
             filteredRespirationValue = respirationSample,
             vitalState = state,
             estimatedDistanceM = estimatedDist,
-            estimatedAoADeg = aoaOffsetDeg,
-            estimatedDepthM = estimatedDepth,
             confidence = confidence,
-            estimatedHeightM = heightEst,
-            estimatedWidthM = widthEst,
-            bodyPosture = posture,
-            bodyCategory = category,
-            rcsAreaM2 = estimatedRcs,
             subcarrierAmplitudesList = frame.subcarrierAmplitudes.toList(),
             respirationWave = respirationHistory.takeLast(40).map { it.toFloat() },
             musicDistanceM = musicDistance,
@@ -454,7 +435,8 @@ class CsiUdpCollector(
     }
 
     private fun calculateCardiacBpm(): Double {
-        if (cardiacHistory.size < 30) return 72.0
+        // NUNCA inventar un valor cardíaco — vidas dependen de esto
+        if (cardiacHistory.size < 30) return 0.0  // Datos insuficientes → desconocido
         var zeroCrossings = 0
         val list = cardiacHistory.toList()
         for (i in 1 until list.size) {
@@ -465,7 +447,7 @@ class CsiUdpCollector(
         val durationSec = (list.size * 0.033).coerceAtLeast(0.5)
         val freqHz = (zeroCrossings / 2.0) / durationSec
         val rawBpm = freqHz * 60.0
-        return if (rawBpm in 50.0..115.0) rawBpm else 72.0
+        return if (rawBpm in 50.0..115.0) rawBpm else 0.0  // Fuera de rango → desconocido
     }
 
     private fun calculateBreathingBpm(): Double {

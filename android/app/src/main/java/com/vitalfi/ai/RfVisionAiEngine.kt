@@ -15,7 +15,9 @@ data class RfKeypoint(
 )
 
 /**
- * Esqueleto corporal 3D estimado a partir del micro-Doppler y dispersión de subportadoras OFDM.
+ * Esqueleto corporal 3D — ILUSTRATIVO.
+ * NO es detección real de postura. Es una representación visual aproximada
+ * basada en el tipo de señal detectada. NO usar para decisiones de rescate.
  */
 data class RfSkeletonPose(
     val head: RfKeypoint,
@@ -38,7 +40,8 @@ data class RfSkeletonPose(
     val confidence: Float,
     val breathingPhaseOffset: Float = 0f,
     val heartPulsing: Boolean = false,
-    val heartBpm: Double = 72.0,
+    val heartBpm: Double = 0.0,  // NUNCA inventar — 0.0 = desconocido
+    val isIllustrative: Boolean = true,  // Siempre true — NO es detección real
 )
 
 /**
@@ -65,8 +68,10 @@ data class RfSilhouetteGrid(
 }
 
 /**
- * Motor de IA On-Device (RF-Vision Edge) para reconstrucción volumétrica de pose humana
- * basada en la interferometría electromagnética de 56 subportadoras OFDM.
+ * Motor de visualización RF — ILUSTRATIVO.
+ * Genera representaciones visuales aproximadas de postura humana basadas
+ * en el tipo de señal detectada. NO es IA real ni detección volumétrica.
+ * Los esqueletos y mapas de calor son aproximaciones visuales.
  */
 object RfVisionAiEngine {
 
@@ -120,11 +125,11 @@ object RfVisionAiEngine {
                     rightKnee = RfKeypoint(kneesX, headY + 0.06f),
                     leftAnkle = RfKeypoint(feetX, headY - 0.05f),
                     rightAnkle = RfKeypoint(feetX, headY + 0.05f),
-                    postureLabel = "Tendido (Horizontal)",
-                    confidence = csiFrame.confidence.toFloat().coerceAtLeast(0.92f),
+                    postureLabel = "⚠️ Ilustrativo — Tendido (Horizontal)",
+                    confidence = 0.15f,  // Baja: es ilustrativo
                     breathingPhaseOffset = chestExpansion,
                     heartPulsing = heartBeating,
-                    heartBpm = if (heartBpm > 0) heartBpm else 72.0,
+                    heartBpm = heartBpm,  // Pasar tal cual, nunca inventar
                 )
             }
             posture.contains("Fetal", ignoreCase = true) || posture.contains("Compacto", ignoreCase = true) -> {
@@ -147,11 +152,11 @@ object RfVisionAiEngine {
                     rightKnee = RfKeypoint(centerX + 0.04f, baseY + 0.06f),
                     leftAnkle = RfKeypoint(centerX + 0.10f, baseY + 0.02f),
                     rightAnkle = RfKeypoint(centerX + 0.12f, baseY + 0.04f),
-                    postureLabel = "Compacto (Posición Fetal)",
-                    confidence = csiFrame.confidence.toFloat().coerceAtLeast(0.90f),
+                    postureLabel = "⚠️ Ilustrativo — Compacto (Fetal)",
+                    confidence = 0.15f,
                     breathingPhaseOffset = chestExpansion,
                     heartPulsing = heartBeating,
-                    heartBpm = if (heartBpm > 0) heartBpm else 72.0,
+                    heartBpm = heartBpm,
                 )
             }
             posture.contains("Auxilio", ignoreCase = true) || posture.contains("lucha", ignoreCase = true) -> {
@@ -175,11 +180,11 @@ object RfVisionAiEngine {
                     rightKnee = RfKeypoint(centerX + 0.10f, baseY + 0.30f),
                     leftAnkle = RfKeypoint(centerX - 0.11f, baseY + 0.44f),
                     rightAnkle = RfKeypoint(centerX + 0.11f, baseY + 0.44f),
-                    postureLabel = "🚨 Auxilio Activo / Movimiento",
-                    confidence = 0.96f,
+                    postureLabel = "⚠️ Ilustrativo — Auxilio Activo",
+                    confidence = 0.20f,
                     breathingPhaseOffset = chestExpansion,
-                    heartPulsing = true,
-                    heartBpm = if (heartBpm > 0) heartBpm else 105.0,
+                    heartPulsing = heartBeating,
+                    heartBpm = heartBpm,
                 )
             }
             else -> {
@@ -202,11 +207,11 @@ object RfVisionAiEngine {
                     rightKnee = RfKeypoint(centerX + 0.15f, baseY + 0.22f),
                     leftAnkle = RfKeypoint(centerX - 0.14f, baseY + 0.38f),
                     rightAnkle = RfKeypoint(centerX + 0.14f, baseY + 0.38f),
-                    postureLabel = "Sentado / Reclinado",
-                    confidence = csiFrame.confidence.toFloat().coerceAtLeast(0.91f),
+                    postureLabel = "⚠️ Ilustrativo — Sentado / Reclinado",
+                    confidence = 0.15f,
                     breathingPhaseOffset = chestExpansion,
                     heartPulsing = heartBeating,
-                    heartBpm = if (heartBpm > 0) heartBpm else 72.0,
+                    heartBpm = heartBpm,
                 )
             }
         }
