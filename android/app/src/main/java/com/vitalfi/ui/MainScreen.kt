@@ -475,7 +475,7 @@ fun MainScreen(
         )
     }
 
-    val activeVictimForDialog = state.inspectingVictim ?: (if (state.selectedVictim != null && state.pinnedVictimId == null) state.selectedVictim else null)
+    val activeVictimForDialog = state.inspectingVictim
     activeVictimForDialog?.let { victim ->
         VictimDetailDialog(
             victim = victim,
@@ -485,6 +485,10 @@ fun MainScreen(
             onRename = { name -> onRenameVictim(victim.id, name) },
             phoneBearingDeg = state.bearingDeg,
             colorblind = state.colorblindMode,
+            liveCsiDimension = state.csiBodyDimension,
+            liveCsiPosture = state.csiBodyPosture,
+            liveCsiRcs = state.csiRcsAreaM2,
+            isCsiConnected = state.csiConnected,
         )
     }
 
@@ -1854,13 +1858,17 @@ private fun VictimDetailDialog(
     onRename: (String) -> Unit,
     phoneBearingDeg: Double,
     colorblind: Boolean = false,
+    liveCsiDimension: String? = null,
+    liveCsiPosture: String? = null,
+    liveCsiRcs: Double? = null,
+    isCsiConnected: Boolean = false,
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val kind = victimStatusKind(victim)
     val color = victimColor(victim, colorblind)
     val rel = describePersonPosition(context, victim.x, victim.y, victim.depth, phoneBearingDeg)
-    val isCsiData = victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank() || victim.status.contains("CSI", ignoreCase = true)
+    val isCsiData = isCsiConnected || victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank() || victim.status.contains("CSI", ignoreCase = true)
     var nameDraft by remember(victim.id, victim.label) { mutableStateOf(victim.label) }
 
     AlertDialog(
@@ -2120,6 +2128,10 @@ private fun VictimDetailDialog(
 
                 // 5. Tarjeta de Perfil y Dimensiones Corporales (CSI)
                 if (isCsiData) {
+                    val effectiveDimension = victim.bodyDimension.ifBlank { liveCsiDimension ?: "En cálculo de subportadoras..." }
+                    val effectivePosture = victim.bodyPosture.ifBlank { liveCsiPosture ?: "En análisis..." }
+                    val effectiveRcs = if (victim.rcsAreaM2 > 0.0) victim.rcsAreaM2 else (liveCsiRcs ?: 0.0)
+
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1C18)),
                         shape = RoundedCornerShape(8.dp),
@@ -2133,10 +2145,10 @@ private fun VictimDetailDialog(
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                             )
-                            VictimDetailRow(stringResource(R.string.label_body_span), "📏 ${victim.bodyDimension.ifBlank { "1.74 m × 0.54 m" }}")
-                            VictimDetailRow(stringResource(R.string.label_posture_under_rubble), "🧘 ${victim.bodyPosture.ifBlank { "—" }}")
-                            if (victim.rcsAreaM2 > 0.0) {
-                                VictimDetailRow("RCS", "👤 ${"%.2f".format(victim.rcsAreaM2)} m²")
+                            VictimDetailRow(stringResource(R.string.label_body_span), "📏 $effectiveDimension")
+                            VictimDetailRow(stringResource(R.string.label_posture_under_rubble), "🧘 $effectivePosture")
+                            if (effectiveRcs > 0.0) {
+                                VictimDetailRow("RCS", "👤 ${"%.2f".format(effectiveRcs)} m²")
                             }
                         }
                     }
