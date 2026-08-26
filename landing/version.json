@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.3.64",
-  "versionCode": 67,
+  "latestVersion": "1.3.65",
+  "versionCode": 68,
   "releaseDate": "2026-08-26",
-  "changelog": "Cálculo dinámico de envergadura, postura corporal, RCS y profundidad bajo escombros en CSI"
+  "changelog": "Corrección de modal de detalles de víctima (cierre/guardado) y enlace en vivo de telemetría CSI (envergadura, postura y RCS)"
 }
