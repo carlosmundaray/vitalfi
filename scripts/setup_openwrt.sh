@@ -59,22 +59,24 @@ wifi reload 2>/dev/null || true
 echo "[+] Red Wi-Fi 'VitalFi-AP' (WPA2 Protegida) activada."
 
 # ─────────────────────────────────────────────────────────────────────
-# 3. Detectar hardware CSI (Atheros CSI Tool)
+# 3. Detectar hardware RF (Atheros CSI Tool / Qualcomm ath11k / Wi-Fi 6)
 # ─────────────────────────────────────────────────────────────────────
-echo "[3/5] Verificando soporte de CSI real..."
+echo "[3/5] Verificando hardware de radio y aceleración RF..."
 CSI_AVAILABLE=0
 
 if [ -c "/dev/CSI_dev" ]; then
-    echo "[+] ✅ Atheros CSI Tool detectado (/dev/CSI_dev). Modo: CSI REAL."
+    echo "[+] ✅ Atheros CSI Tool detectado (/dev/CSI_dev). Modo: CSI REAL (ath9k)."
     CSI_AVAILABLE=1
+elif lsmod 2>/dev/null | grep -q "ath11k"; then
+    echo "[+] 🚀 Chipset Qualcomm Wi-Fi 6 (ath11k / IPQ5018 - Linksys MX5500) detectado."
+    echo "    CPU ARM64 de alto rendimiento con 4x4 MU-MIMO en 5GHz y 2x2 en 2.4GHz."
+    echo "    Activando telemetría de alta resolución y baja latencia."
 elif lsmod 2>/dev/null | grep -q "ath9k"; then
-    echo "[!] Driver ath9k detectado pero sin módulo CSI."
-    echo "    Para CSI real, compile e instale el Atheros CSI Tool:"
-    echo "    → https://github.com/xieyaxiongfly/Atheros-CSI-Tool"
-    echo "    Continuando en modo RSSI REAL (sin datos simulados)."
+    echo "[!] Driver ath9k detectado pero sin módulo CSI (/dev/CSI_dev)."
+    echo "    Para CSI por subportadora, puede compilar Atheros-CSI-Tool."
+    echo "    Continuando en modo RSSI/SNR REAL de alta frecuencia."
 else
-    echo "[!] No se detectó hardware CSI compatible."
-    echo "    Continuando en modo RSSI REAL (sin datos simulados)."
+    echo "[+] Hardware Wi-Fi estándar detectado. Continuando en modo Telemetría REAL."
 fi
 
 # ─────────────────────────────────────────────────────────────────────

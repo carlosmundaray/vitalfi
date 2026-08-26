@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.3.62",
-  "versionCode": 65,
-  "releaseDate": "2026-08-25",
-  "changelog": "Protocolo UDP v2, 100% datos reales, cero simulaci\u00f3n"
+  "latestVersion": "1.3.64",
+  "versionCode": 67,
+  "releaseDate": "2026-08-26",
+  "changelog": "Cálculo dinámico de envergadura, postura corporal, RCS y profundidad bajo escombros en CSI"
 }
