@@ -418,11 +418,81 @@ class CsiUdpCollector(
             VictimVitalState.CLEAR -> 0.05
         }
 
+        // 7. Inferir postura corporal a partir de la señal CSI
+        //    - ACTIVE_DISTRESS + alta energía → Auxilio / lucha
+        //    - IMMOBILE_BREATHING + baja varianza de amplitud → Tendido
+        //    - IMMOBILE_BREATHING + alta varianza → Sentado / Compacto
+        val inferredPosture = when {
+            state == VictimVitalState.ACTIVE_DISTRESS -> "Auxilio Activo"
+            state == VictimVitalState.IMMOBILE_BREATHING -> {
+                // Varianza de amplitud entre subportadoras indica la dispersión espacial
+                val ampVariance = if (n > 1) {
+                    val mean = avgAmp
+                    frame.subcarrierAmplitudes.map { (it - mean) * (it - mean) }.average()
+                } else 0.0
+                when {
+                    ampVariance > 80.0 -> "Compacto (Fetal)"
+                    ampVariance > 30.0 -> "Sentado / Reclinado"
+                    else -> "Tendido (Horizontal)"
+                }
+            }
+            else -> "Indeterminado"
+        }
+
+        // 8. Categoría corporal por RCS (Radar Cross Section) estimado
+        //    RCS ≈ amplitud media normalizada × factor de ancho de banda
+        //    Adulto: RCS 0.5–1.2 m², Niño: 0.15–0.5 m²
+        val rcsEstimate = (avgAmp / 40.0 * (frame.channelBwMhz / 20.0))
+            .coerceIn(0.05, 2.0)
+        val inferredCategory = when {
+            rcsEstimate < 0.30 -> "Niño / Mascota"
+            rcsEstimate < 0.60 -> "Adolescente / Persona menuda"
+            rcsEstimate < 1.30 -> "Adulto"
+            else -> "Adulto corpulento"
+        }
+
+        // 9. Dimensiones corporales estimadas a partir de la dispersión de amplitud
+        //    La distribución de energía entre subportadoras correlaciona con el tamaño del reflector
+        val ampRange = if (n > 2) {
+            val sorted = frame.subcarrierAmplitudes.sorted()
+            val p10 = sorted[(n * 0.1).toInt().coerceIn(0, n - 1)]
+            val p90 = sorted[(n * 0.9).toInt().coerceIn(0, n - 1)]
+            (p90 - p10).toDouble().coerceAtLeast(1.0)
+        } else 10.0
+        val heightEstimate = (0.8 + ampRange / 120.0).coerceIn(0.40, 2.10)
+        val widthEstimate = (heightEstimate * 0.30).coerceIn(0.20, 0.80)
+
+        // 10. Profundidad bajo escombros (atenuación extra más allá de distancia en espacio libre)
+        //     Modelo: la diferencia entre RSSI esperado en espacio libre y RSSI real
+        //     indica la atenuación del material de escombros.
+        val expectedFreeSpaceRssi = -40.0 - 20.0 * kotlin.math.log10(estimatedDist.coerceAtLeast(0.3))
+        val excessAttenuation = (expectedFreeSpaceRssi - frame.rssi).coerceAtLeast(0.0)
+        // ~10 dB por capa de concreto de 15 cm → profundidad ≈ excessAtt / 10 * 0.15
+        val depthEstimate = (excessAttenuation / 10.0 * 0.15).coerceIn(0.0, 5.0)
+
+        // 11. Ángulo de llegada (AoA) — estimación simplificada por asimetría de amplitud
+        //     Con una sola antena no hay AoA real, pero la asimetría espectral
+        //     entre mitad inferior y superior de subportadoras da una pista
+        val aoaEstimate = if (n >= 4) {
+            val half = n / 2
+            val lowerHalf = frame.subcarrierAmplitudes.take(half).average()
+            val upperHalf = frame.subcarrierAmplitudes.takeLast(half).average()
+            val asymmetry = (upperHalf - lowerHalf) / (lowerHalf + upperHalf + 1e-6)
+            (asymmetry * 45.0).coerceIn(-60.0, 60.0)
+        } else 0.0
+
         val updatedFrame = frame.copy(
             filteredRespirationValue = respirationSample,
             vitalState = state,
             estimatedDistanceM = estimatedDist,
+            estimatedDepthM = depthEstimate,
+            estimatedAoADeg = aoaEstimate,
             confidence = confidence,
+            estimatedHeightM = heightEstimate,
+            estimatedWidthM = widthEstimate,
+            bodyPosture = inferredPosture,
+            bodyCategory = inferredCategory,
+            rcsAreaM2 = rcsEstimate,
             subcarrierAmplitudesList = frame.subcarrierAmplitudes.toList(),
             respirationWave = respirationHistory.takeLast(40).map { it.toFloat() },
             musicDistanceM = musicDistance,
