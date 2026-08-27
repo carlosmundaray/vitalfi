@@ -93,8 +93,8 @@ object RfVisionAiEngine {
 
         // Micro-animación respiratoria sobre el pecho
         val timeSec = (System.currentTimeMillis() % 60000L) / 1000.0f
-        val respRateHz = (if (respBpm > 0) respBpm else 16.0).toFloat() / 60.0f
-        val chestExpansion = sin(timeSec * 2.0f * Math.PI.toFloat() * respRateHz) * 0.025f
+        val respRateHz = if (respBpm > 0) (respBpm / 60.0).toFloat() else 0.0f
+        val chestExpansion = if (respRateHz > 0) sin(timeSec * 2.0f * Math.PI.toFloat() * respRateHz) * 0.025f else 0.0f
 
         val pose = when {
             posture.contains("Horizontal", ignoreCase = true) || posture.contains("Tendido", ignoreCase = true) -> {

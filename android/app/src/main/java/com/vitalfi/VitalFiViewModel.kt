@@ -1091,11 +1091,11 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 distanceM = dist,
                 strength = adjustedStrength,
                 detection = detection.copy(
-                    isBreathing = isAlive,
+                    isBreathing = isAlive && csiBpm > 0,
                     isActivity = isDistress,
-                    heartBeating = isAlive || csiHeartBeating,
-                    heartRateBpm = if (csiHeartBpm > 0) csiHeartBpm else 72.0,
-                    respRate = if (isAlive) (if (csiBpm > 0) csiBpm else 15.6) else 0.0,
+                    heartBeating = isAlive && csiHeartBpm > 0,
+                    heartRateBpm = if (csiHeartBpm > 0) csiHeartBpm else 0.0,
+                    respRate = if (csiBpm > 0) csiBpm else 0.0,
                     confidence = if (isAlive || isDistress) {
                         max(csiFrame.confidence, csiConf)
                     } else {
@@ -1149,9 +1149,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val isAlive = isCsiMode && (csiState == VictimVitalState.IMMOBILE_BREATHING || (csiConnected && csiFrame != null))
                 val isDistress = isCsiMode && csiState == VictimVitalState.ACTIVE_DISTRESS
-                val liveRespRate = if (isCsiMode) (if (csiBpm > 0) csiBpm else 15.6) else victim.respRate
-                val liveHeartRate = if (isCsiMode) (if (csiHeartBpm > 0) csiHeartBpm else 72.0) else victim.heartRateBpm
-                val liveHeartBeating = if (isCsiMode) (isAlive || csiHeartBeating) else victim.heartBeating
+                val liveRespRate = if (isCsiMode) (if (csiBpm > 0) csiBpm else 0.0) else victim.respRate
+                val liveHeartRate = if (isCsiMode) (if (csiHeartBpm > 0) csiHeartBpm else 0.0) else victim.heartRateBpm
+                val liveHeartBeating = if (isCsiMode) (csiHeartBpm > 0 || csiHeartBeating) else victim.heartBeating
                 val liveDepth = if (isCsiMode && csiFrame != null) csiFrame.estimatedDepthM.coerceIn(0.2, 5.0) else victimTracker.depthUnderRubble(d, victim.rubbleConfidence.coerceAtLeast(0.2))
                 val liveDist = if (isCsiMode && csiFrame != null) csiFrame.estimatedDistanceM.coerceIn(0.2, 10.0) else d
                 val liveStatus = if (isCsiMode) {
@@ -1346,9 +1346,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             com.vitalfi.ai.RfVisionAiEngine.infer(
                 csiFrame = csiFrame,
                 vitalState = csiState,
-                respBpm = if (csiBpm > 0) csiBpm else 15.6,
-                heartBpm = if (csiHeartBpm > 0) csiHeartBpm else 72.0,
-                heartBeating = csiConnected,
+                respBpm = if (csiBpm > 0) csiBpm else 0.0,
+                heartBpm = if (csiHeartBpm > 0) csiHeartBpm else 0.0,
+                heartBeating = csiConnected && csiHeartBpm > 0,
             )
         } else {
             Pair(null, null)
@@ -1369,8 +1369,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             respRate = finalRespRate,
             confidence = finalConfidence,
             rubbleConfidence = finalRubbleConf,
-            heartBeating = if (isCsiMode) (csiConnected && (finalBreathing || csiHeartBeating)) else ((primary?.heartBeating ?: detection.heartBeating)),
-            heartRateBpm = if (isCsiMode) (if (csiConnected) (if (csiHeartBpm > 0) csiHeartBpm else 72.0) else 0.0) else (primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm),
+            heartBeating = if (isCsiMode) (csiConnected && (csiHeartBpm > 0 || csiHeartBeating)) else ((primary?.heartBeating ?: detection.heartBeating)),
+            heartRateBpm = if (isCsiMode) (if (csiConnected && csiHeartBpm > 0) csiHeartBpm else 0.0) else (primary?.heartRateBpm?.takeIf { it > 0 } ?: detection.heartRateBpm),
             calibrating = if (isCsiMode) false else rubbleTracker.calibrating,
             calibRemainingSec = if (isCsiMode) 0 else rubbleTracker.calibRemainingSec(now),
             proximity = if (isCsiMode) (if (csiConnected && primary != null) primary.proximity else "—") else (primary?.proximity ?: proximity),

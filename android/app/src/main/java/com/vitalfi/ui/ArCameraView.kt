@@ -223,6 +223,7 @@ fun ArCameraView(
         val magSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
         val rotMat = FloatArray(9)
+        val remappedRotMat = FloatArray(9)
         val oriAng = FloatArray(3)
         val grav = FloatArray(3)
         val geom = FloatArray(3)
@@ -236,14 +237,17 @@ fun ArCameraView(
                 when (event.sensor.type) {
                     Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GAME_ROTATION_VECTOR -> {
                         SensorManager.getRotationMatrixFromVector(rotMat, event.values)
-                        SensorManager.getOrientation(rotMat, oriAng)
+                        // Remapear coordenadas para modo cámara AR vertical (apuntando con la cámara trasera)
+                        SensorManager.remapCoordinateSystem(rotMat, SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedRotMat)
+                        SensorManager.getOrientation(remappedRotMat, oriAng)
                         azDeg = Math.toDegrees(oriAng[0].toDouble())
                     }
                     Sensor.TYPE_ACCELEROMETER -> {
                         System.arraycopy(event.values, 0, grav, 0, 3)
                         hasG = true
                         if (hasM && SensorManager.getRotationMatrix(rotMat, null, grav, geom)) {
-                            SensorManager.getOrientation(rotMat, oriAng)
+                            SensorManager.remapCoordinateSystem(rotMat, SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedRotMat)
+                            SensorManager.getOrientation(remappedRotMat, oriAng)
                             azDeg = Math.toDegrees(oriAng[0].toDouble())
                         }
                     }
@@ -251,7 +255,8 @@ fun ArCameraView(
                         System.arraycopy(event.values, 0, geom, 0, 3)
                         hasM = true
                         if (hasG && SensorManager.getRotationMatrix(rotMat, null, grav, geom)) {
-                            SensorManager.getOrientation(rotMat, oriAng)
+                            SensorManager.remapCoordinateSystem(rotMat, SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedRotMat)
+                            SensorManager.getOrientation(remappedRotMat, oriAng)
                             azDeg = Math.toDegrees(oriAng[0].toDouble())
                         }
                     }
@@ -348,8 +353,8 @@ fun ArCameraView(
                 rawBearing = rawEffectiveBearing,
                 rawDistance = rawEffectiveDist.coerceAtLeast(0.3),
                 rawDepth = victim.depth,
-                respRate = if (victim.respRate > 0) victim.respRate else 16.0,
-                heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
+                respRate = if (victim.respRate > 0) victim.respRate else 0.0,
+                heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 0.0,
                 confidence = victim.confidence,
                 isBreathing = victim.isBreathing,
                 rubbleConf = victim.rubbleConfidence,
@@ -373,8 +378,8 @@ fun ArCameraView(
                 signalStrengthDbm = -50,
                 isVictim = true,
                 isRescued = isAlreadyRescued,
-                respRate = if (victim.respRate > 0) victim.respRate else 16.0,
-                heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 74.0,
+                respRate = if (victim.respRate > 0) victim.respRate else 0.0,
+                heartRate = if (victim.heartRateBpm > 0) victim.heartRateBpm else 0.0,
                 confidence = (ai.humanProbability * 100.0).coerceAtLeast(victim.confidence),
                 signatureCode = geoSigCode,
                 color = if (isAlreadyRescued) Color(0xFFFFD700) else if (isPinned) Color(0xFF00FFCC) else if (ai.isAtGroundZero) Color(0xFFFF0055) else if (ai.isMoving) Color(0xFF00E5FF) else Color(0xFF00FFCC),
@@ -394,8 +399,8 @@ fun ArCameraView(
 
         // Si aún no hay víctimas agrupadas pero hay detección activa real en el receptor CSI (respiración, pulso o micro-Doppler)
         if (currentFramePoints.isEmpty() && (state.isBreathing || state.isActivity || (state.csiConnected && state.respRate > 0) || state.confidence > 0.35)) {
-            val liveResp = if (state.respRate > 0) state.respRate else (if (state.isBreathing) 15.6 else 0.0)
-            val liveHeart = if (state.heartRateBpm > 0) state.heartRateBpm else 72.0
+            val liveResp = if (state.respRate > 0) state.respRate else 0.0
+            val liveHeart = if (state.heartRateBpm > 0) state.heartRateBpm else 0.0
             val liveConf = state.confidence * 100.0
             val isLiveRescued = rescuedVictimIds.contains(1)
             val isLivePinned = (state.pinnedVictimId == 1 || state.pinnedVictimId != null)
