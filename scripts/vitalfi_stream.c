@@ -146,14 +146,22 @@ static int cmd_str(const char *cmd, char *out, int len) {
 /*                   REAL DATA EXTRACTION (iw)                         */
 /* ══════════════════════════════════════════════════════════════════════ */
 
-/** Auto-detect the first active wireless interface. */
+/** Auto-detect the active wireless interface with connected stations. */
 static void detect_interface(void) {
+    if (cmd_int("iw dev phy0-ap0 station dump 2>/dev/null | grep -c 'Station'", 0) > 0) {
+        strncpy(g_iface, "phy0-ap0", sizeof(g_iface) - 1);
+        return;
+    }
+    if (cmd_int("iw dev phy1-ap0 station dump 2>/dev/null | grep -c 'Station'", 0) > 0) {
+        strncpy(g_iface, "phy1-ap0", sizeof(g_iface) - 1);
+        return;
+    }
     if (cmd_str("iw dev 2>/dev/null | awk '/Interface/{print $2}' | head -n1",
                 g_iface, sizeof(g_iface)) == 0 && g_iface[0])
         return;
 
     /* Fallback: probe common names */
-    const char *names[] = {"wlan0", "wlan1", "ath0", "ra0", NULL};
+    const char *names[] = {"phy0-ap0", "phy1-ap0", "wlan0", "wlan1", "ath0", "ra0", NULL};
     for (int i = 0; names[i]; i++) {
         char p[128];
         snprintf(p, sizeof(p), "/sys/class/net/%s", names[i]);
@@ -162,7 +170,7 @@ static void detect_interface(void) {
             return;
         }
     }
-    strncpy(g_iface, "wlan0", sizeof(g_iface) - 1);
+    strncpy(g_iface, "phy0-ap0", sizeof(g_iface) - 1);
 }
 
 /** Read real RSSI from the first connected station. */
@@ -172,6 +180,22 @@ static int read_rssi(void) {
         "iw dev %s station dump 2>/dev/null | grep 'signal:' "
         "| head -n1 | awk '{print $2}'", g_iface);
     int v = cmd_int(cmd, -127);
+    if (v < -100 || v > 0) {
+        /* Check alternate AP interfaces if no station on current */
+        const char *alts[] = {"phy0-ap0", "phy1-ap0", "wlan0", "wlan1", NULL};
+        for (int i = 0; alts[i]; i++) {
+            if (strcmp(g_iface, alts[i]) != 0) {
+                snprintf(cmd, sizeof(cmd),
+                    "iw dev %s station dump 2>/dev/null | grep 'signal:' "
+                    "| head -n1 | awk '{print $2}'", alts[i]);
+                v = cmd_int(cmd, -127);
+                if (v >= -100 && v <= 0) {
+                    strncpy(g_iface, alts[i], sizeof(g_iface) - 1);
+                    break;
+                }
+            }
+        }
+    }
     return (v >= -100 && v <= 0) ? v : g_rssi;
 }
 
@@ -180,12 +204,12 @@ static int read_noise(void) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd),
         "iw dev %s survey dump 2>/dev/null | grep -A5 'in use' "
-        "| grep noise | awk '{print $NF}'", g_iface);
+        "| awk '/noise/{print $2}'", g_iface);
     int v = cmd_int(cmd, -95);
     return (v >= -120 && v <= -30) ? v : -95;
 }
 
-/** Count connected stations. */
+/** Count connected stations across interfaces. */
 static int read_stations(void) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd),
@@ -217,8 +241,9 @@ static int read_busy(void) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd),
         "iw dev %s survey dump 2>/dev/null | grep -A5 'in use' | "
-        "awk '/active/{a=$NF}/busy/{b=$NF}END{if(a>0)printf \"%%d\",b*100/a;"
-        "else print \"0\"}'", g_iface);
+        "awk '/active/{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/) a=$i} "
+        "/busy/{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/) b=$i} "
+        "END{a=a+0; b=b+0; if(a>0) printf \"%%d\", (b*100)/a; else print \"0\"}'", g_iface);
     int v = cmd_int(cmd, 0);
     return (v >= 0 && v <= 100) ? v : 0;
 }
@@ -438,25 +463,35 @@ static void send_all(int sock, const uint8_t *pkt, int len, int port,
     sendto(sock, pkt, len, 0,
            (struct sockaddr *)subnet, sizeof(*subnet));
 
-    /* DHCP clients — every ~0.5 s */
-    if (seq % 15 == 0) {
+    /* DHCP clients — send unicast to all connected devices at full rate */
+    static char cached_ips[16][64];
+    static int cached_ip_count = 0;
+    static uint32_t last_lease_check = 0;
+
+    if (seq - last_lease_check >= 30 || cached_ip_count == 0) {
+        last_lease_check = seq;
+        cached_ip_count = 0;
         FILE *lf = fopen("/tmp/dhcp.leases", "r");
         if (lf) {
             char line[256];
-            while (fgets(line, sizeof(line), lf)) {
+            while (fgets(line, sizeof(line), lf) && cached_ip_count < 16) {
                 char ip[64];
-                if (sscanf(line, "%*s %*s %63s", ip) == 1) {
-                    struct sockaddr_in c;
-                    memset(&c, 0, sizeof(c));
-                    c.sin_family = AF_INET;
-                    c.sin_port   = htons(port);
-                    c.sin_addr.s_addr = inet_addr(ip);
-                    sendto(sock, pkt, len, 0,
-                           (struct sockaddr *)&c, sizeof(c));
+                if (sscanf(line, "%*s %*s %63s", ip) == 1 && ip[0]) {
+                    strncpy(cached_ips[cached_ip_count++], ip, 63);
                 }
             }
             fclose(lf);
         }
+    }
+
+    for (int i = 0; i < cached_ip_count; i++) {
+        struct sockaddr_in c;
+        memset(&c, 0, sizeof(c));
+        c.sin_family = AF_INET;
+        c.sin_port   = htons(port);
+        c.sin_addr.s_addr = inet_addr(cached_ips[i]);
+        sendto(sock, pkt, len, 0,
+               (struct sockaddr *)&c, sizeof(c));
     }
 
     /* Specific target override */

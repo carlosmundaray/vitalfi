@@ -2113,12 +2113,12 @@ private fun VictimDetailDialog(
                         )
                         VictimDetailRow(
                             stringResource(R.string.label_respiration),
-                            if (victim.isBreathing) "🫁 ${"%.1f".format(if (victim.respRate > 0) victim.respRate else 15.6)} rpm"
+                            if (victim.isBreathing && victim.respRate > 0) "🫁 ${"%.1f".format(victim.respRate)} rpm"
                             else stringResource(R.string.label_not_detected_f),
                         )
                         VictimDetailRow(
                             stringResource(R.string.label_cardiac_pulse),
-                            if (victim.heartBeating) "❤️ ${"%.0f".format(if (victim.heartRateBpm > 0) victim.heartRateBpm else 72.0)} lpm"
+                            if (victim.heartBeating && victim.heartRateBpm > 0) "❤️ ${"%.0f".format(victim.heartRateBpm)} lpm"
                             else stringResource(R.string.label_not_detected_m),
                         )
                         VictimDetailRow(stringResource(R.string.label_vital_confidence), "${"%.0f".format(victim.confidence * 100)}%")

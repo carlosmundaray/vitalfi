@@ -148,7 +148,7 @@ while true do
 
     -- Actualizar noise floor real (cada ~3 segundos)
     if seq % 90 == 1 then
-        local noise = cmd_int("iw dev " .. iface .. " survey dump 2>/dev/null | grep -A5 'in use' | grep noise | awk '{print $NF}'", -95)
+        local noise = cmd_int("iw dev " .. iface .. " survey dump 2>/dev/null | grep -A5 'in use' | awk '/noise/{for(i=1;i<=NF;i++) if($i ~ /^-[0-9]+$/) {print $i; exit}}'", -95)
         if noise >= -120 and noise <= -30 then
             cached_noise = noise + 100
         end
@@ -159,7 +159,7 @@ while true do
         cached_stations = cmd_int("iw dev " .. iface .. " station dump 2>/dev/null | grep -c 'Station'", 0)
     end
     if seq % 150 == 5 then
-        cached_busy = cmd_int("iw dev " .. iface .. " survey dump 2>/dev/null | grep -A5 'in use' | awk '/active/{a=$NF}/busy/{b=$NF}END{if(a>0)printf \"%d\",b*100/a; else print \"0\"}'", 0)
+        cached_busy = cmd_int("iw dev " .. iface .. " survey dump 2>/dev/null | grep -A5 'in use' | awk '/active/{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/) a=$i} /busy/{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/) b=$i} END{a=a+0; b=b+0; if(a>0) printf \"%d\", (b*100)/a; else print \"0\"}'", 0)
     end
 
     -- Clamping
@@ -232,23 +232,29 @@ echo "[+] VitalFi Real Shell Streamer (RSSI-only) — $IFACE — Puerto $PORT"
 while true; do
     seq=$(( (seq + 1) % 2147483647 ))
 
-    # Leer RSSI real cada ~1s (30 iteraciones a 30 Hz)
-    if [ $(( seq % 30 )) -eq 1 ]; then
-        raw_sig=$(iw dev "$IFACE" station dump 2>/dev/null | grep 'signal:' | head -n1 | awk '{print $2}')
-        [ -z "$raw_sig" ] && raw_sig="-65"
-        rssi_enc=$(( raw_sig + 100 ))
-        [ $rssi_enc -lt 0 ] && rssi_enc=0
-        [ $rssi_enc -gt 255 ] && rssi_enc=255
-    fi
+    # Leer RSSI real
+    raw_sig=$(iw dev "$IFACE" station dump 2>/dev/null | grep 'signal:' | head -n1 | awk '{print $2}')
+    [ -z "$raw_sig" ] && raw_sig="-65"
+    rssi_enc=$(( raw_sig + 100 ))
+    [ $rssi_enc -lt 0 ] && rssi_enc=0
+    [ $rssi_enc -gt 255 ] && rssi_enc=255
 
-    # Leer noise floor real cada ~3s
-    if [ $(( seq % 90 )) -eq 1 ]; then
-        noise_raw=$(iw dev "$IFACE" survey dump 2>/dev/null | grep -A5 'in use' | grep noise | awk '{print $NF}')
-        [ -z "$noise_raw" ] && noise_raw="-95"
-        noise_enc=$(( noise_raw + 100 ))
-        [ $noise_enc -lt 0 ] && noise_enc=0
-        [ $noise_enc -gt 255 ] && noise_enc=255
+    # Leer métricas de survey (noise, channel utilization)
+    SURV=$(iw dev "$IFACE" survey dump 2>/dev/null | grep -A5 'in use')
+    noise_raw=$(echo "$SURV" | awk '/noise/{print $2}')
+    [ -z "$noise_raw" ] && noise_raw="-95"
+    noise_enc=$(( noise_raw + 100 ))
+    [ $noise_enc -lt 0 ] && noise_enc=0
+    [ $noise_enc -gt 255 ] && noise_enc=255
+
+    ACTIVE=$(echo "$SURV" | awk '/channel active time/{print $4}')
+    BUSY=$(echo "$SURV" | awk '/channel busy time/{print $4}')
+    if [ -n "$ACTIVE" ] && [ "$ACTIVE" -gt 0 ] 2>/dev/null && [ -n "$BUSY" ]; then
+        util_enc=$(( BUSY * 100 / ACTIVE ))
+    else
+        util_enc=0
     fi
+    [ $util_enc -gt 100 ] && util_enc=100
 
     snr_val=$(( rssi_enc - noise_enc ))
     [ $snr_val -lt 0 ] && snr_val=0
@@ -265,7 +271,7 @@ while true; do
         printf "\\$(printf '%03o' ${rssi_enc:-35})"
         printf "\\032"  # flags = 0x1A
         printf "\\$(printf '%03o' ${noise_enc:-5})"
-        printf "\\000"  # busy %
+        printf "\\$(printf '%03o' ${util_enc:-0})"  # busy %
         printf "\\000"  # MCS
         printf "\\000"  # stations
         printf "\\$(printf '%03o' $snr_val)"
@@ -281,7 +287,15 @@ while true; do
     printf "%s" "$HEADER" | nc -u -w0 255.255.255.255 $PORT 2>/dev/null || true
     printf "%s" "$HEADER" | nc -u -w0 $BCAST $PORT 2>/dev/null || true
 
-    usleep 33000 2>/dev/null || sleep 0.04
+    if [ -n "$TARGET_IP" ]; then
+        printf "%s" "$HEADER" | nc -u -w0 "$TARGET_IP" $PORT 2>/dev/null || true
+    elif [ -f /tmp/dhcp.leases ]; then
+        for dip in $(awk '{print $3}' /tmp/dhcp.leases 2>/dev/null); do
+            printf "%s" "$HEADER" | nc -u -w0 "$dip" $PORT 2>/dev/null || true
+        done
+    fi
+
+    sleep 1
 done
 EOF
     chmod +x /usr/bin/vitalfi-stream
