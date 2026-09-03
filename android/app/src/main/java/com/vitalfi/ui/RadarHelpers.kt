@@ -2,6 +2,9 @@ package com.vitalfi.ui
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -133,39 +136,53 @@ fun DrawScope.effectiveRadarScale(divisor: Float, viewport: RadarViewport): Floa
     return half / divisor * viewport.zoom
 }
 
+@Composable
 fun Modifier.radarGestures(
     viewport: RadarViewport,
     victims: List<TrappedVictim>,
     projectVictim: (TrappedVictim) -> Offset,
     onVictimClick: (Int) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
-): Modifier = this
-    .pointerInput(viewport) {
-        detectTransformGestures { _, pan, zoom, _ ->
-            onViewportChange(
-                viewport.copy(
-                    zoom = (viewport.zoom * zoom).coerceIn(RADAR_ZOOM_MIN, RADAR_ZOOM_MAX),
-                    panX = viewport.panX + pan.x,
-                    panY = viewport.panY + pan.y,
-                ),
-            )
-        }
-    }
-    .pointerInput(victims, viewport) {
-        detectTapGestures { tap ->
-            val hit = victims.minByOrNull { victim ->
-                val p = projectVictim(victim)
-                hypot(tap.x - p.x, tap.y - p.y)
-            }
-            hit?.let { victim ->
-                val p = projectVictim(victim)
-                val hitRadius = (48f * viewport.zoom).coerceIn(36f, 96f)
-                if (hypot(tap.x - p.x, tap.y - p.y) <= hitRadius) {
-                    onVictimClick(victim.id)
+): Modifier {
+    val currentViewport by rememberUpdatedState(viewport)
+    val currentVictims by rememberUpdatedState(victims)
+    val currentProjectVictim by rememberUpdatedState(projectVictim)
+    val currentOnVictimClick by rememberUpdatedState(onVictimClick)
+    val currentOnViewportChange by rememberUpdatedState(onViewportChange)
+
+    return this
+        .pointerInput(Unit) {
+            detectTransformGestures { _: Offset, pan: Offset, zoom: Float, _: Float ->
+                if (zoom != 1f || pan != Offset.Zero) {
+                    val nextZoom = (currentViewport.zoom * zoom).coerceIn(RADAR_ZOOM_MIN, RADAR_ZOOM_MAX)
+                    val nextPanX = currentViewport.panX + pan.x
+                    val nextPanY = currentViewport.panY + pan.y
+                    currentOnViewportChange(
+                        currentViewport.copy(
+                            zoom = nextZoom,
+                            panX = nextPanX,
+                            panY = nextPanY,
+                        ),
+                    )
                 }
             }
         }
-    }
+        .pointerInput(Unit) {
+            detectTapGestures { tap ->
+                val hit = currentVictims.minByOrNull { victim ->
+                    val p = currentProjectVictim(victim)
+                    hypot(tap.x - p.x, tap.y - p.y)
+                }
+                hit?.let { victim ->
+                    val p = currentProjectVictim(victim)
+                    val hitRadius = (48f * currentViewport.zoom).coerceIn(36f, 96f)
+                    if (hypot(tap.x - p.x, tap.y - p.y) <= hitRadius) {
+                        currentOnVictimClick(victim.id)
+                    }
+                }
+            }
+        }
+}
 
 /**
  * Entorno Wi‑Fi en el radar: ondas concéntricas desde el teléfono (centro = “Yo”).

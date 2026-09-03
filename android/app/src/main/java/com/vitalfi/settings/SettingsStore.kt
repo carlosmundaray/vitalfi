@@ -211,6 +211,67 @@ class SettingsStore(context: Context) {
         } catch (_: Throwable) {}
     }
 
+    /** Timestamp de la primera instalación para cálculo de período de prueba (40 días). */
+    var firstInstallTimestamp: Long
+        get() {
+            val ts = prefs.getLong(KEY_FIRST_INSTALL_TIMESTAMP, 0L)
+            if (ts == 0L) {
+                val now = System.currentTimeMillis()
+                prefs.edit().putLong(KEY_FIRST_INSTALL_TIMESTAMP, now).apply()
+                return now
+            }
+            return ts
+        }
+        set(value) {
+            prefs.edit().putLong(KEY_FIRST_INSTALL_TIMESTAMP, value).apply()
+        }
+
+    /** Clave de licencia guardada (si existe). */
+    var licenseKey: String
+        get() = prefs.getString(KEY_LICENSE_KEY, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_LICENSE_KEY, value).apply()
+        }
+
+    /** Titular registrado de la licencia (persona / institución). */
+    var licenseHolder: String
+        get() = prefs.getString(KEY_LICENSE_HOLDER, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_LICENSE_HOLDER, value).apply()
+        }
+
+    /** Tipo de licencia serializada (TRIAL, LICENSED_PRO, LICENSED_ENTERPRISE). */
+    var licenseType: String
+        get() = prefs.getString(KEY_LICENSE_TYPE, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_LICENSE_TYPE, value).apply()
+        }
+
+    fun loadLicenseInfo(): LicenseInfo {
+        return LicenseManager.getLicenseInfo(
+            firstInstallTimestampMs = firstInstallTimestamp,
+            storedKey = licenseKey,
+            storedHolder = licenseHolder,
+            storedTypeStr = licenseType,
+        )
+    }
+
+    fun saveLicense(key: String, holder: String, type: LicenseType) {
+        prefs.edit()
+            .putString(KEY_LICENSE_KEY, key)
+            .putString(KEY_LICENSE_HOLDER, holder)
+            .putString(KEY_LICENSE_TYPE, type.name)
+            .apply()
+    }
+
+    fun clearLicense() {
+        prefs.edit()
+            .remove(KEY_LICENSE_KEY)
+            .remove(KEY_LICENSE_HOLDER)
+            .remove(KEY_LICENSE_TYPE)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "vitalfi_settings"
         private const val KEY_ALERT_SOUND = "alert_sound_enabled"
@@ -239,5 +300,9 @@ class SettingsStore(context: Context) {
         private const val KEY_LAYER_LABELS = "radar_layer_labels"
         private const val KEY_LAYER_DEPTH_RAYS = "radar_layer_depth_rays"
         private const val KEY_RESCUED_VICTIMS = "saved_rescued_victims_json"
+        private const val KEY_FIRST_INSTALL_TIMESTAMP = "first_install_timestamp"
+        private const val KEY_LICENSE_KEY = "license_key"
+        private const val KEY_LICENSE_HOLDER = "license_holder"
+        private const val KEY_LICENSE_TYPE = "license_type"
     }
 }

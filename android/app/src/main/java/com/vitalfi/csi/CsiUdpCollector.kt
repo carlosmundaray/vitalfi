@@ -3,6 +3,8 @@ package com.vitalfi.csi
 import android.util.Log
 import com.vitalfi.wifi.CsiPacketData
 import com.vitalfi.wifi.VictimVitalState
+import com.vitalfi.ml.Pose3DOnDeviceEngine
+import com.vitalfi.ml.Pose3DResult
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,6 +59,20 @@ class CsiUdpCollector(
 
     private val _vitalState = MutableStateFlow(VictimVitalState.CLEAR)
     val vitalState: StateFlow<VictimVitalState> = _vitalState.asStateFlow()
+
+    // ═══════════════════════════════════════════════════════════════
+    // Pose3D On-Device Neural Inference Pipeline
+    // ═══════════════════════════════════════════════════════════════
+    private val pose3dEngine = Pose3DOnDeviceEngine()
+    private val pose3dAmpBuffer = FloatArray(Pose3DOnDeviceEngine.NUM_SUBCARRIERS * Pose3DOnDeviceEngine.TIME_STEPS)
+    private val pose3dPhaseBuffer = FloatArray(Pose3DOnDeviceEngine.NUM_SUBCARRIERS * Pose3DOnDeviceEngine.TIME_STEPS)
+    private var pose3dFrameIdx = 0
+    private var pose3dFrameCount = 0
+    private var lastPose3dInferenceMs = 0L
+    private val POSE3D_INFERENCE_INTERVAL_MS = 100L  // ~10 Hz inference
+
+    private val _pose3dResult = MutableStateFlow<Pose3DResult?>(null)
+    val pose3dResult: StateFlow<Pose3DResult?> = _pose3dResult.asStateFlow()
 
     // DSP buffers
     private var packetCountWindow = 0
@@ -125,6 +141,9 @@ class CsiUdpCollector(
                         // Procesar paquete CSI
                         val csiData = parseCsiPacket(packet.data, packet.length, now)
                         processDsp(csiData, now)
+
+                        // Acumular CSI en buffer Pose3D y ejecutar inferencia neural
+                        feedPose3dBuffer(csiData, now)
 
                     } catch (e: java.net.SocketTimeoutException) {
                         // Si no hay paquetes por más de 3 segundos, marcar como desconectado
@@ -419,20 +438,23 @@ class CsiUdpCollector(
         }
 
         // 7. Inferir postura corporal a partir de la señal CSI
-        //    - ACTIVE_DISTRESS + alta energía → Auxilio / lucha
-        //    - IMMOBILE_BREATHING + baja varianza de amplitud → Tendido
+        //    - ACTIVE_DISTRESS + alta energía → Auxilio / Caminando
+        //    - IMMOBILE_BREATHING + varianza moderada-baja → De Pie / Tendido
         //    - IMMOBILE_BREATHING + alta varianza → Sentado / Compacto
+        val ampVariance = if (n > 1) {
+            val mean = avgAmp
+            frame.subcarrierAmplitudes.map { (it - mean) * (it - mean) }.average()
+        } else 0.0
+
         val inferredPosture = when {
-            state == VictimVitalState.ACTIVE_DISTRESS -> "Auxilio Activo"
+            state == VictimVitalState.ACTIVE_DISTRESS -> {
+                if (motionEnergy > 5.5) "Caminando / En Movimiento" else "Auxilio Activo"
+            }
             state == VictimVitalState.IMMOBILE_BREATHING -> {
-                // Varianza de amplitud entre subportadoras indica la dispersión espacial
-                val ampVariance = if (n > 1) {
-                    val mean = avgAmp
-                    frame.subcarrierAmplitudes.map { (it - mean) * (it - mean) }.average()
-                } else 0.0
                 when {
                     ampVariance > 80.0 -> "Compacto (Fetal)"
-                    ampVariance > 30.0 -> "Sentado / Reclinado"
+                    ampVariance > 45.0 -> "Sentado / Reclinado"
+                    ampVariance in 15.0..45.0 -> "De Pie (Erguido)"
                     else -> "Tendido (Horizontal)"
                 }
             }
@@ -441,55 +463,39 @@ class CsiUdpCollector(
 
         // 8. Categoría corporal por RCS (Radar Cross Section) estimado
         //    RCS ≈ amplitud media normalizada × factor de ancho de banda
-        //    Adulto: RCS 0.5–1.2 m², Niño: 0.15–0.5 m²
+        //    NOTA: Esto es una estimación aproximada. El RCS real depende del entorno
+        //    multipath y no solo del tamaño del reflector. Usar como indicador, no medición.
         val rcsEstimate = (avgAmp / 40.0 * (frame.channelBwMhz / 20.0))
             .coerceIn(0.05, 2.0)
         val inferredCategory = when {
-            rcsEstimate < 0.30 -> "Niño / Mascota"
-            rcsEstimate < 0.60 -> "Adolescente / Persona menuda"
-            rcsEstimate < 1.30 -> "Adulto"
-            else -> "Adulto corpulento"
+            rcsEstimate < 0.30 -> "Reflector pequeño"
+            rcsEstimate < 0.60 -> "Reflector mediano"
+            rcsEstimate < 1.30 -> "Reflector grande"
+            else -> "Reflector muy grande"
         }
 
-        // 9. Dimensiones corporales estimadas a partir de la dispersión de amplitud
-        //    La distribución de energía entre subportadoras correlaciona con el tamaño del reflector
-        val ampRange = if (n > 2) {
-            val sorted = frame.subcarrierAmplitudes.sorted()
-            val p10 = sorted[(n * 0.1).toInt().coerceIn(0, n - 1)]
-            val p90 = sorted[(n * 0.9).toInt().coerceIn(0, n - 1)]
-            (p90 - p10).toDouble().coerceAtLeast(1.0)
-        } else 10.0
-        val heightEstimate = (0.8 + ampRange / 120.0).coerceIn(0.40, 2.10)
-        val widthEstimate = (heightEstimate * 0.30).coerceIn(0.20, 0.80)
-
-        // 10. Profundidad bajo escombros (atenuación extra más allá de distancia en espacio libre)
-        //     Modelo: la diferencia entre RSSI esperado en espacio libre y RSSI real
-        //     indica la atenuación del material de escombros.
+        // 9. Profundidad bajo escombros (atenuación extra más allá de distancia en espacio libre)
+        //    Modelo: la diferencia entre RSSI esperado en espacio libre y RSSI real
+        //    indica la atenuación del material de escombros.
+        //    ~10 dB por capa de concreto de 15 cm → profundidad ≈ excessAtt / 10 * 0.15
         val expectedFreeSpaceRssi = -40.0 - 20.0 * kotlin.math.log10(estimatedDist.coerceAtLeast(0.3))
         val excessAttenuation = (expectedFreeSpaceRssi - frame.rssi).coerceAtLeast(0.0)
-        // ~10 dB por capa de concreto de 15 cm → profundidad ≈ excessAtt / 10 * 0.15
         val depthEstimate = (excessAttenuation / 10.0 * 0.15).coerceIn(0.0, 5.0)
 
-        // 11. Ángulo de llegada (AoA) — estimación simplificada por asimetría de amplitud
-        //     Con una sola antena no hay AoA real, pero la asimetría espectral
-        //     entre mitad inferior y superior de subportadoras da una pista
-        val aoaEstimate = if (n >= 4) {
-            val half = n / 2
-            val lowerHalf = frame.subcarrierAmplitudes.take(half).average()
-            val upperHalf = frame.subcarrierAmplitudes.takeLast(half).average()
-            val asymmetry = (upperHalf - lowerHalf) / (lowerHalf + upperHalf + 1e-6)
-            (asymmetry * 45.0).coerceIn(-60.0, 60.0)
-        } else 0.0
+        // NOTA: AoA (Ángulo de Llegada) requiere un array de antenas (MIMO).
+        //       Con una sola antena del ESP32-S3, AoA es indeterminado → 0.0
+        // NOTA: Altura y ancho corporal no son medibles con CSI Wi-Fi de 1 antena.
+        //       La dispersión de amplitud OFDM depende del multipath, no del tamaño del cuerpo.
 
         val updatedFrame = frame.copy(
             filteredRespirationValue = respirationSample,
             vitalState = state,
             estimatedDistanceM = estimatedDist,
             estimatedDepthM = depthEstimate,
-            estimatedAoADeg = aoaEstimate,
+            estimatedAoADeg = 0.0,           // Indeterminado sin array de antenas
             confidence = confidence,
-            estimatedHeightM = heightEstimate,
-            estimatedWidthM = widthEstimate,
+            estimatedHeightM = 0.0,           // No medible con 1 antena
+            estimatedWidthM = 0.0,            // No medible con 1 antena
             bodyPosture = inferredPosture,
             bodyCategory = inferredCategory,
             rcsAreaM2 = rcsEstimate,
@@ -539,6 +545,66 @@ class CsiUdpCollector(
         val bpm = freqHz * 60.0
 
         return if (bpm in 8.0..32.0) bpm else 0.0
+    }
+
+    /**
+     * Acumula tramas CSI en un buffer de ventana temporal para el modelo neural Pose3D.
+     * Ejecuta inferencia cada POSE3D_INFERENCE_INTERVAL_MS (~100ms, 10 Hz).
+     *
+     * El buffer es circular: [NUM_SUBCARRIERS × TIME_STEPS] = 64 × 30 = 1920 floats.
+     * Cada trama CSI nueva escribe una columna temporal (64 amplitudes + 64 fases).
+     */
+    private fun feedPose3dBuffer(frame: CsiPacketData, nowMs: Long) {
+        val amps = frame.subcarrierAmplitudes
+        if (amps.isEmpty()) return
+
+        val numSub = Pose3DOnDeviceEngine.NUM_SUBCARRIERS
+        val timeSteps = Pose3DOnDeviceEngine.TIME_STEPS
+        val phases = frame.subcarrierPhases
+
+        // Normalizar amplitudes z-score sobre esta trama
+        val ampMean = amps.average().toFloat()
+        var ampVar = 0f
+        for (a in amps) {
+            val d = a.toFloat() - ampMean
+            ampVar += d * d
+        }
+        val ampStd = kotlin.math.sqrt((ampVar / amps.size).toDouble()).toFloat().coerceAtLeast(0.001f)
+
+        // Escribir columna temporal en el buffer circular
+        val colOffset = pose3dFrameIdx * numSub
+        for (i in 0 until numSub) {
+            val ampVal = if (i < amps.size) ((amps[i].toFloat() - ampMean) / ampStd) else 0f
+            val phaseVal = if (phases.isNotEmpty() && i < phases.size) phases[i].toFloat() else 0f
+            pose3dAmpBuffer[colOffset + i] = ampVal
+            pose3dPhaseBuffer[colOffset + i] = phaseVal
+        }
+
+        pose3dFrameIdx = (pose3dFrameIdx + 1) % timeSteps
+        pose3dFrameCount++
+
+        // Ejecutar inferencia neural cada POSE3D_INFERENCE_INTERVAL_MS
+        if (pose3dFrameCount >= timeSteps && (nowMs - lastPose3dInferenceMs) >= POSE3D_INFERENCE_INTERVAL_MS) {
+            lastPose3dInferenceMs = nowMs
+
+            // Re-organizar buffer circular a orden temporal correcto
+            // El frame más viejo empieza en pose3dFrameIdx, el más reciente en pose3dFrameIdx-1
+            val orderedAmp = FloatArray(numSub * timeSteps)
+            val orderedPhase = FloatArray(numSub * timeSteps)
+            for (t in 0 until timeSteps) {
+                val srcIdx = ((pose3dFrameIdx + t) % timeSteps) * numSub
+                val dstIdx = t * numSub
+                System.arraycopy(pose3dAmpBuffer, srcIdx, orderedAmp, dstIdx, numSub)
+                System.arraycopy(pose3dPhaseBuffer, srcIdx, orderedPhase, dstIdx, numSub)
+            }
+
+            try {
+                val result = pose3dEngine.infer(orderedAmp, orderedPhase)
+                _pose3dResult.value = result
+            } catch (e: Exception) {
+                Log.w(TAG, "Pose3D inference error: ${e.message}")
+            }
+        }
     }
 
     companion object {

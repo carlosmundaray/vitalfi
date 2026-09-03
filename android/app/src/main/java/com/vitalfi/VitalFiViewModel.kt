@@ -149,6 +149,24 @@ data class VitalFiUiState(
     val currentGpsDms: String = "",
     val rescuedVictims: List<com.vitalfi.dsp.RescuedVictimRecord> = emptyList(),
     val lockedTargetId: String? = null,
+    /** Pose3D On-Device: 17 keypoints 3D reales del modelo neural (51 floats). */
+    val pose3dKeypoints: FloatArray? = null,
+    /** Pose3D On-Device: Postura detectada por el modelo neural. */
+    val pose3dPosture: String? = null,
+    /** Pose3D On-Device: Confianzas por keypoint (17 floats). */
+    val pose3dConfidence: FloatArray? = null,
+    /** Pose3D On-Device: Tiempo de inferencia en ms. */
+    val pose3dInferenceMs: Float = 0f,
+    /** Estado de licencia y período de evaluación (40 días / modelo honor). */
+    val licenseInfo: com.vitalfi.settings.LicenseInfo = com.vitalfi.settings.LicenseInfo(
+        type = com.vitalfi.settings.LicenseType.TRIAL,
+        daysUsed = 1,
+        trialDaysMax = 40,
+        isLicensed = false,
+    ),
+    val showEvaluationDialog: Boolean = false,
+    val showEnterLicenseDialog: Boolean = false,
+    val billingProducts: List<com.vitalfi.billing.PlayProductUi> = emptyList(),
 )
 
 class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
@@ -211,16 +229,50 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             openWrtUdpPort = settingsStore.openWrtUdpPort,
             openWrtRouterIp = settingsStore.openWrtRouterIp,
             rescuedVictims = settingsStore.loadRescuedVictims(),
+            licenseInfo = settingsStore.loadLicenseInfo(),
         ),
     )
     val uiState: StateFlow<VitalFiUiState> = _uiState.asStateFlow()
 
     private val csiCollector = CsiUdpCollector(app, settingsStore.openWrtUdpPort)
+    private val billingManager = com.vitalfi.billing.PlayBillingManager(
+        context = app,
+        coroutineScope = viewModelScope,
+        onPurchaseUnlocked = { prodId, orderId ->
+            val type = if (prodId == com.vitalfi.billing.PlayBillingManager.PRODUCT_INSTITUTIONAL) {
+                com.vitalfi.settings.LicenseType.LICENSED_ENTERPRISE
+            } else {
+                com.vitalfi.settings.LicenseType.LICENSED_PRO
+            }
+            val holderName = if (type == com.vitalfi.settings.LicenseType.LICENSED_ENTERPRISE) {
+                "Google Play - Institución / Rescate"
+            } else {
+                "Google Play Supporter"
+            }
+            settingsStore.saveLicense("PLAY_${prodId.uppercase()}_$orderId", holderName, type)
+            val updatedLic = settingsStore.loadLicenseInfo()
+            _uiState.value = _uiState.value.copy(
+                licenseInfo = updatedLic,
+                showEvaluationDialog = false,
+                toastMessage = "¡Compra confirmada en Google Play! Gracias por apoyar a VitalFi.",
+            )
+        }
+    )
+
+    init {
+        billingManager.start()
+        viewModelScope.launch {
+            billingManager.products.collect { prods ->
+                _uiState.value = _uiState.value.copy(billingProducts = prods)
+            }
+        }
+    }
 
     private var analysisJob: Job? = null
     private var running = false
     private var pickerDismissedByUser = false
     private var hasAutoOpenedPicker = false
+    private var hasShownEvaluationPrompt = false
     private var cachedRecentQuality = emptyList<Double>()
     private var connectedNoSamplesSinceMs: Long = 0L
     private var suggestedPassiveFallback = false
@@ -229,6 +281,15 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     fun start() {
         if (running) return
         running = true
+
+        val currentLic = settingsStore.loadLicenseInfo()
+        if (currentLic.isTrialExpired && !currentLic.isLicensed && !hasShownEvaluationPrompt) {
+            hasShownEvaluationPrompt = true
+            _uiState.value = _uiState.value.copy(
+                licenseInfo = currentLic,
+                showEvaluationDialog = true,
+            )
+        }
 
         compass.start()
         walkSteps.start()
@@ -251,6 +312,20 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         if (settingsStore.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
             csiCollector.start(settingsStore.openWrtUdpPort)
         }
+
+        viewModelScope.launch {
+            csiCollector.pose3dResult.collect { result ->
+                if (result != null) {
+                    _uiState.value = _uiState.value.copy(
+                        pose3dKeypoints = result.keypoints3d,
+                        pose3dPosture = result.posture,
+                        pose3dConfidence = result.confidence,
+                        pose3dInferenceMs = result.inferenceTimeMs,
+                    )
+                }
+            }
+        }
+
         if (rubbleTracker.calibrating) {
             rubbleTracker.begin(System.currentTimeMillis())
             barometer.calibrateBaseline()
@@ -304,6 +379,7 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         stop()
         alertPlayer.release()
+        billingManager.destroy()
         super.onCleared()
     }
 
@@ -394,9 +470,9 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             isActivity = false,
             confidence = 0.0,
             toastMessage = if (mode == SensingEngineMode.CSI_OPENWRT) {
-                "Modo CSI OpenWrt activado (Puerto UDP ${settingsStore.openWrtUdpPort})"
+                "Sensor RF de Alta Precisión activado"
             } else {
-                "Modo RSSI Nativo activado"
+                "Sensado Móvil activado"
             },
         )
     }
@@ -1071,7 +1147,8 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
 
         // 2. En modo CSI: actualizar tracker con tramas OFDM reales recibidas del router
         if (isCsiMode && csiConnected && csiFrame != null) {
-            val csiTargetBearing = (bearing + csiFrame.estimatedAoADeg + 360.0) % 360.0
+            // AoA no disponible con 1 antena → usar dirección de brújula del teléfono
+            val csiTargetBearing = bearing
             val isAlive = csiState == VictimVitalState.IMMOBILE_BREATHING || csiConnected
             val isDistress = csiState == VictimVitalState.ACTIVE_DISTRESS
             val dist = csiFrame.estimatedDistanceM.coerceIn(0.2, 10.0)
@@ -1163,7 +1240,12 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     victim.status
                 }
-                val bodyDim = if (isCsiMode && csiFrame != null) "${"%.2f".format(csiFrame.estimatedHeightM)}m × ${"%.2f".format(csiFrame.estimatedWidthM)}m (${csiFrame.bodyCategory})" else victim.bodyDimension
+                val bodyDim = if (isCsiMode && csiFrame != null) {
+                    if (csiFrame.estimatedHeightM > 0.0 && csiFrame.estimatedWidthM > 0.0)
+                        "${"%.2f".format(csiFrame.estimatedHeightM)}m × ${"%.2f".format(csiFrame.estimatedWidthM)}m (${csiFrame.bodyCategory})"
+                    else
+                        "N/D — Requiere array MIMO (${csiFrame.bodyCategory})"
+                } else victim.bodyDimension
                 val bodyPos = if (isCsiMode && csiFrame != null) csiFrame.bodyPosture else victim.bodyPosture
                 val rcs = if (isCsiMode && csiFrame != null) csiFrame.rcsAreaM2 else victim.rcsAreaM2
 
@@ -1410,11 +1492,15 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
             vitalBreathingBpm = csiBpm,
             victimVitalState = csiState,
             csiDistanceM = if (csiConnected) csiFrame?.estimatedDistanceM else null,
-            csiAoADeg = if (csiConnected) csiFrame?.estimatedAoADeg else null,
+            csiAoADeg = null,  // AoA no disponible con 1 antena — requiere array MIMO
             csiDepthM = if (csiConnected) csiFrame?.estimatedDepthM else null,
             csiSubcarriers = if (csiConnected) csiFrame?.subcarrierAmplitudesList ?: emptyList() else emptyList(),
             csiRespirationWave = if (csiConnected) csiFrame?.respirationWave ?: emptyList() else emptyList(),
-            csiBodyDimension = if (csiConnected && csiFrame != null) "${"%.2f".format(csiFrame.estimatedHeightM)} m × ${"%.2f".format(csiFrame.estimatedWidthM)} m" else null,
+            csiBodyDimension = if (csiConnected && csiFrame != null && csiFrame.estimatedHeightM > 0.0) {
+                "${"%.2f".format(csiFrame.estimatedHeightM)} m × ${"%.2f".format(csiFrame.estimatedWidthM)} m"
+            } else if (csiConnected) {
+                "N/D — Requiere array MIMO"
+            } else null,
             csiBodyPosture = if (csiConnected) csiFrame?.bodyPosture else null,
             csiBodyCategory = if (csiConnected) csiFrame?.bodyCategory else null,
             csiRcsM2 = if (csiConnected) csiFrame?.rcsAreaM2 else null,
@@ -1605,6 +1691,65 @@ class VitalFiViewModel(app: Application) : AndroidViewModel(app) {
         settingsStore.manualElevationM = 0.0
         _uiState.value = _uiState.value.copy(
             scanningElevationM = 0.0,
+        )
+    }
+
+    fun openEvaluationDialog() {
+        _uiState.value = _uiState.value.copy(
+            showEvaluationDialog = true,
+            licenseInfo = settingsStore.loadLicenseInfo(),
+        )
+    }
+
+    fun dismissEvaluationDialog() {
+        _uiState.value = _uiState.value.copy(showEvaluationDialog = false)
+    }
+
+    fun openEnterLicenseDialog() {
+        _uiState.value = _uiState.value.copy(
+            showEvaluationDialog = false,
+            showEnterLicenseDialog = true,
+        )
+    }
+
+    fun dismissEnterLicenseDialog() {
+        _uiState.value = _uiState.value.copy(showEnterLicenseDialog = false)
+    }
+
+    fun activateLicenseKey(key: String, holder: String): Boolean {
+        val (valid, type) = com.vitalfi.settings.LicenseManager.validateKey(key, holder)
+        if (valid) {
+            settingsStore.saveLicense(key, holder, type)
+            val updatedLic = settingsStore.loadLicenseInfo()
+            _uiState.value = _uiState.value.copy(
+                licenseInfo = updatedLic,
+                showEnterLicenseDialog = false,
+                toastMessage = "¡Licencia activada con éxito! Gracias por apoyar a VitalFi.",
+            )
+            return true
+        }
+        return false
+    }
+
+    fun removeLicense() {
+        settingsStore.clearLicense()
+        val updatedLic = settingsStore.loadLicenseInfo()
+        _uiState.value = _uiState.value.copy(
+            licenseInfo = updatedLic,
+            toastMessage = "Licencia removida. Modo evaluación restablecido.",
+        )
+    }
+
+    fun launchPlayPurchase(activity: android.app.Activity, productId: String) {
+        billingManager.launchPurchase(activity, productId)
+    }
+
+    fun restorePlayPurchases() {
+        billingManager.restorePurchases()
+        val lic = settingsStore.loadLicenseInfo()
+        _uiState.value = _uiState.value.copy(
+            licenseInfo = lic,
+            toastMessage = if (lic.isLicensed) "Compras restauradas con éxito." else "No se encontraron compras anteriores asociadas.",
         )
     }
 }

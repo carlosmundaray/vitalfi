@@ -99,6 +99,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -212,8 +213,10 @@ fun ArCameraView(
         label = "lockRingRotation",
     )
 
-    // Sensor de orientación en tiempo real
+    // Sensor de orientación en tiempo real (Acimut, Elevación/Inclinación y Roll 3D)
     var phoneBearing by remember { mutableStateOf(state.bearingDeg) }
+    var phoneElevation by remember { mutableStateOf(0.0) }
+    var phoneRoll by remember { mutableStateOf(0.0) }
 
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -234,6 +237,8 @@ fun ArCameraView(
             override fun onSensorChanged(event: SensorEvent?) {
                 if (event == null) return
                 var azDeg: Double? = null
+                var elDeg: Double? = null
+                var roDeg: Double? = null
                 when (event.sensor.type) {
                     Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GAME_ROTATION_VECTOR -> {
                         SensorManager.getRotationMatrixFromVector(rotMat, event.values)
@@ -241,6 +246,8 @@ fun ArCameraView(
                         SensorManager.remapCoordinateSystem(rotMat, SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedRotMat)
                         SensorManager.getOrientation(remappedRotMat, oriAng)
                         azDeg = Math.toDegrees(oriAng[0].toDouble())
+                        elDeg = Math.toDegrees(oriAng[1].toDouble())
+                        roDeg = Math.toDegrees(oriAng[2].toDouble())
                     }
                     Sensor.TYPE_ACCELEROMETER -> {
                         System.arraycopy(event.values, 0, grav, 0, 3)
@@ -249,6 +256,8 @@ fun ArCameraView(
                             SensorManager.remapCoordinateSystem(rotMat, SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedRotMat)
                             SensorManager.getOrientation(remappedRotMat, oriAng)
                             azDeg = Math.toDegrees(oriAng[0].toDouble())
+                            elDeg = Math.toDegrees(oriAng[1].toDouble())
+                            roDeg = Math.toDegrees(oriAng[2].toDouble())
                         }
                     }
                     Sensor.TYPE_MAGNETIC_FIELD -> {
@@ -258,11 +267,31 @@ fun ArCameraView(
                             SensorManager.remapCoordinateSystem(rotMat, SensorManager.AXIS_X, SensorManager.AXIS_Z, remappedRotMat)
                             SensorManager.getOrientation(remappedRotMat, oriAng)
                             azDeg = Math.toDegrees(oriAng[0].toDouble())
+                            elDeg = Math.toDegrees(oriAng[1].toDouble())
+                            roDeg = Math.toDegrees(oriAng[2].toDouble())
                         }
                     }
                 }
                 if (azDeg != null) {
-                    phoneBearing = (azDeg + 360.0) % 360.0
+                    val rawTarget = (azDeg + 360.0) % 360.0
+                    var diff = (rawTarget - phoneBearing) % 360.0
+                    if (diff > 180.0) diff -= 360.0
+                    if (diff < -180.0) diff += 360.0
+                    if (kotlin.math.abs(diff) > 0.05) {
+                        phoneBearing = ((phoneBearing + diff * 0.18) % 360.0 + 360.0) % 360.0
+                    }
+                }
+                if (elDeg != null) {
+                    val diff = elDeg - phoneElevation
+                    if (kotlin.math.abs(diff) > 0.05) {
+                        phoneElevation = phoneElevation + diff * 0.18
+                    }
+                }
+                if (roDeg != null) {
+                    val diff = roDeg - phoneRoll
+                    if (kotlin.math.abs(diff) > 0.05) {
+                        phoneRoll = phoneRoll + diff * 0.18
+                    }
                 }
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -270,10 +299,10 @@ fun ArCameraView(
 
         if (sensorManager != null) {
             if (rotSensor != null) {
-                sensorManager.registerListener(listener, rotSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(listener, rotSensor, SensorManager.SENSOR_DELAY_UI)
             } else if (accSensor != null && magSensor != null) {
-                sensorManager.registerListener(listener, accSensor, SensorManager.SENSOR_DELAY_GAME)
-                sensorManager.registerListener(listener, magSensor, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(listener, accSensor, SensorManager.SENSOR_DELAY_UI)
+                sensorManager.registerListener(listener, magSensor, SensorManager.SENSOR_DELAY_UI)
             }
         }
 
@@ -283,6 +312,8 @@ fun ArCameraView(
     }
 
     val curBearing: Double = phoneBearing
+    val curElevation: Double = phoneElevation
+    val curRoll: Double = phoneRoll
     val isSpanish = remember(state.appLanguage) {
         if (state.appLanguage.isBlank()) {
             Locale.getDefault().language.startsWith("es")
@@ -297,12 +328,16 @@ fun ArCameraView(
     val allWifiPoints = remember(
         state.victims,
         state.isBreathing,
+        state.isActivity,
+        state.victimVitalState,
         state.respRate,
         state.heartRateBpm,
         state.confidence,
         state.bearingDeg,
         state.rescuedVictims,
         state.rubbleConfidence,
+        state.pose3dKeypoints,
+        state.pose3dPosture,
         isSpanish,
     ) {
         val currentFramePoints = mutableListOf<ArWifiPoint>()
@@ -358,6 +393,8 @@ fun ArCameraView(
                 confidence = victim.confidence,
                 isBreathing = victim.isBreathing,
                 rubbleConf = victim.rubbleConfidence,
+                isActivity = state.isActivity,
+                isDistress = (state.victimVitalState == com.vitalfi.wifi.VictimVitalState.ACTIVE_DISTRESS),
             )
 
             val vGms = if (vLat != null && vLon != null) GpsLocationReader.formatCoordinatesGms(vLat, vLon) else victim.gpsGms
@@ -392,6 +429,11 @@ fun ArCameraView(
                 gpsLon = vLon,
                 gpsGms = vGms,
                 isPinned = isPinned,
+                rightArmLift = ai.rightArmLift,
+                leftArmLift = ai.leftArmLift,
+                motionState = ai.motionState,
+                pose3dKeypoints = state.pose3dKeypoints,
+                pose3dPosture = state.pose3dPosture,
             )
             currentFramePoints.add(pt)
             persistentPointsMap[pt.id] = pt
@@ -448,6 +490,8 @@ fun ArCameraView(
                 confidence = liveConf,
                 isBreathing = state.isBreathing,
                 rubbleConf = state.rubbleConfidence,
+                isActivity = state.isActivity,
+                isDistress = (state.victimVitalState == com.vitalfi.wifi.VictimVitalState.ACTIVE_DISTRESS),
             )
 
             val liveGmsStr = if (liveLat != null && liveLon != null) GpsLocationReader.formatCoordinatesGms(liveLat, liveLon) else ""
@@ -482,6 +526,11 @@ fun ArCameraView(
                 gpsLon = liveLon,
                 gpsGms = liveGmsStr,
                 isPinned = isLivePinned,
+                rightArmLift = aiLive.rightArmLift,
+                leftArmLift = aiLive.leftArmLift,
+                motionState = aiLive.motionState,
+                pose3dKeypoints = state.pose3dKeypoints,
+                pose3dPosture = state.pose3dPosture,
             )
             currentFramePoints.add(ptLive)
             persistentPointsMap[ptLive.id] = ptLive
@@ -728,48 +777,89 @@ fun ArCameraView(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
+            if (w < 40f || h < 40f) return@Canvas
             val cx = w / 2f
             val cy = h / 2f
 
-            // a) Retícula central táctica
-            drawArLockReticle(cx, cy, isAimAligned, isTargetExplicitlyLocked, lockRingRotation)
-
-            // b) Línea Láser de Guía en el suelo hacia el objetivo (se achica dinámicamente al acercarse)
-            targetPoint?.let { target ->
-                val tDiff = run {
-                    var diff = (target.bearingDeg - curBearing) % 360.0
-                    if (diff > 180.0) diff -= 360.0
-                    if (diff < -180.0) diff += 360.0
-                    diff
-                }
-                val inView = abs(tDiff) <= (horizontalFovDeg / 2.0)
-                val targetScreenX = if (inView) {
-                    cx + (tDiff / (horizontalFovDeg / 2.0)).toFloat() * (w * 0.46f)
-                } else {
-                    if (tDiff < 0) 30f else w - 30f
-                }
-                val distNorm = (target.distanceM.toFloat() / 8.0f).coerceIn(0f, 1f)
-                val targetScreenY = (cy + (1.0f - distNorm) * (h * 0.36f) + (target.depthM * 18f).toFloat()).coerceIn(h * 0.38f, h * 0.84f)
-
-                drawArGroundNavigationTrail(
-                    cx = cx,
+            try {
+                // 0. Domo Esférico Celestial 3D (Curvas de Nivel de Elevación, Meridianos y Retícula Central Ele/Azi)
+                drawArCelestialGraticule3D(
+                    w = w,
                     h = h,
-                    targetX = targetScreenX,
-                    targetY = targetScreenY,
-                    progress = pulseWave,
-                    distanceM = target.distanceM.toFloat(),
-                    isInView = inView,
-                    color = target.color,
-                    isExplicitlyLocked = isTargetExplicitlyLocked,
+                    cx = cx,
+                    cy = cy,
+                    bearingDeg = curBearing,
+                    elevationDeg = curElevation,
+                    rollDeg = curRoll,
+                    fovDeg = horizontalFovDeg,
                     isSpanish = isSpanish,
-                    isMoving = target.isMoving,
-                    velocityMps = target.velocityMps,
                 )
-            }
 
-            // c) Renderizar Puntos Wi-Fi CSI detectados en el campo de visión (perspectiva 3D dinámica)
-            allWifiPoints.forEach { pt ->
-                var diff = (pt.bearingDeg - curBearing) % 360.0
+                // 0.1. Mini Esfera Espacial 3D (Gyro Position Sphere) de orientación espacial
+                drawArSpatialGyroSphere(
+                    w = w,
+                    h = h,
+                    bearingDeg = curBearing,
+                    elevationDeg = curElevation,
+                    rollDeg = curRoll,
+                    target = targetPoint,
+                )
+
+                // a) Retícula central táctica
+                drawArLockReticle(cx, cy, isAimAligned, isTargetExplicitlyLocked, lockRingRotation)
+
+                // 0.2. Medidor de Profundidad Milimétrica y Pozo de Penetración en Punto Cero (Nadir)
+                targetPoint?.let { target ->
+                    if (curElevation <= -28.0 || target.distanceM <= 3.0) {
+                        drawArGroundZeroPrecisionDepthSounder(
+                            cx = cx,
+                            cy = cy,
+                            w = w,
+                            h = h,
+                            elevationDeg = curElevation,
+                            point = target,
+                            pulse = beaconPulse,
+                            isSpanish = isSpanish,
+                        )
+                    }
+                }
+
+                // b) Línea Láser de Guía en el suelo hacia el objetivo (se achica dinámicamente al acercarse)
+                targetPoint?.let { target ->
+                    val tDiff = run {
+                        var diff = (target.bearingDeg - curBearing) % 360.0
+                        if (diff > 180.0) diff -= 360.0
+                        if (diff < -180.0) diff += 360.0
+                        diff
+                    }
+                    val inView = abs(tDiff) <= (horizontalFovDeg / 2.0)
+                    val targetScreenX = if (inView) {
+                        cx + (tDiff / (horizontalFovDeg / 2.0)).toFloat() * (w * 0.46f)
+                    } else {
+                        if (tDiff < 0) 30f else w - 30f
+                    }
+                    val distNorm = (target.distanceM.toFloat() / 8.0f).coerceIn(0f, 1f)
+                    val targetScreenY = (cy + (1.0f - distNorm) * (h * 0.36f) + (target.depthM * 18f).toFloat()).coerceIn(h * 0.20f, h * 0.90f)
+
+                    drawArGroundNavigationTrail(
+                        cx = cx,
+                        h = h,
+                        targetX = targetScreenX,
+                        targetY = targetScreenY,
+                        progress = pulseWave,
+                        distanceM = target.distanceM.toFloat(),
+                        isInView = inView,
+                        color = target.color,
+                        isExplicitlyLocked = isTargetExplicitlyLocked,
+                        isSpanish = isSpanish,
+                        isMoving = target.isMoving,
+                        velocityMps = target.velocityMps,
+                    )
+                }
+
+                // c) Renderizar Puntos Wi-Fi CSI detectados en el campo de visión (perspectiva 3D dinámica)
+                allWifiPoints.forEach { pt ->
+                    var diff = (pt.bearingDeg - curBearing) % 360.0
                 if (diff > 180.0) diff -= 360.0
                 if (diff < -180.0) diff += 360.0
 
@@ -815,7 +905,10 @@ fun ArCameraView(
                     )
                 }
             }
+        } catch (e: Throwable) {
+            Log.e(TAG, "AR Canvas draw error", e)
         }
+    }
 
         // 3. Flechas de Guía Fuera de Pantalla (Off-Screen Direction Indicators)
         if (targetPoint != null && !isTargetInView) {
@@ -1843,6 +1936,11 @@ private data class ArWifiPoint(
     val gpsLon: Double? = null,
     val gpsGms: String = "",
     val isPinned: Boolean = false,
+    val rightArmLift: Float = 0.0f,
+    val leftArmLift: Float = 0.0f,
+    val motionState: com.vitalfi.ml.PersonMotionState? = null,
+    val pose3dKeypoints: FloatArray? = null,
+    val pose3dPosture: String? = null,
 )
 
 /** Dibuja el Marcador Táctico de PUNTO CERO directamente en el suelo sobre la víctima */
@@ -2395,42 +2493,41 @@ private fun DrawScope.drawArWifiNodePoint(
         center = Offset(sx, coreY),
     )
 
-    // 5. Silueta Holográfica Humana Estilo Pokémon GO (Avatar 3D)
-    if (isPinnedOrLocked) {
-        val headR = (6.5f * perspectiveScale).coerceIn(3.5f, 15f)
-        val bodyW = (13f * perspectiveScale).coerceIn(6f, 28f)
-        val bodyH = (16f * perspectiveScale).coerceIn(8f, 32f)
-
-        // Cabeza del avatar
-        drawCircle(
-            color = Color.White,
-            radius = headR,
-            center = Offset(sx, coreY - bodyH * 0.65f),
-        )
-        drawCircle(
-            color = baseColor,
-            radius = headR * 1.35f,
-            center = Offset(sx, coreY - bodyH * 0.65f),
-            style = Stroke(width = 1.8f * perspectiveScale),
-        )
-
-        // Cuerpo / Torso holográfico
-        drawRoundRect(
-            color = baseColor.copy(alpha = 0.85f),
-            topLeft = Offset(sx - bodyW / 2f, coreY - bodyH * 0.15f),
-            size = Size(bodyW, bodyH * 0.85f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f * perspectiveScale, 4f * perspectiveScale),
-        )
-
-        // Corazón vital con pulso cardíaco en tiempo real
-        val heartPulse = 0.85f + 0.35f * kotlin.math.sin(lockRotationDeg * 0.12f).coerceAtLeast(0f)
-        drawCircle(
-            color = Color(0xFFFF2255),
-            radius = (3.8f * perspectiveScale * heartPulse).coerceIn(2f, 9f),
-            center = Offset(sx, coreY + bodyH * 0.15f),
-        )
+    // 5. Silueta Esquelética 3D Articulada Estilo Person-in-WiFi 3D
+    if (isPinnedOrLocked || perspectiveScale >= 0.5f) {
+        val isWaving = point.motionState == com.vitalfi.ml.PersonMotionState.WAVING_FOR_HELP
+        val forcedPosture = when (point.pose3dPosture) {
+            "sitting" -> HumanFigureRenderer.Posture3D.SITTING
+            "lying" -> HumanFigureRenderer.Posture3D.LYING_DOWN
+            "fallen" -> HumanFigureRenderer.Posture3D.COLLAPSED_FALLEN
+            "standing" -> HumanFigureRenderer.Posture3D.STANDING
+            else -> null
+        }
+        val neuralJoints = point.pose3dKeypoints?.let { HumanFigureRenderer.computeJointsFromPose3D(it) }
+        with(HumanFigureRenderer) {
+            drawArPersonSkeleton3D(
+                cx = sx,
+                cy = coreY,
+                perspectiveScale = perspectiveScale,
+                color = baseColor,
+                respRate = point.respRate,
+                heartRate = point.heartRate,
+                isBreathing = point.respRate > 0 || !point.isRescued,
+                isMoving = point.isMoving,
+                velocityMps = point.velocityMps,
+                depthM = point.depthM,
+                isPinned = isPinnedOrLocked,
+                animTimeSec = (lockRotationDeg.toDouble() / 90.0),
+                phoneRollDeg = 0.0,
+                rArmLift = point.rightArmLift,
+                lArmLift = point.leftArmLift,
+                isWaving = isWaving,
+                neuralJoints = neuralJoints,
+                forcedPosture = forcedPosture,
+            )
+        }
     } else {
-        // Orbe básico si no está fijada
+        // Orbe básico si está a gran distancia y no está fijada
         drawCircle(color = baseColor, radius = orbRadius, center = Offset(sx, coreY))
         drawCircle(color = Color.White, radius = (orbRadius * 0.50f).coerceAtLeast(2.5f), center = Offset(sx, coreY))
     }
@@ -2749,3 +2846,415 @@ private fun DrawScope.drawArWifiNodePoint(
         )
     }
 }
+
+/**
+ * Dibuja el Domo Esférico Celestial 3D con curvas de nivel de Elevación,
+ * meridianos de Acimut y la retícula central con lectura "Ele: ±XX° | Azi: XXX°"
+ * inspirada en la imagen de referencia astronómica/solar.
+ */
+private fun DrawScope.drawArCelestialGraticule3D(
+    w: Float,
+    h: Float,
+    cx: Float,
+    cy: Float,
+    bearingDeg: Double,
+    elevationDeg: Double,
+    rollDeg: Double,
+    fovDeg: Double,
+    isSpanish: Boolean,
+) {
+    if (w < 50f || h < 50f || fovDeg < 5.0) return
+
+    val safeBearing = if (bearingDeg.isNaN() || bearingDeg.isInfinite()) 0.0 else (bearingDeg + 360.0) % 360.0
+    val safeElevation = if (elevationDeg.isNaN() || elevationDeg.isInfinite()) 0.0 else elevationDeg.coerceIn(-90.0, 90.0)
+    val safeRoll = if (rollDeg.isNaN() || rollDeg.isInfinite()) 0.0 else rollDeg.coerceIn(-180.0, 180.0)
+
+    val verticalFovDeg = (fovDeg * (h / w)).coerceIn(20.0, 120.0)
+    val radRoll = Math.toRadians(-safeRoll).toFloat()
+    val cosR = cos(radRoll)
+    val sinR = sin(radRoll)
+
+    // Curvas de Elevación Esféricas (Paralelos)
+    // Colores inspirados en la imagen: Rojo (+60°), Amarillo (+30°), Verde (0° Horizonte), Cyan (-30°), Azul (-60°), Púrpura (-80°)
+    val elevationLevels = listOf(
+        Pair(60.0, Color(0xFFFF3B30)),
+        Pair(45.0, Color(0xFFFF9500)),
+        Pair(30.0, Color(0xFFFFCC00)),
+        Pair(15.0, Color(0xFF85E338)),
+        Pair(0.0, Color(0xFF00FF88)),   // Horizonte
+        Pair(-15.0, Color(0xFF00F0FF)),
+        Pair(-30.0, Color(0xFF00B4D8)),
+        Pair(-45.0, Color(0xFF0077B6)),
+        Pair(-60.0, Color(0xFF7B2CBF)),
+        Pair(-80.0, Color(0xFF9D4EDD)),  // Nadir / Punto Cero
+    )
+
+    elevationLevels.forEach { (ele, color) ->
+        val diffEle = safeElevation - ele
+        if (abs(diffEle) <= verticalFovDeg * 0.95) {
+            val yOffset = (diffEle / verticalFovDeg).toFloat() * h
+            val isHorizon = abs(ele) < 0.1
+
+            // Proyectar arco horizontal con curvatura esférica
+            val path = Path()
+            val steps = 16
+            for (i in 0..steps) {
+                val t = (i.toFloat() / steps.toFloat()) - 0.5f // -0.5 a +0.5
+                val localX = t * w * 1.35f
+                val sag = (localX * localX) / (w * 3.5f) * (if (ele >= 0) 1f else -1f)
+                val localY = yOffset + sag
+
+                // Aplicar rotación de Roll
+                val rx = cx + localX * cosR - localY * sinR
+                val ry = cy + localX * sinR + localY * cosR
+
+                if (i == 0) path.moveTo(rx, ry) else path.lineTo(rx, ry)
+            }
+
+            drawPath(
+                path = path,
+                color = color.copy(alpha = if (isHorizon) 0.85f else 0.45f),
+                style = Stroke(
+                    width = if (isHorizon) 2.5f else 1.2f,
+                    cap = StrokeCap.Round,
+                )
+            )
+
+            // Etiquetas a lo largo de la curva de elevación
+            val labelX = cx + (w * 0.36f) * cosR - yOffset * sinR
+            val labelY = cy + (w * 0.36f) * sinR + yOffset * cosR
+            if (labelX in 20f..(w - 20f) && labelY in 30f..(h - 30f)) {
+                val eleLabel = if (isHorizon) "0° HORIZONTE" else "${if (ele > 0) "+" else ""}${ele.toInt()}°"
+                val paintEle = android.graphics.Paint().apply {
+                    this.color = color.toArgb()
+                    this.textSize = if (isHorizon) 22f else 18f
+                    this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, if (isHorizon) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+                    this.textAlign = android.graphics.Paint.Align.LEFT
+                    this.isAntiAlias = true
+                }
+                drawContext.canvas.nativeCanvas.drawText(eleLabel, labelX + 6f, labelY - 4f, paintEle)
+            }
+        }
+    }
+
+    // Meridianos de Acimut (Líneas verticales cada 45°)
+    val meridians = listOf(
+        Pair(0.0, "N 0°"),
+        Pair(45.0, "NE 45°"),
+        Pair(90.0, "E 90°"),
+        Pair(135.0, "SE 135°"),
+        Pair(180.0, "S 180°"),
+        Pair(225.0, "SW 225°"),
+        Pair(270.0, "W 270°"),
+        Pair(315.0, "NW 315°"),
+    )
+
+    meridians.forEach { (azi, label) ->
+        var diffAzi = (azi - safeBearing) % 360.0
+        if (diffAzi > 180.0) diffAzi -= 360.0
+        if (diffAzi < -180.0) diffAzi += 360.0
+
+        if (abs(diffAzi) <= fovDeg * 0.7) {
+            val xOffset = (diffAzi / fovDeg).toFloat() * w
+            val isCardinal = (azi % 90.0 == 0.0)
+
+            val pTopX = cx + xOffset * cosR - (-h * 0.55f) * sinR
+            val pTopY = cy + xOffset * sinR + (-h * 0.55f) * cosR
+            val pBotX = cx + xOffset * cosR - (h * 0.55f) * sinR
+            val pBotY = cy + xOffset * sinR + (h * 0.55f) * cosR
+
+            drawLine(
+                color = if (isCardinal) Color(0x6000FFCC) else Color(0x3000FFCC),
+                start = Offset(pTopX, pTopY),
+                end = Offset(pBotX, pBotY),
+                strokeWidth = if (isCardinal) 1.5f else 0.8f,
+            )
+
+            // Etiqueta del meridiano
+            val mLabelX = cx + xOffset * cosR - (-h * 0.38f) * sinR
+            val mLabelY = cy + xOffset * sinR + (-h * 0.38f) * cosR
+            if (mLabelX in 20f..(w - 20f) && mLabelY in 40f..(h - 40f)) {
+                val paintAzi = android.graphics.Paint().apply {
+                    this.color = if (isCardinal) android.graphics.Color.parseColor("#00FFCC") else android.graphics.Color.parseColor("#8000FFCC")
+                    this.textSize = if (isCardinal) 20f else 16f
+                    this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+                    this.textAlign = android.graphics.Paint.Align.CENTER
+                    this.isAntiAlias = true
+                }
+                drawContext.canvas.nativeCanvas.drawText(label, mLabelX, mLabelY, paintAzi)
+            }
+        }
+    }
+
+    // Retícula Central de Puntería Holográfica con lectura "Ele: ±XX° | Azi: XXX° (Cardinal)"
+    val cardinalStr = when {
+        safeBearing >= 337.5 || safeBearing < 22.5 -> "N"
+        safeBearing < 67.5 -> "NE"
+        safeBearing < 112.5 -> "E"
+        safeBearing < 157.5 -> "SE"
+        safeBearing < 202.5 -> "S"
+        safeBearing < 247.5 -> "SW"
+        safeBearing < 292.5 -> "W"
+        else -> "NW"
+    }
+
+    // Cruz central de mira
+    val reticleRadius = 26f
+    drawCircle(
+        color = Color(0xAA00FFCC),
+        radius = reticleRadius,
+        center = Offset(cx, cy),
+        style = Stroke(width = 1.5f),
+    )
+    drawCircle(
+        color = Color(0xEE00FFCC),
+        radius = 3.5f,
+        center = Offset(cx, cy),
+    )
+    drawLine(
+        color = Color(0xAA00FFCC),
+        start = Offset(cx - reticleRadius - 12f, cy),
+        end = Offset(cx + reticleRadius + 12f, cy),
+        strokeWidth = 1.2f,
+    )
+    drawLine(
+        color = Color(0xAA00FFCC),
+        start = Offset(cx, cy - reticleRadius - 12f),
+        end = Offset(cx, cy + reticleRadius + 12f),
+        strokeWidth = 1.2f,
+    )
+
+    // Cuadro de texto flotante central (exactamente como en la imagen)
+    val eleText = "Ele: ${if (safeElevation >= 0) "+" else ""}${"%.0f".format(safeElevation)}°"
+    val aziText = "Azi: ${"%.0f".format(safeBearing)}° ($cardinalStr)"
+
+    val paintBgBox = android.graphics.Paint().apply {
+        this.color = Color(0xCC08141A).toArgb()
+        this.style = android.graphics.Paint.Style.FILL
+        this.isAntiAlias = true
+    }
+    val paintBoxBorder = android.graphics.Paint().apply {
+        this.color = Color(0xFF00FFCC).toArgb()
+        this.style = android.graphics.Paint.Style.STROKE
+        this.strokeWidth = 1.5f
+        this.isAntiAlias = true
+    }
+    val paintTextEle = android.graphics.Paint().apply {
+        this.color = if (safeElevation < -35) Color(0xFF00FF88).toArgb() else Color.White.toArgb()
+        this.textSize = 21f
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+        this.textAlign = android.graphics.Paint.Align.LEFT
+        this.isAntiAlias = true
+    }
+    val paintTextAzi = android.graphics.Paint().apply {
+        this.color = Color(0xFF00E5FF).toArgb()
+        this.textSize = 21f
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+        this.textAlign = android.graphics.Paint.Align.LEFT
+        this.isAntiAlias = true
+    }
+
+    val boxX = cx + 38f
+    val boxY = cy - 30f
+    val boxW = 210f
+    val boxH = 58f
+
+    drawContext.canvas.nativeCanvas.drawRoundRect(boxX, boxY, boxX + boxW, boxY + boxH, 10f, 10f, paintBgBox)
+    drawContext.canvas.nativeCanvas.drawRoundRect(boxX, boxY, boxX + boxW, boxY + boxH, 10f, 10f, paintBoxBorder)
+    drawContext.canvas.nativeCanvas.drawText(eleText, boxX + 12f, boxY + 23f, paintTextEle)
+    drawContext.canvas.nativeCanvas.drawText(aziText, boxX + 12f, boxY + 48f, paintTextAzi)
+}
+
+/**
+ * Dibuja la Mini-Esfera Espacial 3D (Gyro Position Sphere) en la esquina superior derecha
+ * para dar noción tridimensional de la orientación del teléfono respecto a tierra y a la víctima.
+ */
+private fun DrawScope.drawArSpatialGyroSphere(
+    w: Float,
+    h: Float,
+    bearingDeg: Double,
+    elevationDeg: Double,
+    rollDeg: Double,
+    target: ArWifiPoint?,
+) {
+    if (w < 100f || h < 100f) return
+
+    val safeBearing = if (bearingDeg.isNaN() || bearingDeg.isInfinite()) 0.0 else bearingDeg
+    val safeElevation = if (elevationDeg.isNaN() || elevationDeg.isInfinite()) 0.0 else elevationDeg.coerceIn(-90.0, 90.0)
+
+    val sphereCenter = Offset(w - 70f, 160f)
+    val sphereR = 42f
+
+    // Fondo esfera espacial
+    drawCircle(
+        color = Color(0xCC051419),
+        radius = sphereR,
+        center = sphereCenter,
+    )
+    drawCircle(
+        color = Color(0xFF00FFCC).copy(alpha = 0.6f),
+        radius = sphereR,
+        center = sphereCenter,
+        style = Stroke(width = 1.8f),
+    )
+
+    // Anillo Ecuatorial del Horizonte (Plano Tierra)
+    val radPitch = Math.toRadians(safeElevation).toFloat()
+    val tiltY = (sin(radPitch) * (sphereR * 0.85f)).coerceIn(-sphereR * 0.85f, sphereR * 0.85f)
+
+    drawOval(
+        color = Color(0xFF00FF88).copy(alpha = 0.5f),
+        topLeft = Offset(sphereCenter.x - sphereR * 0.9f, sphereCenter.y - tiltY - 6f),
+        size = Size(sphereR * 1.8f, 12f),
+        style = Stroke(width = 1.2f),
+    )
+
+    // Eje vertical Polo Cenit / Nadir
+    drawLine(
+        color = Color(0x6600E5FF),
+        start = Offset(sphereCenter.x, sphereCenter.y - sphereR * 0.9f),
+        end = Offset(sphereCenter.x, sphereCenter.y + sphereR * 0.9f),
+        strokeWidth = 1f,
+    )
+
+    // Vector 3D hacia el objetivo (si existe)
+    if (target != null) {
+        val diffB = (target.bearingDeg - safeBearing) % 360.0
+        val radB = Math.toRadians(diffB).toFloat()
+        val vecX = sphereCenter.x + sin(radB) * (sphereR * 0.75f)
+        val vecY = sphereCenter.y - tiltY + (target.depthM.toFloat() * 6f).coerceIn(-18f, 18f)
+
+        drawLine(
+            color = Color(0xFFFF3B30),
+            start = sphereCenter,
+            end = Offset(vecX, vecY),
+            strokeWidth = 2.5f,
+            cap = StrokeCap.Round,
+        )
+        drawCircle(
+            color = Color(0xFFFF3B30),
+            radius = 4f,
+            center = Offset(vecX, vecY),
+        )
+    }
+
+    // Marca del Norte en la esfera
+    val northRad = Math.toRadians(-safeBearing).toFloat()
+    val nx = sphereCenter.x + sin(northRad) * (sphereR * 0.88f)
+    val ny = sphereCenter.y - cos(northRad) * (sphereR * 0.88f)
+    drawCircle(color = Color(0xFFFFCC00), radius = 3f, center = Offset(nx, ny))
+}
+
+/**
+ * Medidor de Profundidad Subterránea y Pozo de Penetración en Punto Cero (Nadir).
+ * Aplica el modelo de penetración dieléctrica (εr = 4.8) para calcular la profundidad vertical exacta.
+ */
+private fun DrawScope.drawArGroundZeroPrecisionDepthSounder(
+    cx: Float,
+    cy: Float,
+    w: Float,
+    h: Float,
+    elevationDeg: Double,
+    point: ArWifiPoint,
+    pulse: Float,
+    isSpanish: Boolean,
+) {
+    if (w < 80f || h < 80f) return
+
+    val exactDepthM = abs(point.depthM).coerceIn(0.2, 8.0)
+    // Constante dieléctrica del concreto/escombros mixtos (εr ≈ 4.8)
+    val dielectricConstant = 4.8
+    val rfVelocityCmNs = 30.0 / kotlin.math.sqrt(dielectricConstant)
+    val tofDelayNs = (exactDepthM * 2.0 / (rfVelocityCmNs * 1e-2) * 1e-9) * 1e9
+
+    val sounderY = (cy + h * 0.18f).coerceIn(h * 0.25f, h * 0.82f)
+
+    // Pozo cilíndrico holográfico en perspectiva (anillos de profundidad cada 0.5m)
+    val maxMeters = 3.0
+    val stepCount = 6
+    for (i in 1..stepCount) {
+        val meterLevel = i * 0.5
+        val depthProgress = (meterLevel / maxMeters).toFloat()
+        val ringY = sounderY + depthProgress * (h * 0.22f)
+        val ringRx = ((w * 0.36f) * (1.0f - depthProgress * 0.25f)).coerceAtLeast(10f)
+        val ringRy = (14f * (1.0f - depthProgress * 0.20f)).coerceAtLeast(4f)
+
+        val isTargetPlane = abs(meterLevel - exactDepthM) < 0.35
+
+        drawOval(
+            color = if (isTargetPlane) Color(0xFF00FFCC).copy(alpha = 0.85f * pulse) else Color(0x3500FF88),
+            topLeft = Offset(cx - ringRx, ringY - ringRy),
+            size = Size(ringRx * 2f, ringRy * 2f),
+            style = Stroke(width = if (isTargetPlane) 2.5f else 1.2f),
+        )
+
+        // Etiqueta de nivel métrico
+        val paintMeter = android.graphics.Paint().apply {
+            this.color = if (isTargetPlane) Color(0xFF00FFCC).toArgb() else Color(0x8000FF88).toArgb()
+            this.textSize = if (isTargetPlane) 19f else 15f
+            this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, if (isTargetPlane) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+            this.textAlign = android.graphics.Paint.Align.RIGHT
+            this.isAntiAlias = true
+        }
+        drawContext.canvas.nativeCanvas.drawText("-${"%.1f".format(meterLevel)}m", cx - ringRx - 8f, ringY + 5f, paintMeter)
+    }
+
+    // Líneas verticales guías del pozo
+    val topRx = w * 0.36f
+    val botRx = w * 0.27f
+    val botY = sounderY + (h * 0.22f)
+    drawLine(Color(0x4000FF88), Offset(cx - topRx, sounderY), Offset(cx - botRx, botY), strokeWidth = 1.2f)
+    drawLine(Color(0x4000FF88), Offset(cx + topRx, sounderY), Offset(cx + botRx, botY), strokeWidth = 1.2f)
+
+    // Tarjeta Flotante con la Medición Científica de Profundidad Exacta
+    val cardW = (w * 0.88f).coerceIn(240f, 540f)
+    val cardH = 92f
+    val cardX = cx - cardW / 2f
+    val cardY = (sounderY - cardH - 24f).coerceIn(30f, h - cardH - 20f)
+
+    val paintCardBg = android.graphics.Paint().apply {
+        this.color = Color(0xEE041216).toArgb()
+        this.style = android.graphics.Paint.Style.FILL
+        this.isAntiAlias = true
+    }
+    val paintCardBorder = android.graphics.Paint().apply {
+        this.color = Color(0xFF00FFCC).toArgb()
+        this.style = android.graphics.Paint.Style.STROKE
+        this.strokeWidth = 2f
+        this.isAntiAlias = true
+    }
+    val paintTitle = android.graphics.Paint().apply {
+        this.color = Color(0xFF00FFCC).toArgb()
+        this.textSize = 20f
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+        this.textAlign = android.graphics.Paint.Align.CENTER
+        this.isAntiAlias = true
+    }
+    val paintValue = android.graphics.Paint().apply {
+        this.color = Color.White.toArgb()
+        this.textSize = 23f
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+        this.textAlign = android.graphics.Paint.Align.CENTER
+        this.isAntiAlias = true
+    }
+    val paintSub = android.graphics.Paint().apply {
+        this.color = Color(0xFFFFCC00).toArgb()
+        this.textSize = 15f
+        this.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.NORMAL)
+        this.textAlign = android.graphics.Paint.Align.CENTER
+        this.isAntiAlias = true
+    }
+
+    drawContext.canvas.nativeCanvas.drawRoundRect(cardX, cardY, cardX + cardW, cardY + cardH, 12f, 12f, paintCardBg)
+    drawContext.canvas.nativeCanvas.drawRoundRect(cardX, cardY, cardX + cardW, cardY + cardH, 12f, 12f, paintCardBorder)
+
+    val titleText = if (isSpanish) "🎯 PUNTO CERO — PROFUNDIDAD EXACTA" else "🎯 GROUND ZERO — EXACT DEPTH"
+    val depthValText = if (isSpanish) "⬇ PROFUNDIDAD: ${"%.2f".format(exactDepthM)} m (± 6 cm)" else "⬇ DEPTH: ${"%.2f".format(exactDepthM)} m (± 6 cm)"
+    val metaText = "Medio: Escombros (εr = $dielectricConstant) • ToF: ${"%.1f".format(tofDelayNs)} ns"
+
+    drawContext.canvas.nativeCanvas.drawText(titleText, cx, cardY + 26f, paintTitle)
+    drawContext.canvas.nativeCanvas.drawText(depthValText, cx, cardY + 56f, paintValue)
+    drawContext.canvas.nativeCanvas.drawText(metaText, cx, cardY + 80f, paintSub)
+}
+
+

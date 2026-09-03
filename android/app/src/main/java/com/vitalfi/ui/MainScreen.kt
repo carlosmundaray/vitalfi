@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -54,6 +55,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Spacer
 import com.vitalfi.sensor.GpsLocationReader
 import androidx.compose.material3.AlertDialog
@@ -172,6 +174,14 @@ fun MainScreen(
     onSetDefaultWifiMode: (WifiCollectMode) -> Unit,
     onSetColorblindMode: (Boolean) -> Unit,
     onSetAppLanguage: (String) -> Unit,
+    onOpenEvaluationDialog: () -> Unit = {},
+    onDismissEvaluationDialog: () -> Unit = {},
+    onOpenEnterLicenseDialog: () -> Unit = {},
+    onDismissEnterLicenseDialog: () -> Unit = {},
+    onActivateLicenseKey: (String, String) -> Boolean = { _, _ -> false },
+    onRemoveLicense: () -> Unit = {},
+    onLaunchPlayPurchase: (String) -> Unit = {},
+    onRestorePlayPurchases: () -> Unit = {},
 ) {
     var showAbout by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -241,6 +251,25 @@ fun MainScreen(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
+                        Card(
+                            onClick = onOpenEvaluationDialog,
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (state.licenseInfo.isLicensed) Color(0xFF102820) else if (state.licenseInfo.isTrialExpired) Color(0xFF281C10) else Color(0xFF102028),
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (state.licenseInfo.isLicensed) Color(0xFF00E676) else if (state.licenseInfo.isTrialExpired) Color(0xFFFFB300) else Cyan,
+                            ),
+                        ) {
+                            Text(
+                                text = if (state.licenseInfo.isLicensed) "💎 PRO" else if (state.licenseInfo.isTrialExpired) "⏳ DÍA ${state.licenseInfo.daysUsed}" else "⏳ DÍA ${state.licenseInfo.daysUsed}/40",
+                                color = if (state.licenseInfo.isLicensed) Color(0xFF00E676) else if (state.licenseInfo.isTrialExpired) Color(0xFFFFB300) else Cyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
                     }
                     Text(
                         text = stringResource(R.string.app_tagline),
@@ -287,6 +316,7 @@ fun MainScreen(
                 onConnected = onConnectedMode,
                 onPassive = onPassiveMode,
                 onSetSensingMode = onSetSensingEngineMode,
+                onSetOpenWrtPort = onSetOpenWrtUdpPort,
             )
 
             StatusCard(state)
@@ -307,36 +337,92 @@ fun MainScreen(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilterChip(
-                    selected = state.showRadar3D,
+                OutlinedButton(
                     onClick = onToggleRadar3D,
-                    label = { Text(if (state.showRadar3D) stringResource(R.string.action_view_3d) else stringResource(R.string.action_radar_2d), fontSize = 11.sp) },
-                    leadingIcon = { Icon(Icons.Default.ViewInAr, null) },
-                )
-                Button(
-                    onClick = onToggleArCamera,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.showArCamera) Color(0xFFFF9900) else Color(0xFF2E220D),
-                        contentColor = if (state.showArCamera) Color.Black else Color(0xFFFFCC00),
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
                     shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (state.showRadar3D) Color(0xFF1B3822) else Color(0xFF101E17),
+                        contentColor = if (state.showRadar3D) Cyan else Color(0xFFA8C4B6),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (state.showRadar3D) Cyan else Color(0xFF1E382B),
+                    ),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                 ) {
-                    Text("🎮 MODO AR", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Icon(Icons.Default.ViewInAr, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        if (state.showRadar3D) "3D" else "2D",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
-                Button(
-                    onClick = onReset,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+
+                OutlinedButton(
+                    onClick = onToggleArCamera,
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (state.showArCamera) Color(0xFF38220A) else Color(0xFF18130B),
+                        contentColor = if (state.showArCamera) Color(0xFFFF9900) else Color(0xFFD4A86A),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (state.showArCamera) Color(0xFFFF9900) else Color(0xFF382A14),
+                    ),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
+                    Text(
+                        "🎮 MODO AR",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onReset,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF101E17),
+                        contentColor = Color(0xFFA8C4B6),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E382B)),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(stringResource(R.string.action_reset), fontSize = 11.sp)
                 }
-                Button(onClick = onExportCsv, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
-                    Icon(Icons.Default.Download, null)
-                    Text(" CSV", fontSize = 11.sp)
+
+                OutlinedButton(
+                    onClick = onExportCsv,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF101E17),
+                        contentColor = Cyan,
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E382B)),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("CSV", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -471,7 +557,30 @@ fun MainScreen(
             onAdjustElevation = onAdjustElevation,
             onResetElevation = onResetElevation,
             onSetAppLanguage = onSetAppLanguage,
+            onOpenEvaluationDialog = onOpenEvaluationDialog,
+            onOpenEnterLicenseDialog = onOpenEnterLicenseDialog,
+            onRemoveLicense = onRemoveLicense,
+            onLaunchPlayPurchase = onLaunchPlayPurchase,
+            onRestorePlayPurchases = onRestorePlayPurchases,
             onDismiss = { showSettings = false },
+        )
+    }
+
+    if (state.showEvaluationDialog) {
+        EvaluationLicenseDialog(
+            licenseInfo = state.licenseInfo,
+            billingProducts = state.billingProducts,
+            onDismiss = onDismissEvaluationDialog,
+            onBuyProduct = onLaunchPlayPurchase,
+            onRestorePurchases = onRestorePlayPurchases,
+            onEnterKey = onOpenEnterLicenseDialog,
+        )
+    }
+
+    if (state.showEnterLicenseDialog) {
+        EnterLicenseKeyDialog(
+            onDismiss = onDismissEnterLicenseDialog,
+            onActivate = onActivateLicenseKey,
         )
     }
 
@@ -614,6 +723,11 @@ private fun SettingsDialog(
     onAdjustElevation: (Double) -> Unit,
     onResetElevation: () -> Unit,
     onSetAppLanguage: (String) -> Unit,
+    onOpenEvaluationDialog: () -> Unit,
+    onOpenEnterLicenseDialog: () -> Unit,
+    onRemoveLicense: () -> Unit,
+    onLaunchPlayPurchase: (String) -> Unit,
+    onRestorePlayPurchases: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var showLanguagePicker by remember { mutableStateOf(false) }
@@ -1023,6 +1137,101 @@ private fun SettingsDialog(
                         )
                     }
                 }
+
+                // —— Licencia y Evaluación (Modelo Honor) ——
+                SettingsSectionTitle(stringResource(R.string.license_section_title))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF142418)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val lic = state.licenseInfo
+                        if (lic.isLicensed) {
+                            Text(
+                                text = "💎 " + stringResource(R.string.license_status_registered, lic.holderName),
+                                color = Color(0xFF66FF99),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                            )
+                            Text(
+                                text = "Clave: ${lic.licenseKey}",
+                                color = Color(0xFF88CC88),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            OutlinedButton(
+                                onClick = onRemoveLicense,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.toast_license_removed), fontSize = 11.sp, color = Color(0xFFFF8888))
+                            }
+                        } else {
+                            Text(
+                                text = if (lic.isTrialExpired) {
+                                    "⏳ " + stringResource(R.string.license_status_eval_extended, lic.daysUsed)
+                                } else {
+                                    "⏳ " + stringResource(R.string.license_status_eval, lic.daysUsed, lic.trialDaysMax)
+                                },
+                                color = if (lic.isTrialExpired) Color(0xFFFFB300) else Cyan,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                            )
+                            Text(
+                                text = stringResource(R.string.eval_dialog_message),
+                                color = Color(0xFFAAAAAA),
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                            )
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onLaunchPlayPurchase(com.vitalfi.billing.PlayBillingManager.PRODUCT_PRO_SUPPORTER)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Cyan,
+                                    contentColor = Color.Black,
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                            ) {
+                                Text("💎 " + stringResource(R.string.eval_btn_buy_license), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onDismiss()
+                                        onOpenEvaluationDialog()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                                ) {
+                                    Text(stringResource(R.string.about_button), fontSize = 11.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        onDismiss()
+                                        onOpenEnterLicenseDialog()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                                ) {
+                                    Text(stringResource(R.string.eval_btn_enter_key), fontSize = 11.sp)
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = onRestorePlayPurchases,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            ) {
+                                Text(stringResource(R.string.license_btn_restore), fontSize = 11.sp, color = Color(0xFF80CBC4))
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1076,35 +1285,63 @@ private fun TrappedFilterControls(
 
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 OutlinedButton(
                     onClick = onMarkRubbleZone,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(38.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF14241B),
+                        contentColor = Color(0xFFE8F6EF),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF244A32)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                 ) {
-                    Text("🎯 " + stringResource(R.string.mark_rubble_zone), fontSize = 11.sp)
+                    Text("🎯 " + stringResource(R.string.mark_rubble_zone), fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
                 }
                 if (state.rubbleZoneLabel != null) {
-                    TextButton(
+                    OutlinedButton(
                         onClick = onClearRubbleZone,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(38.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color(0xFF2E1218),
+                            contentColor = Color(0xFFFF3D68),
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5E1B28)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     ) {
-                        Text(stringResource(R.string.status_remove_zone), color = Color(0xFFFF6666), fontSize = 11.sp)
+                        Text(stringResource(R.string.status_remove_zone), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 OutlinedButton(
                     onClick = onExcludeRescuer,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(38.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF14241B),
+                        contentColor = Color(0xFFE8F6EF),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF244A32)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                 ) {
-                    Text("🚫 " + stringResource(R.string.exclude_rescuer), fontSize = 11.sp)
+                    Text("🚫 " + stringResource(R.string.exclude_rescuer), fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
                 }
                 if (state.excludedRescuerCount > 0) {
-                    TextButton(
+                    OutlinedButton(
                         onClick = onClearExclusions,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(38.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color(0xFF2E1218),
+                            contentColor = Color(0xFFFF3D68),
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5E1B28)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     ) {
-                        Text(stringResource(R.string.clear_exclusions), color = Color(0xFFFF6666), fontSize = 11.sp)
+                        Text(stringResource(R.string.clear_exclusions), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1281,6 +1518,7 @@ private fun ModeSelector(
     onConnected: () -> Unit,
     onPassive: () -> Unit,
     onSetSensingMode: (SensingEngineMode) -> Unit,
+    onSetOpenWrtPort: (Int) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -1316,14 +1554,14 @@ private fun ModeSelector(
                     ) {
                         Text("📱", fontSize = 16.sp)
                         Text(
-                            "RSSI Local",
+                            "Sensado Móvil",
                             color = if (isRssi) Cyan else Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                         )
                     }
                     Text(
-                        "Solo Smartphone (Sin router)",
+                        "Teléfono Autónomo",
                         color = Color(0xFFA0BBA0),
                         fontSize = 10.sp,
                     )
@@ -1349,14 +1587,14 @@ private fun ModeSelector(
                     ) {
                         Text("🛰️", fontSize = 16.sp)
                         Text(
-                            "CSI Router",
+                            "Sensor RF",
                             color = if (isCsi) Cyan else Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                         )
                     }
                     Text(
-                        if (state.csiConnected) "🟢 Conectado (${state.csiPacketRateHz.toInt()} Hz)" else "OpenWrt (UDP ${state.openWrtUdpPort})",
+                        if (state.csiConnected) "🟢 Conectado (${state.csiPacketRateHz.toInt()} Hz)" else "📡 Esperando enlace...",
                         color = if (state.csiConnected) Color(0xFF66FF99) else Color(0xFFFFCC00),
                         fontSize = 10.sp,
                         fontWeight = if (state.csiConnected) FontWeight.SemiBold else FontWeight.Normal,
@@ -1390,6 +1628,47 @@ private fun ModeSelector(
                     label = { Text(stringResource(R.string.mode_passive), fontSize = 11.sp) },
                     leadingIcon = { Icon(Icons.Default.WifiFind, null, modifier = Modifier.size(14.dp)) },
                 )
+            }
+        }
+
+        // Sub-opciones cuando está en modo CSI (Seleccionar Sensor Wi-Fi)
+        if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Sensor:",
+                    color = Color(0xFF88AA88),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                FilterChip(
+                    selected = state.ssid.isNotBlank(),
+                    onClick = onPassive,
+                    modifier = Modifier.weight(1f),
+                    label = {
+                        Text(
+                            if (state.ssid.isNotBlank()) "🛰️ ${state.ssid}" else "🔍 Seleccionar Sensor Wi-Fi...",
+                            fontSize = 11.sp,
+                            fontWeight = if (state.ssid.isNotBlank()) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.WifiFind, contentDescription = null, modifier = Modifier.size(14.dp))
+                    },
+                )
+                if (state.csiConnected) {
+                    Text(
+                        "${state.csiPacketRateHz.toInt()} Hz",
+                        color = Color(0xFF66FF99),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }
