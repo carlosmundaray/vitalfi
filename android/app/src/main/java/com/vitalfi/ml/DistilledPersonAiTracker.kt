@@ -9,12 +9,16 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Estado dinámico de movimiento clasificado por la IA destilada.
+ * Estado dinámico de movimiento y gestos clasificado por la IA destilada.
  */
 enum class PersonMotionState(val labelEs: String, val labelEn: String, val icon: String) {
     STATIONARY_BREATHING("En Reposo (Respira)", "Resting (Breathing)", "🫁"),
-    MOVING_ACTIVE("En Movimiento", "Moving / Walking", "🏃"),
-    VITAL_AGITATION("Agitación Vital", "Vital Agitation", "⚡"),
+    ARM_RAISED_RIGHT("Mano Derecha Levantada", "Right Arm Raised", "🙋"),
+    ARM_RAISED_LEFT("Mano Izquierda Levantada", "Left Arm Raised", "🙋"),
+    BOTH_ARMS_RAISED("¡Ambas Manos Arriba!", "Both Arms Raised", "🙌"),
+    WAVING_FOR_HELP("Pidiendo Auxilio", "Waving for Help", "👋"),
+    MOVING_ACTIVE("En Movimiento / Caminando", "Moving / Walking", "🏃"),
+    VITAL_AGITATION("Agitación de Brazos", "Arm Agitation", "⚡"),
     FAINT_TRAPPED("Inmóvil (Bajo Escombros)", "Immobile (Trapped)", "🧱"),
     SEARCHING("Analizando Patrón", "Analyzing Pattern", "📡");
 
@@ -37,6 +41,8 @@ data class PersonAiInference(
     val isAtGroundZero: Boolean = false,       // true si está a <= 0.85m del Punto Cero
     val groundZeroDistanceM: Double = 0.0,     // Distancia restante al Punto Cero
     val groundZeroConvergence: Float = 0.0f,   // 0.0 a 1.0 (Certeza de convergencia)
+    val rightArmLift: Float = 0.0f,            // 0.0 (abajo) a 1.0 (mano totalmente arriba)
+    val leftArmLift: Float = 0.0f,             // 0.0 (abajo) a 1.0 (mano totalmente arriba)
 )
 
 /**
@@ -54,6 +60,8 @@ private class KalmanTrack(
     var pBearing: Double = 4.0
     val q: Double = 0.05 // Ruido del proceso
     val r: Double = 0.35 // Ruido de la medición
+    var rArmLift: Float = 0.0f
+    var lArmLift: Float = 0.0f
 
     fun update(measBearing: Double, measDist: Double, measDepth: Double, nowMs: Long) {
         val dt = ((nowMs - lastUpdateMs).coerceIn(10L, 1000L)) / 1000.0
@@ -107,9 +115,9 @@ class DistilledPersonAiTracker {
         doubleArrayOf(1.40, 1.30, 0.40, -0.80, 1.45),
         doubleArrayOf(0.70, 0.65, 1.10, 0.10, 0.75),
     )
-    private val b1 = doubleArrayOf(0.25, 0.30, 0.15, -0.40, 0.50, 0.10)
+    private val b1 = doubleArrayOf(0.20, -0.10, 0.35, -0.45, 0.50, 0.15)
 
-    // Pesos destilados de la capa de salida (Layer 2: 6 neuronas -> 2 salidas: HumanProb, MotionScore)
+    // Pesos de la capa de salida (Layer 2: 6 neuronas -> 2 salidas)
     private val w2 = arrayOf(
         doubleArrayOf(0.85, 0.90, 0.75, 0.30, 1.10, 0.65), // Human Probability
         doubleArrayOf(0.20, 0.35, 1.40, 1.65, 0.25, 0.80), // Motion Score
@@ -118,7 +126,7 @@ class DistilledPersonAiTracker {
 
     /**
      * Procesa las características biométricas y espaciales de una persona detectada
-     * y genera una predicción neural con trayectoria suavizada.
+     * y genera una predicción neural con trayectoria suavizada y gestos de brazos.
      */
     fun processTarget(
         targetId: String,
@@ -130,6 +138,8 @@ class DistilledPersonAiTracker {
         confidence: Double,
         isBreathing: Boolean,
         rubbleConf: Double,
+        isActivity: Boolean = false,
+        isDistress: Boolean = false,
         nowMs: Long = System.currentTimeMillis(),
     ): PersonAiInference {
         // 1. Obtener o inicializar el Filtro de Kalman
@@ -141,7 +151,10 @@ class DistilledPersonAiTracker {
         // 2. Normalización de entradas para la Red Neuronal
         val x0_resp = if (isBreathing || respRate in 8.0..34.0) ((respRate - 8.0) / 26.0).coerceIn(0.1, 1.0) else 0.05
         val x1_hr = if (heartRate in 45.0..150.0) ((heartRate - 45.0) / 105.0).coerceIn(0.1, 1.0) else 0.05
-        val x2_motion = (abs(track.vDist) * 1.5 + abs(track.vBearing) * 0.05).coerceIn(0.0, 1.5)
+        
+        // Incluir energía de actividad CSI real (Doppler de brazos / movimiento en el sitio)
+        val csiActivityBonus = if (isActivity || isDistress) 0.75 else 0.0
+        val x2_motion = (abs(track.vDist) * 1.5 + abs(track.vBearing) * 0.05 + csiActivityBonus).coerceIn(0.0, 1.5)
         val x3_rubble = rubbleConf.coerceIn(0.0, 1.0)
         val x4_conf = (confidence / 100.0).coerceIn(0.0, 1.0)
 
@@ -165,25 +178,59 @@ class DistilledPersonAiTracker {
 
         // 4. Estimación de velocidad cinemática real en m/s
         val speedMps = (abs(track.vDist).toFloat() + (abs(track.vBearing).toFloat() * 0.015f)).coerceIn(0.0f, 2.5f)
-        val isMoving = speedMps > 0.18f || motionScore > 0.65f
+        val isWalking = speedMps > 0.35f
+        val isMoving = isWalking || motionScore > 0.60f
 
-        // 5. Clasificación de estado de movimiento
+        // 5. Estimación de Gestos de Brazos por Doppler & Micro-movimiento Wi-Fi
+        val isArmActivity = isActivity || isDistress || (!isWalking && (x2_motion > 0.30 || motionScore > 0.35f))
+
+        var targetRLift = 0.0f
+        var targetLLift = 0.0f
+
+        if (isArmActivity) {
+            val deltaB = track.vBearing
+            if (deltaB > 1.2) {
+                targetRLift = 0.92f
+                targetLLift = 0.15f
+            } else if (deltaB < -1.2) {
+                targetLLift = 0.92f
+                targetRLift = 0.15f
+            } else {
+                // Movimiento frontal hacia el ESP32: ambas manos o saludo activo
+                targetRLift = 0.88f
+                targetLLift = if (isDistress) 0.88f else 0.20f
+            }
+        }
+
+        // Suavizado exponencial (EMA) para elevación de brazos libre de saltos bruscos
+        track.rArmLift = track.rArmLift * 0.70f + targetRLift * 0.30f
+        track.lArmLift = track.lArmLift * 0.70f + targetLLift * 0.30f
+        val rLift = track.rArmLift
+        val lLift = track.lArmLift
+
+        // 6. Clasificación de estado de movimiento y gestos
         val motionState = when {
-            isMoving && speedMps > 0.45f -> PersonMotionState.MOVING_ACTIVE
-            isMoving -> PersonMotionState.MOVING_ACTIVE
-            x2_motion > 0.8 -> PersonMotionState.VITAL_AGITATION
+            isWalking -> PersonMotionState.MOVING_ACTIVE
+            rLift > 0.55f && lLift > 0.55f -> PersonMotionState.BOTH_ARMS_RAISED
+            rLift > 0.55f -> PersonMotionState.ARM_RAISED_RIGHT
+            lLift > 0.55f -> PersonMotionState.ARM_RAISED_LEFT
+            isArmActivity && (isDistress || x2_motion > 0.5) -> PersonMotionState.WAVING_FOR_HELP
             rubbleConf > 0.45 && humanProbability > 0.70f -> PersonMotionState.FAINT_TRAPPED
             isBreathing -> PersonMotionState.STATIONARY_BREATHING
             else -> PersonMotionState.SEARCHING
         }
 
-        // 6. Estimación y Fijación de PUNTO CERO (Ground Zero / Epicentro de Rescate)
+        // 7. Estimación y Fijación de PUNTO CERO (Ground Zero / Epicentro de Rescate)
         val isAtGroundZero = track.distance <= 0.85
         val groundZeroConvergence = (1.0f - (track.distance.toFloat() / 2.5f)).coerceIn(0.0f, 1.0f)
 
         val tag = when {
             isAtGroundZero -> "🛑 ¡PUNTO CERO! (EXCAVAR ~${"%.2f".format(abs(track.depth))}m)"
-            isMoving -> "🏃 EN MOVIMIENTO (~${"%.1f".format(speedMps)} m/s)"
+            motionState == PersonMotionState.ARM_RAISED_RIGHT -> "🙋 MANO DERECHA LEVANTADA"
+            motionState == PersonMotionState.ARM_RAISED_LEFT -> "🙋 MANO IZQUIERDA LEVANTADA"
+            motionState == PersonMotionState.BOTH_ARMS_RAISED -> "🙌 ¡AMBAS MANOS ARRIBA!"
+            motionState == PersonMotionState.WAVING_FOR_HELP -> "👋 PIDIENDO AUXILIO (AGITANDO)"
+            isWalking -> "🏃 EN MOVIMIENTO (~${"%.1f".format(speedMps)} m/s)"
             motionState == PersonMotionState.FAINT_TRAPPED -> "🧱 ATRAPADO BAJO ESCOMBROS"
             isBreathing -> "🫁 VITAL ACTIVO (${(humanProbability * 100).toInt()}% IA)"
             else -> "🎯 PERSONA DETECTADA (${(humanProbability * 100).toInt()}% IA)"
@@ -194,7 +241,7 @@ class DistilledPersonAiTracker {
             motionState = motionState,
             velocityMps = speedMps,
             motionHeadingDeg = track.bearing,
-            isMoving = isMoving,
+            isMoving = isWalking,
             smoothedBearing = track.bearing,
             smoothedDistance = track.distance,
             smoothedDepth = track.depth,
@@ -202,6 +249,8 @@ class DistilledPersonAiTracker {
             isAtGroundZero = isAtGroundZero,
             groundZeroDistanceM = track.distance,
             groundZeroConvergence = groundZeroConvergence,
+            rightArmLift = rLift,
+            leftArmLift = lLift,
         )
     }
 

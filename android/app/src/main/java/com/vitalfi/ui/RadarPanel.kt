@@ -648,10 +648,9 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                     }
                 } else {
                     Text(
-                        "⚠️ Esperando tramas WiFi-CSI en puerto UDP :${state.openWrtUdpPort}...",
+                        "📡 Buscando enlace con Sensor RF de alta precisión...",
                         color = Color(0xFFFFCC00),
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
                     )
                 }
             }

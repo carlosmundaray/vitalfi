@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.3.68",
-  "versionCode": 71,
-  "releaseDate": "2026-08-27",
-  "changelog": "100% Datos Reales: Eliminación total de valores por defecto o simulados en respiración/pulso, y remapeo de orientación AR."
+  "latestVersion": "2.2.0",
+  "versionCode": 76,
+  "releaseDate": "2026-09-02",
+  "changelog": "Modelo de evaluación continua (40 días) con cero bloqueos para rescate, integración oficial de Google Play Billing y activación de licencias offline."
 }

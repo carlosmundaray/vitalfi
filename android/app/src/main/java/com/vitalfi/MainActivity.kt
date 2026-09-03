@@ -204,6 +204,14 @@ class MainActivity : ComponentActivity() {
                             applicationContext.resources.updateConfiguration(conf, applicationContext.resources.displayMetrics)
                             recreate()
                         },
+                        onOpenEvaluationDialog = { viewModel.openEvaluationDialog() },
+                        onDismissEvaluationDialog = { viewModel.dismissEvaluationDialog() },
+                        onOpenEnterLicenseDialog = { viewModel.openEnterLicenseDialog() },
+                        onDismissEnterLicenseDialog = { viewModel.dismissEnterLicenseDialog() },
+                        onActivateLicenseKey = { key, holder -> viewModel.activateLicenseKey(key, holder) },
+                        onRemoveLicense = { viewModel.removeLicense() },
+                        onLaunchPlayPurchase = { prodId -> viewModel.launchPlayPurchase(this@MainActivity, prodId) },
+                        onRestorePlayPurchases = { viewModel.restorePlayPurchases() },
                     )
                 }
             }

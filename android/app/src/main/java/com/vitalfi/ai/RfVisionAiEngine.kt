@@ -87,9 +87,8 @@ object RfVisionAiEngine {
         }
 
         val posture = csiFrame.bodyPosture.ifBlank { "Tendido (Horizontal)" }
-        val aoaDeg = csiFrame.estimatedAoADeg.toFloat()
-        val aoaNormalized = (aoaDeg / 45.0f).coerceIn(-0.35f, 0.35f)
-        val centerX = 0.5f + aoaNormalized
+        // AoA no disponible con 1 antena → esqueleto siempre centrado
+        val centerX = 0.5f
 
         // Micro-animación respiratoria sobre el pecho
         val timeSec = (System.currentTimeMillis() % 60000L) / 1000.0f
@@ -182,6 +181,34 @@ object RfVisionAiEngine {
                     rightAnkle = RfKeypoint(centerX + 0.11f, baseY + 0.44f),
                     postureLabel = "⚠️ Ilustrativo — Auxilio Activo",
                     confidence = 0.20f,
+                    breathingPhaseOffset = chestExpansion,
+                    heartPulsing = heartBeating,
+                    heartBpm = heartBpm,
+                )
+            }
+            posture.contains("De pie", ignoreCase = true) || posture.contains("Erguido", ignoreCase = true) || posture.contains("Caminando", ignoreCase = true) -> {
+                // Postura De Pie / Erguido
+                val baseY = 0.45f
+                val walkSwing = if (posture.contains("Caminando", ignoreCase = true)) sin(timeSec * 4.0f) * 0.04f else 0.0f
+                RfSkeletonPose(
+                    head = RfKeypoint(centerX, baseY - 0.32f),
+                    neck = RfKeypoint(centerX, baseY - 0.22f),
+                    leftShoulder = RfKeypoint(centerX - 0.12f, baseY - 0.19f),
+                    rightShoulder = RfKeypoint(centerX + 0.12f, baseY - 0.19f),
+                    leftElbow = RfKeypoint(centerX - 0.15f, baseY - 0.05f - walkSwing),
+                    rightElbow = RfKeypoint(centerX + 0.15f, baseY - 0.05f + walkSwing),
+                    leftWrist = RfKeypoint(centerX - 0.14f, baseY + 0.08f - walkSwing),
+                    rightWrist = RfKeypoint(centerX + 0.14f, baseY + 0.08f + walkSwing),
+                    chest = RfKeypoint(centerX, baseY - 0.08f + chestExpansion),
+                    pelvis = RfKeypoint(centerX, baseY + 0.08f),
+                    leftHip = RfKeypoint(centerX - 0.07f, baseY + 0.10f),
+                    rightHip = RfKeypoint(centerX + 0.07f, baseY + 0.10f),
+                    leftKnee = RfKeypoint(centerX - 0.08f, baseY + 0.28f + walkSwing),
+                    rightKnee = RfKeypoint(centerX + 0.08f, baseY + 0.28f - walkSwing),
+                    leftAnkle = RfKeypoint(centerX - 0.08f, baseY + 0.46f + walkSwing),
+                    rightAnkle = RfKeypoint(centerX + 0.08f, baseY + 0.46f - walkSwing),
+                    postureLabel = if (posture.contains("Caminando", ignoreCase = true)) "🚶 En Movimiento / Caminando" else "👤 De Pie (Erguido)",
+                    confidence = 0.25f,
                     breathingPhaseOffset = chestExpansion,
                     heartPulsing = heartBeating,
                     heartBpm = heartBpm,

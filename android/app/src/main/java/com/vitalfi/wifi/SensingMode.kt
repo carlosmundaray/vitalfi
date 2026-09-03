@@ -34,11 +34,11 @@ data class CsiPacketData(
     val estimatedAoADeg: Double = 0.0,
     val estimatedDepthM: Double = 0.0,
     val confidence: Double = 0.0,
-    val estimatedHeightM: Double = 1.70,
-    val estimatedWidthM: Double = 0.50,
-    val bodyPosture: String = "Tendido (Horizontal)",
-    val bodyCategory: String = "Adulto",
-    val rcsAreaM2: Double = 0.82,
+    val estimatedHeightM: Double = 0.0,   // 0.0 = no medible con 1 antena
+    val estimatedWidthM: Double = 0.0,     // 0.0 = no medible con 1 antena
+    val bodyPosture: String = "Indeterminado",
+    val bodyCategory: String = "Indeterminado",
+    val rcsAreaM2: Double = 0.0,           // 0.0 = no calculado aún
     val subcarrierAmplitudesList: List<Float> = emptyList(),
     val respirationWave: List<Float> = emptyList(),
     /** Distancia estimada por MUSIC ToF (super-resolución multipath). */
