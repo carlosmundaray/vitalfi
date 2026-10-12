@@ -93,6 +93,38 @@ class SettingsStore(context: Context) {
             prefs.edit().putBoolean(KEY_COLORBLIND, value).apply()
         }
 
+    /** Idioma seleccionado: "" para sistema, "es", "en", "zh", etc. */
+    var appLanguage: String
+        get() = prefs.getString(KEY_APP_LANGUAGE, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_APP_LANGUAGE, value).apply()
+        }
+
+    /** Modo de motor de detección: RSSI_NATIVE o CSI_OPENWRT */
+    var sensingEngineMode: com.vitalfi.wifi.SensingEngineMode
+        get() {
+            val raw = prefs.getString(KEY_SENSING_ENGINE_MODE, com.vitalfi.wifi.SensingEngineMode.RSSI_NATIVE.name)
+            return runCatching { com.vitalfi.wifi.SensingEngineMode.valueOf(raw ?: "") }
+                .getOrDefault(com.vitalfi.wifi.SensingEngineMode.RSSI_NATIVE)
+        }
+        set(value) {
+            prefs.edit().putString(KEY_SENSING_ENGINE_MODE, value.name).apply()
+        }
+
+    /** Puerto UDP de recepción de tramas CSI desde el router OpenWrt (default: 5500). */
+    var openWrtUdpPort: Int
+        get() = prefs.getInt(KEY_OPENWRT_UDP_PORT, 5500)
+        set(value) {
+            prefs.edit().putInt(KEY_OPENWRT_UDP_PORT, value).apply()
+        }
+
+    /** IP del router OpenWrt o filtro (opcional). */
+    var openWrtRouterIp: String
+        get() = prefs.getString(KEY_OPENWRT_ROUTER_IP, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_OPENWRT_ROUTER_IP, value).apply()
+        }
+
     fun loadRadarLayers(): RadarLayers = RadarLayers(
         grid = prefs.getBoolean(KEY_LAYER_GRID, true),
         compass = prefs.getBoolean(KEY_LAYER_COMPASS, true),
@@ -119,6 +151,127 @@ class SettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadRescuedVictims(): List<com.vitalfi.dsp.RescuedVictimRecord> {
+        val jsonStr = prefs.getString(KEY_RESCUED_VICTIMS, null) ?: return emptyList()
+        val list = mutableListOf<com.vitalfi.dsp.RescuedVictimRecord>()
+        try {
+            val jsonArray = org.json.JSONArray(jsonStr)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    com.vitalfi.dsp.RescuedVictimRecord(
+                        id = obj.optString("id", "rescue_${System.currentTimeMillis()}_$i"),
+                        victimId = obj.optInt("victimId", 1),
+                        label = obj.optString("label", "Víctima"),
+                        timestampMs = obj.optLong("timestampMs", System.currentTimeMillis()),
+                        latitudeGms = obj.optString("latitudeGms", ""),
+                        longitudeGms = obj.optString("longitudeGms", ""),
+                        fullGms = obj.optString("fullGms", ""),
+                        latitude = obj.optDouble("latitude", 0.0),
+                        longitude = obj.optDouble("longitude", 0.0),
+                        altitudeM = obj.optDouble("altitudeM", 0.0),
+                        depthM = obj.optDouble("depthM", 0.0),
+                        respRate = obj.optDouble("respRate", 0.0),
+                        heartRate = obj.optDouble("heartRate", 0.0),
+                        confidence = obj.optDouble("confidence", 0.0),
+                        signatureCode = obj.optString("signatureCode", ""),
+                        rescueNotes = obj.optString("rescueNotes", ""),
+                    )
+                )
+            }
+        } catch (_: Throwable) {}
+        return list
+    }
+
+    fun saveRescuedVictims(victims: List<com.vitalfi.dsp.RescuedVictimRecord>) {
+        try {
+            val jsonArray = org.json.JSONArray()
+            for (v in victims) {
+                val obj = org.json.JSONObject().apply {
+                    put("id", v.id)
+                    put("victimId", v.victimId)
+                    put("label", v.label)
+                    put("timestampMs", v.timestampMs)
+                    put("latitudeGms", v.latitudeGms)
+                    put("longitudeGms", v.longitudeGms)
+                    put("fullGms", v.fullGms)
+                    put("latitude", v.latitude)
+                    put("longitude", v.longitude)
+                    put("altitudeM", v.altitudeM)
+                    put("depthM", v.depthM)
+                    put("respRate", v.respRate)
+                    put("heartRate", v.heartRate)
+                    put("confidence", v.confidence)
+                    put("signatureCode", v.signatureCode)
+                    put("rescueNotes", v.rescueNotes)
+                }
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString(KEY_RESCUED_VICTIMS, jsonArray.toString()).apply()
+        } catch (_: Throwable) {}
+    }
+
+    /** Timestamp de la primera instalación para cálculo de período de prueba (40 días). */
+    var firstInstallTimestamp: Long
+        get() {
+            val ts = prefs.getLong(KEY_FIRST_INSTALL_TIMESTAMP, 0L)
+            if (ts == 0L) {
+                val now = System.currentTimeMillis()
+                prefs.edit().putLong(KEY_FIRST_INSTALL_TIMESTAMP, now).apply()
+                return now
+            }
+            return ts
+        }
+        set(value) {
+            prefs.edit().putLong(KEY_FIRST_INSTALL_TIMESTAMP, value).apply()
+        }
+
+    /** Clave de licencia guardada (si existe). */
+    var licenseKey: String
+        get() = prefs.getString(KEY_LICENSE_KEY, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_LICENSE_KEY, value).apply()
+        }
+
+    /** Titular registrado de la licencia (persona / institución). */
+    var licenseHolder: String
+        get() = prefs.getString(KEY_LICENSE_HOLDER, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_LICENSE_HOLDER, value).apply()
+        }
+
+    /** Tipo de licencia serializada (TRIAL, LICENSED_PRO, LICENSED_ENTERPRISE). */
+    var licenseType: String
+        get() = prefs.getString(KEY_LICENSE_TYPE, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_LICENSE_TYPE, value).apply()
+        }
+
+    fun loadLicenseInfo(): LicenseInfo {
+        return LicenseManager.getLicenseInfo(
+            firstInstallTimestampMs = firstInstallTimestamp,
+            storedKey = licenseKey,
+            storedHolder = licenseHolder,
+            storedTypeStr = licenseType,
+        )
+    }
+
+    fun saveLicense(key: String, holder: String, type: LicenseType) {
+        prefs.edit()
+            .putString(KEY_LICENSE_KEY, key)
+            .putString(KEY_LICENSE_HOLDER, holder)
+            .putString(KEY_LICENSE_TYPE, type.name)
+            .apply()
+    }
+
+    fun clearLicense() {
+        prefs.edit()
+            .remove(KEY_LICENSE_KEY)
+            .remove(KEY_LICENSE_HOLDER)
+            .remove(KEY_LICENSE_TYPE)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "vitalfi_settings"
         private const val KEY_ALERT_SOUND = "alert_sound_enabled"
@@ -133,6 +286,10 @@ class SettingsStore(context: Context) {
         private const val KEY_MANUAL_ELEVATION = "manual_elevation_m"
         private const val KEY_DEFAULT_WIFI_MODE = "default_wifi_mode"
         private const val KEY_COLORBLIND = "colorblind_mode"
+        private const val KEY_APP_LANGUAGE = "app_language"
+        private const val KEY_SENSING_ENGINE_MODE = "sensing_engine_mode"
+        private const val KEY_OPENWRT_UDP_PORT = "openwrt_udp_port"
+        private const val KEY_OPENWRT_ROUTER_IP = "openwrt_router_ip"
         private const val KEY_LAYER_GRID = "radar_layer_grid"
         private const val KEY_LAYER_COMPASS = "radar_layer_compass"
         private const val KEY_LAYER_WIFI = "radar_layer_wifi"
@@ -142,5 +299,10 @@ class SettingsStore(context: Context) {
         private const val KEY_LAYER_TRAIL = "radar_layer_trail"
         private const val KEY_LAYER_LABELS = "radar_layer_labels"
         private const val KEY_LAYER_DEPTH_RAYS = "radar_layer_depth_rays"
+        private const val KEY_RESCUED_VICTIMS = "saved_rescued_victims_json"
+        private const val KEY_FIRST_INSTALL_TIMESTAMP = "first_install_timestamp"
+        private const val KEY_LICENSE_KEY = "license_key"
+        private const val KEY_LICENSE_HOLDER = "license_holder"
+        private const val KEY_LICENSE_TYPE = "license_type"
     }
 }

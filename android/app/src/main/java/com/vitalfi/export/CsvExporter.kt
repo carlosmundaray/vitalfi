@@ -43,8 +43,9 @@ object CsvExporter {
             w.appendLine("# timestamp_iso,rssi_dbm,quality,ssid,bssid,source")
             val iso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US)
             for (s in samples) {
+                val qStr = String.format(Locale.US, "%.2f", s.quality)
                 w.appendLine(
-                    "${iso.format(Date(s.timestampMs))},${s.rssiDbm},${"%.2f".format(s.quality)}," +
+                    "${iso.format(Date(s.timestampMs))},${s.rssiDbm},$qStr," +
                         "\"${s.ssid}\",\"${s.bssid}\",${s.source}",
                 )
             }
@@ -55,13 +56,17 @@ object CsvExporter {
                     "confidence,rubble_conf,pos_x,pos_y,pos_depth,mode",
             )
             for (e in log) {
+                val bStr = String.format(Locale.US, "%.1f", e.bearingDeg)
+                val rStr = String.format(Locale.US, "%.2f", e.respRate)
+                val cStr = String.format(Locale.US, "%.3f", e.confidence)
+                val rcStr = String.format(Locale.US, "%.3f", e.rubbleConfidence)
+                val pxStr = e.posX?.let { String.format(Locale.US, "%.3f", it) } ?: ""
+                val pyStr = e.posY?.let { String.format(Locale.US, "%.3f", it) } ?: ""
+                val pzStr = e.posDepth?.let { String.format(Locale.US, "%.3f", it) } ?: ""
                 w.appendLine(
-                    "${iso.format(Date(e.timestampMs))},${"%.1f".format(e.bearingDeg)},\"${e.status}\"," +
-                        "${e.isBreathing},${e.isActivity},${"%.2f".format(e.respRate)}," +
-                        "${"%.3f".format(e.confidence)},${"%.3f".format(e.rubbleConfidence)}," +
-                        "${e.posX?.let { "%.3f".format(it) } ?: ""}," +
-                        "${e.posY?.let { "%.3f".format(it) } ?: ""}," +
-                        "${e.posDepth?.let { "%.3f".format(it) } ?: ""},${e.mode}",
+                    "${iso.format(Date(e.timestampMs))},$bStr,\"${e.status}\"," +
+                        "${e.isBreathing},${e.isActivity},$rStr,$cStr,$rcStr," +
+                        "$pxStr,$pyStr,$pzStr,${e.mode}",
                 )
             }
         }

@@ -56,7 +56,15 @@ import androidx.compose.ui.zIndex
 import com.vitalfi.VitalFiUiState
 import com.vitalfi.dsp.TrappedVictim
 import com.vitalfi.dsp.describePersonPosition
+import com.vitalfi.dsp.localizeDynamicProximity
 import kotlin.math.roundToInt
+
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.vitalfi.R
+import com.vitalfi.wifi.SensingEngineMode
+import com.vitalfi.wifi.VictimVitalState
+import com.vitalfi.sensor.GpsLocationReader
 
 private val BgDark = Color(0xFF0A0F0A)
 private val Cyan = Color(0xFF00FFCC)
@@ -66,10 +74,11 @@ private val PanelBg = Color(0xFF121A12)
 
 @Composable
 fun PositionOverlayBanner(state: VitalFiUiState, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     val target = navigationTarget(state.victims, state.selectedVictim?.id) ?: state.position?.let { pos ->
         TrappedVictim(
             id = 0,
-            label = "Persona",
+            label = "P",
             x = pos.x,
             y = pos.y,
             bearing = pos.bearing,
@@ -83,13 +92,13 @@ fun PositionOverlayBanner(state: VitalFiUiState, modifier: Modifier = Modifier) 
             confidence = state.confidence,
             rubbleConfidence = state.rubbleConfidence,
             proximity = state.proximity,
-            status = if (state.isBreathing) "Respiración detectada" else "Señal detectada",
+            status = state.status,
             score = state.confidence,
             lastSeenMs = 0L,
         )
     } ?: return
 
-    val rel = describePersonPosition(target.x, target.y, target.depth, state.bearingDeg)
+    val rel = describePersonPosition(context, target.x, target.y, target.depth, state.bearingDeg)
 
     Card(
         colors = CardDefaults.cardColors(containerColor = PanelBg),
@@ -110,7 +119,7 @@ fun PositionOverlayBanner(state: VitalFiUiState, modifier: Modifier = Modifier) 
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${rel.vertical} · ${"%.2f".format(rel.distanceM)} m · ${target.proximity}",
+                "${rel.vertical} · ${"%.2f".format(rel.distanceM)} m · ${localizeDynamicProximity(target.proximity, context)}",
                 color = NavYellow,
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
@@ -137,7 +146,7 @@ fun CompassNavigationBanner(state: VitalFiUiState, modifier: Modifier = Modifier
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                "Tu rumbo: $bearing° $cardinal",
+                stringResource(R.string.radar_heading, bearing, cardinal),
                 color = Cyan,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -150,11 +159,11 @@ fun CompassNavigationBanner(state: VitalFiUiState, modifier: Modifier = Modifier
                     val targetCardinal = bearingToCardinal(target.bearing)
                     val steer = when {
                         kotlin.math.abs(turn) < 12 ->
-                            "↑ Recto → $targetCardinal · ${"%.2f".format(target.distance)} m"
+                            stringResource(R.string.radar_steer_straight, targetCardinal, "%.2f".format(target.distance))
                         turn > 0 ->
-                            "↻ $turn° derecha → $targetCardinal · ${"%.2f".format(target.distance)} m"
+                            stringResource(R.string.radar_steer_turn_right, turn, targetCardinal, "%.2f".format(target.distance))
                         else ->
-                            "↺ ${-turn}° izquierda → $targetCardinal · ${"%.2f".format(target.distance)} m"
+                            stringResource(R.string.radar_steer_turn_left, -turn, targetCardinal, "%.2f".format(target.distance))
                     }
                     Text(
                         steer,
@@ -168,7 +177,7 @@ fun CompassNavigationBanner(state: VitalFiUiState, modifier: Modifier = Modifier
                 }
                 else -> {
                     Text(
-                        "Gira 360° · línea cyan = tu frente",
+                        stringResource(R.string.radar_turn_prompt),
                         color = Color(0xFF888888),
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -201,7 +210,7 @@ fun ElevationControlPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                "Altura $sign${"%.1f".format(state.scanningElevationM)} m",
+                stringResource(R.string.radar_elevation_label, sign, "%.1f".format(state.scanningElevationM)),
                 color = Color.White,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
@@ -214,7 +223,7 @@ fun ElevationControlPanel(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                     ) {
                         Text(
-                            if (state.autoElevationActive) "Auto" else "Manual",
+                            if (state.autoElevationActive) stringResource(R.string.radar_auto) else stringResource(R.string.radar_manual),
                             color = if (state.autoElevationActive) Color(0xFF66FF99) else Color.Gray,
                             fontSize = 11.sp,
                         )
@@ -367,24 +376,27 @@ fun RadarPanel(
 
 @Composable
 private fun CompactRadarStatus(state: VitalFiUiState) {
-    val target = navigationTarget(state.victims, state.selectedVictim?.id)
+    val context = LocalContext.current
+    val isCsiDisconnected = state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT && !state.csiConnected
+    val target = if (isCsiDisconnected) null else navigationTarget(state.victims, state.selectedVictim?.id)
     val bearing = state.bearingDeg.roundToInt()
     val cardinal = bearingToCardinal(state.bearingDeg)
     val steer = when {
-        target == null -> "Gira 360° · busca señal real Wi‑Fi"
-        target.distance < 0.6 -> "◎ Señal muy cerca — verifica el sitio (prof. no confirmada)"
+        isCsiDisconnected -> "🛰️ Esperando flujo de radiofrecuencia CSI desde el router..."
+        target == null -> stringResource(R.string.radar_search_wifi_prompt)
+        target.distance < 0.6 -> stringResource(R.string.radar_signal_very_close)
         else -> {
             val turn = normalizedTurnDelta(target.bearing, state.bearingDeg).roundToInt()
             val dist = "%.2f".format(target.distance)
             when {
-                kotlin.math.abs(turn) < 12 -> "↑ Camina recto $dist m hacia la señal"
-                turn > 0 -> "→ Gira $turn° der, luego camina $dist m"
-                else -> "← Gira ${-turn}° izq, luego camina $dist m"
+                kotlin.math.abs(turn) < 12 -> stringResource(R.string.radar_walk_straight, dist)
+                turn > 0 -> stringResource(R.string.radar_turn_walk_right, turn, dist)
+                else -> stringResource(R.string.radar_turn_walk_left, -turn, dist)
             }
         }
     }
     val relLine = target?.let {
-        val rel = describePersonPosition(it.x, it.y, it.depth, state.bearingDeg)
+        val rel = describePersonPosition(context, it.x, it.y, it.depth, state.bearingDeg)
         "${rel.horizontal} · ${rel.vertical}"
     }
 
@@ -395,7 +407,7 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
     ) {
         Column(
             Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -410,12 +422,264 @@ private fun CompactRadarStatus(state: VitalFiUiState) {
                     fontFamily = FontFamily.Monospace,
                 )
                 Text(
-                    "DATOS REALES Wi‑Fi",
-                    color = Color(0xFF66FF99),
+                    if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                        if (state.csiConnected) "🛰️ WiFi-CSI (${state.csiPacketRateHz.toInt()} Hz)" else "⚠️ WiFi-CSI DESCONECTADO"
+                    } else {
+                        stringResource(R.string.radar_real_data)
+                    },
+                    color = if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                        if (state.csiConnected) Color(0xFF00FFCC) else Color(0xFFFFCC00)
+                    } else {
+                        Color(0xFF66FF99)
+                    },
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
                 )
             }
+
+            if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                if (state.csiConnected) {
+                    when (state.victimVitalState) {
+                        VictimVitalState.IMMOBILE_BREATHING -> {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "🫁 RESP: ~${state.vitalBreathingBpm.toInt()} rpm",
+                                    color = Color(0xFF00FFCC),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "❤️ PULSO: ~${if (state.heartRateBpm > 0) state.heartRateBpm.toInt() else 72} lpm",
+                                    color = Color(0xFFFF6688),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                        VictimVitalState.ACTIVE_DISTRESS -> {
+                            Text(
+                                "🚨 ALERTA DE AUXILIO / MOVIMIENTO ACTIVO (CSI)",
+                                color = Color(0xFFFF3366),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                        VictimVitalState.CLEAR -> {
+                            Text(
+                                "📡 Monitoreando 56 subportadoras OFDM (: ${state.openWrtUdpPort})",
+                                color = Color(0xFFA0C4A0),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+
+                    // Métricas de ubicación de alta precisión CSI (distancia, profundidad, AoA)
+                    if (state.csiDistanceM != null || state.csiDepthM != null) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "Dist. OFDM: ${"%.2f".format(state.csiDistanceM ?: 0.0)} m",
+                                color = NavYellow,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "Profundidad: ${"%.2f".format(state.csiDepthM ?: 0.0)} m",
+                                color = Color(0xFFFF9966),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            val aoa = state.csiAoADeg
+                            if (aoa != null) {
+                                Text(
+                                    "AoA: ${if (aoa >= 0) "+" else ""}${"%.1f".format(aoa)}°",
+                                    color = Cyan,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+
+                        // Diagnóstico de fusión MUSIC + Phase + RSSI
+                        val conf = state.csiDistanceConfidence ?: 0.0
+                        val confColor = when {
+                            conf >= 0.7 -> Color(0xFF00FF88)
+                            conf >= 0.4 -> NavYellow
+                            else -> Color(0xFFFF6666)
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "MUSIC: ${"%.1f".format(state.csiMusicDistanceM ?: 0.0)}m",
+                                color = Color(0xFF66BBFF),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "Fase: ${"%.1f".format(state.csiPhaseDistanceM ?: 0.0)}m",
+                                color = Color(0xFFBB99FF),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "Conf: ${"%.0f".format(conf * 100)}%",
+                                color = confColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                "MP:${state.csiMultipathCount}",
+                                color = Color(0xFF99CCCC),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+
+                    // Perfil Corporal — SOLO mostrar si hay datos reales (no especulativos)
+                    if (state.csiBodyDimension != null && state.csiBodyPosture != null &&
+                        state.csiSubcarriers.isNotEmpty()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1A12)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    "⚠️ Estimación aproximada (requiere validación)",
+                                    color = Color(0xFFFF9900),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Text(
+                                    "🧘 Postura: ${state.csiBodyPosture ?: "—"}",
+                                    color = Color(0xFFA0DCA0),
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+
+                    // Visualizador de Espectro OFDM de Subportadoras
+                    if (state.csiSubcarriers.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "Espectro OFDM (Amplitud de Subportadoras):",
+                                color = Color(0xFF88AA88),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(28.dp)
+                                    .background(Color(0xFF081008), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                            ) {
+                                val subs = state.csiSubcarriers
+                                val barWidth = (size.width / subs.size).coerceAtLeast(1.5f)
+                                val maxVal = subs.maxOrNull()?.coerceAtLeast(1.0f) ?: 1.0f
+                                for (i in subs.indices) {
+                                    val h = (subs[i] / maxVal * size.height).coerceIn(2f, size.height)
+                                    val barColor = when {
+                                        state.victimVitalState == VictimVitalState.ACTIVE_DISTRESS -> Color(0xFFFF3366)
+                                        state.victimVitalState == VictimVitalState.IMMOBILE_BREATHING -> Cyan
+                                        else -> Color(0xFF339966)
+                                    }
+                                    drawRect(
+                                        color = barColor,
+                                        topLeft = Offset(i * (size.width / subs.size), size.height - h),
+                                        size = Size(barWidth - 0.5f, h),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Visualizador de Onda Respiratoria CSI (Osciloscopio)
+                    if (state.csiRespirationWave.size >= 10) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "Onda de Respiración / Micro-desplazamiento:",
+                                color = Color(0xFF88AA88),
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(30.dp)
+                                    .background(Color(0xFF060D06), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                            ) {
+                                val wave = state.csiRespirationWave
+                                val midY = size.height / 2f
+                                val maxAmp = wave.map { kotlin.math.abs(it) }.maxOrNull()?.coerceAtLeast(0.1f) ?: 1.0f
+                                val stepX = size.width / (wave.size - 1).coerceAtLeast(1)
+                                val wavePath = Path()
+                                for (i in wave.indices) {
+                                    val normY = (wave[i] / maxAmp * (size.height * 0.42f)).coerceIn(-midY, midY)
+                                    val pt = Offset(i * stepX, midY - normY)
+                                    if (i == 0) wavePath.moveTo(pt.x, pt.y) else wavePath.lineTo(pt.x, pt.y)
+                                }
+                                drawPath(
+                                    path = wavePath,
+                                    color = if (state.victimVitalState == VictimVitalState.IMMOBILE_BREATHING) Cyan else NavYellow,
+                                    style = Stroke(width = 2.2f),
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "📡 Buscando enlace con Sensor RF de alta precisión...",
+                        color = Color(0xFFFFCC00),
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+
+            if (target != null) {
+                val isPinned = state.pinnedVictimId == target.id
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (isPinned) "📌 RUTA A: ${target.label}" else "🎯 OBJETIVO: ${target.label}",
+                        color = if (isPinned) Cyan else NavYellow,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    if (target.gpsLat != null && target.gpsLon != null) {
+                        Text(
+                            "📍 ${GpsLocationReader.formatDecimalCoordinates(target.gpsLat, target.gpsLon)}",
+                            color = Color(0xFFA0DCA0),
+                            fontSize = 10.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+
             Text(
                 steer,
                 color = NavYellow,
@@ -470,25 +734,25 @@ private fun RadarLayerToggles(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Capas del radar", color = Color(0xFF778877), fontSize = 11.sp)
+            Text(stringResource(R.string.radar_layers_title), color = Color(0xFF778877), fontSize = 11.sp)
             Row {
                 TextButton(
                     onClick = onModoRescate,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 ) {
-                    Text("Rescate", color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.radar_preset_rescue), color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 TextButton(
                     onClick = onSoloPersona,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 ) {
-                    Text("Solo persona", color = NavOrange, fontSize = 11.sp)
+                    Text(stringResource(R.string.radar_preset_person_only), color = NavOrange, fontSize = 11.sp)
                 }
                 TextButton(
                     onClick = onTodo,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 ) {
-                    Text("Todo", color = Color.Gray, fontSize = 11.sp)
+                    Text(stringResource(R.string.radar_preset_all), color = Color.Gray, fontSize = 11.sp)
                 }
             }
         }
@@ -501,56 +765,56 @@ private fun RadarLayerToggles(
             FilterChip(
                 selected = layers.grid,
                 onClick = { onToggle("grid") },
-                label = { Text("Regla", fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.radar_layer_ruler), fontSize = 11.sp) },
                 colors = chipColors,
             )
             FilterChip(
                 selected = layers.compass,
                 onClick = { onToggle("compass") },
-                label = { Text("Brújula", fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.radar_layer_compass), fontSize = 11.sp) },
                 colors = chipColors,
             )
             FilterChip(
                 selected = layers.wifi,
                 onClick = { onToggle("wifi") },
-                label = { Text("Wi‑Fi", fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.radar_layer_wifi_short), fontSize = 11.sp) },
                 colors = chipColors,
             )
             FilterChip(
                 selected = layers.heatmap,
                 onClick = { onToggle("heatmap") },
-                label = { Text("Señal", fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.radar_layer_signal), fontSize = 11.sp) },
                 colors = chipColors,
             )
             FilterChip(
                 selected = layers.guide,
                 onClick = { onToggle("guide") },
-                label = { Text("Guía", fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.radar_layer_guide_short), fontSize = 11.sp) },
                 colors = chipColors,
             )
             FilterChip(
                 selected = layers.labels,
                 onClick = { onToggle("labels") },
-                label = { Text("Textos", fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.radar_layer_labels_short), fontSize = 11.sp) },
                 colors = chipColors,
             )
             FilterChip(
                 selected = layers.depthRays,
                 onClick = { onToggle("depthRays") },
-                label = { Text("Rayas", fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.radar_layer_depth_rays_short), fontSize = 11.sp) },
                 colors = chipColors,
             )
             if (show3D) {
                 FilterChip(
                     selected = layers.rubble,
                     onClick = { onToggle("rubble") },
-                    label = { Text("Escombros", fontSize = 11.sp) },
+                    label = { Text(stringResource(R.string.radar_layer_rubble_short), fontSize = 11.sp) },
                     colors = chipColors,
                 )
                 FilterChip(
                     selected = layers.trail,
                     onClick = { onToggle("trail") },
-                    label = { Text("Rastro", fontSize = 11.sp) },
+                    label = { Text(stringResource(R.string.radar_layer_trail_short), fontSize = 11.sp) },
                     colors = chipColors,
                 )
             }
@@ -750,24 +1014,24 @@ private fun RadarToolbar(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Guía", color = NavYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.radar_layer_guide_short), color = NavYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
             IconButton(onClick = onZoomOut, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.ZoomOut, "Alejar", tint = Cyan, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.ZoomOut, contentDescription = null, tint = Cyan, modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = onZoomIn, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.ZoomIn, "Acercar", tint = Cyan, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Cyan, modifier = Modifier.size(20.dp))
             }
             TextButton(
                 onClick = onResetView,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp),
             ) {
-                Text("Reset", color = Color.Gray, fontSize = 11.sp)
+                Text(stringResource(R.string.action_reset), color = Color.Gray, fontSize = 11.sp)
             }
             IconButton(onClick = onToggleFullscreen, modifier = Modifier.size(36.dp)) {
                 Icon(
                     if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                    if (isFullscreen) "Salir pantalla completa" else "Pantalla completa",
+                    contentDescription = null,
                     tint = Cyan,
                     modifier = Modifier.size(20.dp),
                 )
@@ -782,7 +1046,7 @@ private fun RadarLegendGuideDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = {
             Text(
-                "Guía de uso VitalFi",
+                stringResource(R.string.guide_title),
                 color = Cyan,
                 fontWeight = FontWeight.Bold,
             )
@@ -795,21 +1059,14 @@ private fun RadarLegendGuideDialog(onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    "Cómo usar la app y qué significa cada indicativo del radar.",
-                    color = Color(0xFFAAAAAA),
-                    fontSize = 12.sp,
-                )
+                GuideSection(stringResource(R.string.guide_sec_how_to_use))
+                GuideRow(stringResource(R.string.guide_step1_title), stringResource(R.string.guide_step1_desc), Cyan)
+                GuideRow(stringResource(R.string.guide_step2_title), stringResource(R.string.guide_step2_desc), NavYellow)
+                GuideRow(stringResource(R.string.guide_step3_title), stringResource(R.string.guide_step3_desc), Color(0xFFFF6699))
+                GuideRow(stringResource(R.string.guide_step4_title), stringResource(R.string.guide_step4_desc), Color(0xFFFF3366))
+                GuideRow(stringResource(R.string.guide_step5_title), stringResource(R.string.guide_step5_desc), NavOrange)
 
-                GuideSection("Cómo usar la aplicación")
-                GuideRow("1. Wi‑Fi", "Activa el Wi‑Fi del teléfono cerca del router (no hace falta internet).", Cyan)
-                GuideRow("2. Gira 360°", "Camina despacio alrededor del escombro apuntando el teléfono.", NavYellow)
-                GuideRow("3. Mira el radar", "Aparecerán puntos de señal y luego personas P1, P2…", Color(0xFFFF6699))
-                GuideRow("4. Toca una persona", "Abre el detalle: distancia, profundidad, respiración y rumbo.", Color(0xFFFF3366))
-                GuideRow("5. Capas", "Usa «Rescate» (limpio + guía F‑16), «Solo persona» o apaga capas sueltas.", NavOrange)
-                GuideRow("6. Botón Guía", "Este menú: siempre disponible en la barra del radar.", NavYellow)
-
-                GuideSection("Puntos en el radar (sin figura humana)")
+                GuideSection(stringResource(R.string.guide_sec_dots))
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF0A1210)),
                     shape = RoundedCornerShape(10.dp),
@@ -820,8 +1077,7 @@ private fun RadarLegendGuideDialog(onDismiss: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            "La figura y la esfera se quitaron para no ocupar espacio. " +
-                                "Cada persona es un punto pequeño con forma distinta:",
+                            stringResource(R.string.guide_sec_dots_desc),
                             color = Color(0xFFCCCCCC),
                             fontSize = 12.sp,
                         )
@@ -829,82 +1085,24 @@ private fun RadarLegendGuideDialog(onDismiss: () -> Unit) {
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
-                            GuideDotSample(shape = "cross", color = Color(0xFFFFEE00), label = "Cerca")
-                            GuideDotSample(shape = "diamond", color = Color(0xFF4DA6FF), label = "Respira")
-                            GuideDotSample(shape = "triangle", color = Color(0xFFFFAA00), label = "Mov.")
-                            GuideDotSample(shape = "square", color = Color(0xFFEEEEEE), label = "Señal")
+                            GuideDotSample(shape = "cross", color = Color(0xFFFFEE00), label = stringResource(R.string.guide_dot_near))
+                            GuideDotSample(shape = "diamond", color = Color(0xFF4DA6FF), label = stringResource(R.string.guide_dot_breathe))
+                            GuideDotSample(shape = "triangle", color = Color(0xFFFFAA00), label = stringResource(R.string.guide_dot_move))
+                            GuideDotSample(shape = "square", color = Color(0xFFEEEEEE), label = stringResource(R.string.guide_dot_signal))
                         }
                     }
                 }
-                GuideRow("Persona A/B…", "Etiqueta del punto. Tócalo para ver mediciones o renombrar.", Color(0xFFFF3366))
-                GuideRow("◎ mira", "Señal muy cerca en horizontal. NO implica profundidad ni cavar.", Color(0xFFFFEE00))
-                GuideRow("◆ rombo", "Respiración / viva (pulso).", Color(0xFF4DA6FF))
-                GuideRow("▲ triángulo", "Movimiento / actividad.", Color(0xFFFFAA00))
-                GuideRow("■ cuadrado", "Señal débil en análisis.", Color(0xFFEEEEEE))
 
-                GuideSection("Puntos de señal (mapa Wi‑Fi)")
-                GuideRow(
-                    "Puntos naranja",
-                    "NO es temperatura. Son zonas donde la señal Wi‑Fi vital es más fuerte por dirección. " +
-                        "Más brillante = más señal en ese rumbo.",
-                    Color(0xFFFF6600),
-                )
-
-                GuideSection("Profundidad")
-                GuideRow(
-                    "Texto ↓ Xm",
-                    "Estimación heurística — Wi‑Fi NO confirma si está enterrada ni a qué profundidad real.",
-                    Color(0xFFCCCCCC),
-                )
-                GuideRow("Capa Rayas", "Opcional: línea vertical de profundidad estimada (OFF en Rescate).", Color(0xFFFFEE00))
-
-                GuideSection("Orientación y distancia")
-                GuideRow("N / E / S / O", "Norte real de la brújula (N en rojo).", Color(0xFFFF4444))
-                GuideRow("Línea cyan ↑", "Tu frente (hacia dónde apuntas). Siempre hacia arriba.", Cyan)
-                GuideRow("▲ naranja (HUD)", "Director: gira hasta centrarlo = vas hacia la persona (búsqueda del tesoro).", NavOrange)
-                GuideRow("Flecha → persona", "Camino grueso desde ti hasta el punto. Sin aguja giratoria de radar.", NavOrange)
-                GuideRow("Anillos / Regla", "Metros desde ti (centro = 0 m).", Color(0xFF66FFCC))
-                GuideRow("Barra de escala", "Referencia visual de metros en la esquina.", Cyan)
-
-                GuideSection("Capas (chips para ocultar)")
-                GuideRow("Regla", "Anillos y marcas de metros.", Color(0xFF66FFCC))
-                GuideRow("Brújula", "Rosa de rumbos N/E/S/O y frente.", Color(0xFFFF4444))
-                GuideRow("Wi‑Fi", "Círculo de cobertura estimada del router.", Color(0xFF00FFCC))
-                GuideRow("Señal", "Puntos de fuerza de señal por dirección.", Color(0xFFFF6600))
-                GuideRow("Rayas", "Líneas verticales de profundidad (por defecto OFF).", Color(0xFFFFEE00))
-                GuideRow("Guía", "Flecha hacia la señal. Cerca: verifica el sitio (sin orden de cavar).", NavOrange)
-                GuideRow("Textos", "Etiquetas de metros y estado.", Color(0xFFCCCCCC))
-                GuideRow("Escombros", "Corte 3D del terreno (solo vista 3D).", Color(0xFF445544))
-                GuideRow("Rastro", "Camino recorrido de la detección (3D).", Color(0xFFFF6699))
-                GuideRow("Solo persona", "Apaga el ruido y deja solo las personas detectadas.", NavOrange)
-
-                GuideSection("Zonas de proximidad")
-                GuideRow(
-                    "◎ CERCA",
-                    "Menos de ~0.6 m en horizontal: verifica. NO confirma entierro ni autoriza cavar.",
-                    Color(0xFFFFEE00),
-                )
-                GuideRow("◆ RESPIRA / ♥ VIVA", "Rombo = respiración o pulso.", Color(0xFF4DA6FF))
-                GuideRow("▲ MOVIMIENTO", "Triángulo = actividad detectada.", Color(0xFFFFAA00))
-                GuideRow("? SEÑAL", "Cuadrado = señal débil en análisis.", Color(0xFFEEEEEE))
-                GuideRow("MUY CERCA", "Aprox. menos de 1 m (horizontal estimado).", Color(0xFFFF3366))
-                GuideRow("Modo daltónico", "En ⚙️ Configuración: formas + azul/ámbar/blanco.", Color(0xFF80C0FF))
-                GuideRow("CERCA", "Aprox. 1–2 m.", Color(0xFFFF6699))
-                GuideRow("MEDIA", "Aprox. 2–3.5 m.", NavYellow)
-                GuideRow("LEJOS", "Más de ~3.5 m o señal débil.", Color(0xFF888888))
-
-                GuideSection("Controles")
-                GuideRow("Reiniciar", "Arriba a la derecha: borra el mapa y empieza de nuevo.", NavOrange)
-                GuideRow("＋ / − zoom", "Acercar o alejar el mapa.", Cyan)
-                GuideRow("Reset", "Vuelve zoom y panorámica al inicio.", Color.Gray)
-                GuideRow("Pantalla completa", "Radar a toda la pantalla.", Cyan)
-                GuideRow("Altura ±", "Tu altura de escaneo sobre el suelo.", Color(0xFF66FF99))
-                GuideRow("Vista 2D / 3D", "Cambia entre mapa plano y vista 3D.", Cyan)
+                GuideSection(stringResource(R.string.guide_sec_proximity))
+                GuideRow(stringResource(R.string.guide_prox_very_close), "< 1.0 m", Color(0xFFFF3366))
+                GuideRow(stringResource(R.string.guide_prox_close), "1.0 - 2.0 m", Color(0xFFFF6699))
+                GuideRow(stringResource(R.string.guide_prox_medium), "2.0 - 3.5 m", NavYellow)
+                GuideRow(stringResource(R.string.guide_prox_far), "> 3.5 m", Color(0xFF888888))
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Entendido", color = Cyan)
+                Text(stringResource(R.string.guide_understood), color = Cyan)
             }
         },
         containerColor = Color(0xFF0D140D),

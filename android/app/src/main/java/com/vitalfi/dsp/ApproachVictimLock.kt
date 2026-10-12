@@ -34,10 +34,13 @@ class ApproachVictimLock(
 
         val peak = maxOf(prev?.peakPersonSignal ?: 0.0, reflectionVar)
         val dist = if (prev != null) minOf(prev.distance, victim.distance) else victim.distance
+        // BUG-FIX: Una vez anclado, el bearing se congela casi completamente (alpha=0.03)
+        // para evitar que el rumbo de la persona se desplace al girar el teléfono
+        val bearingAlpha = if (prev != null) 0.03 else 1.0
         locks[victim.id] = Lock(
             id = victim.id,
             bearing = if (prev != null) {
-                smoothBearing(prev.bearing, victim.bearing, 0.18)
+                smoothBearing(prev.bearing, victim.bearing, bearingAlpha)
             } else {
                 victim.bearing
             },
@@ -71,16 +74,16 @@ class ApproachVictimLock(
         return nowMs - lock.lastGoodMs <= holdMs
     }
 
-    fun headingAligned(phoneBearingDeg: Double, id: Int, maxDeg: Double = 32.0): Boolean {
+    fun headingAligned(phoneBearingDeg: Double, id: Int, maxDeg: Double = 55.0): Boolean {
         val lock = locks[id] ?: return false
         return angularDistance(phoneBearingDeg, lock.bearing) <= maxDeg
     }
 
     /**
      * Actualiza distancia a la persona:
-     * 1) si la señal de persona indica más cerca → aceptar
-     * 2) pasos reales alineados → acercar al centro
-     * 3) nunca alejar por ruido
+     * 1) Si la señal de persona indica más cerca → aceptar inmediatamente
+     * 2) Proyección de pasos reales en dirección a la víctima → acerca el punto al centro
+     * 3) Nunca aleja por ruido
      */
     fun updateWhileApproaching(
         id: Int,
@@ -104,19 +107,27 @@ class ApproachVictimLock(
             d = (d * (1.0 - 0.25 * gain)).coerceAtLeast(0.15)
         }
 
-        // Pasos reales del teléfono mirando a la persona
-        if (headingAligned && stepsDelta > 0) {
-            d = (d - stepsDelta * metersPerStep).coerceAtLeast(0.25)
-        } else if (headingAligned && walking && stepsDelta == 0) {
-            // Solo un tirón suave (evitar vaciar la distancia sin pasos reales)
-            d = (d - 0.06).coerceAtLeast(0.25)
+        // Proyección de movimiento según ángulo hacia la víctima
+        val angleDiff = angularDistance(bearingDeg, prev.bearing)
+        val rad = Math.toRadians(angleDiff.coerceIn(0.0, 180.0))
+        val cosFactor = Math.cos(rad).coerceAtLeast(0.0) // 1.0 si camina directo, 0.707 a 45°, 0 si camina de espaldas
+
+        if (cosFactor > 0.15) {
+            if (stepsDelta > 0) {
+                val stepDist = stepsDelta * metersPerStep * cosFactor
+                d = (d - stepDist).coerceAtLeast(0.15)
+            } else if (walking) {
+                // Avance continuo mientras camina hacia el objetivo (~0.12m cada 500ms)
+                d = (d - 0.12 * cosFactor).coerceAtLeast(0.15)
+            }
         }
 
         d = minOf(d, prev.distance).coerceIn(0.15, 8.0)
 
         locks[id] = prev.copy(
             distance = d,
-            bearing = smoothBearing(prev.bearing, bearingDeg, if (headingAligned) 0.10 else 0.05),
+            // BUG-FIX: Bearing casi congelado para evitar arrastre al girar el teléfono
+            bearing = smoothBearing(prev.bearing, bearingDeg, if (cosFactor > 0.5) 0.03 else 0.01),
             peakPersonSignal = maxOf(prev.peakPersonSignal, personSig),
             lastGoodMs = nowMs,
         )
@@ -130,7 +141,7 @@ class ApproachVictimLock(
         return ((prev + alpha * delta) % 360.0 + 360.0) % 360.0
     }
 
-    private fun angularDistance(a: Double, b: Double): Double {
+    fun angularDistance(a: Double, b: Double): Double {
         var d = abs(a - b) % 360.0
         if (d > 180.0) d = 360.0 - d
         return d

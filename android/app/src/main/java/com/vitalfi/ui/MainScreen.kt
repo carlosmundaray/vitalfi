@@ -18,16 +18,26 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.Settings
@@ -42,6 +52,12 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Spacer
+import com.vitalfi.sensor.GpsLocationReader
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -49,6 +65,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
@@ -81,9 +98,14 @@ import com.vitalfi.VitalFiUiState
 import com.vitalfi.dsp.HeatPoint
 import com.vitalfi.dsp.PositionEstimate
 import com.vitalfi.dsp.describePersonPosition
+import com.vitalfi.dsp.localizeDynamicStatus
+import com.vitalfi.dsp.localizeDynamicProximity
+import com.vitalfi.dsp.localizeDynamicHint
 import com.vitalfi.dsp.TrappedVictim
 import com.vitalfi.wifi.ScannedNetwork
 import com.vitalfi.wifi.WifiCollectMode
+import com.vitalfi.wifi.SensingEngineMode
+import com.vitalfi.wifi.VictimVitalState
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -114,6 +136,8 @@ fun MainScreen(
     onExportCsv: () -> Unit,
     onDismissToast: () -> Unit,
     onSelectVictim: (Int) -> Unit,
+    onTogglePinVictim: (Int) -> Unit = {},
+    onInspectVictim: (Int) -> Unit = {},
     onDismissVictim: () -> Unit,
     onRenameVictim: (Int, String) -> Unit,
     onViewportChange: (RadarViewport) -> Unit,
@@ -124,6 +148,13 @@ fun MainScreen(
     onCloseRadarFullscreen: () -> Unit,
     onSetAlertSoundEnabled: (Boolean) -> Unit,
     onSetTrappedOnlyMode: (Boolean) -> Unit,
+    onSetSensingEngineMode: (SensingEngineMode) -> Unit = {},
+    onSetOpenWrtUdpPort: (Int) -> Unit = {},
+    onToggleArCamera: () -> Unit = {},
+    onLockArTarget: (String?) -> Unit = {},
+    onRescueArVictim: (victimId: Int, label: String, depthM: Double, respRate: Double, heartRate: Double, confidence: Double, signatureCode: String) -> Unit = { _, _, _, _, _, _, _ -> },
+    onClearRescuedVictims: () -> Unit = {},
+    onRemoveRescuedVictim: (String) -> Unit = {},
     onMarkRubbleZone: () -> Unit,
     onClearRubbleZone: () -> Unit,
     onExcludeRescuer: () -> Unit,
@@ -142,6 +173,15 @@ fun MainScreen(
     onSetRubbleZoneRadius: (Double) -> Unit,
     onSetDefaultWifiMode: (WifiCollectMode) -> Unit,
     onSetColorblindMode: (Boolean) -> Unit,
+    onSetAppLanguage: (String) -> Unit,
+    onOpenEvaluationDialog: () -> Unit = {},
+    onDismissEvaluationDialog: () -> Unit = {},
+    onOpenEnterLicenseDialog: () -> Unit = {},
+    onDismissEnterLicenseDialog: () -> Unit = {},
+    onActivateLicenseKey: (String, String) -> Boolean = { _, _ -> false },
+    onRemoveLicense: () -> Unit = {},
+    onLaunchPlayPurchase: (String) -> Unit = {},
+    onRestorePlayPurchases: () -> Unit = {},
 ) {
     var showAbout by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -172,44 +212,112 @@ fun MainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(12.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // Header Táctico VitalFi (Open Design)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "VitalFi — Detección bajo escombros",
-                    color = Cyan,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { showAbout = true }) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = Cyan)
-                    Text(stringResource(R.string.about_button), color = Cyan, fontSize = 12.sp)
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = "VitalFi",
+                            color = Cyan,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp,
+                        )
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF132A18)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF22552E)),
+                        ) {
+                            Text(
+                                text = "🟢 OFFLINE",
+                                color = Color(0xFF66FF99),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                        Card(
+                            onClick = onOpenEvaluationDialog,
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (state.licenseInfo.isLicensed) Color(0xFF102820) else if (state.licenseInfo.isTrialExpired) Color(0xFF281C10) else Color(0xFF102028),
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (state.licenseInfo.isLicensed) Color(0xFF00E676) else if (state.licenseInfo.isTrialExpired) Color(0xFFFFB300) else Cyan,
+                            ),
+                        ) {
+                            Text(
+                                text = if (state.licenseInfo.isLicensed) "💎 PRO" else if (state.licenseInfo.isTrialExpired) "⏳ DÍA ${state.licenseInfo.daysUsed}" else "⏳ DÍA ${state.licenseInfo.daysUsed}/40",
+                                color = if (state.licenseInfo.isLicensed) Color(0xFF00E676) else if (state.licenseInfo.isTrialExpired) Color(0xFFFFB300) else Cyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.app_tagline),
+                        color = Color(0xFFA0C4A0),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
                 }
-                IconButton(onClick = { showSettings = true }) {
-                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title), tint = Cyan)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = { showAbout = true },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(Color(0xFF142418), CircleShape),
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = stringResource(R.string.about_title),
+                            tint = Cyan,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = { showSettings = true },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(Color(0xFF142418), CircleShape),
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.settings_title),
+                            tint = Cyan,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
 
-            Text(
-                text = stringResource(R.string.offline_badge),
-                color = Color(0xFF66FF99),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
+            ModeSelector(
+                state = state,
+                onConnected = onConnectedMode,
+                onPassive = onPassiveMode,
+                onSetSensingMode = onSetSensingEngineMode,
+                onSetOpenWrtPort = onSetOpenWrtUdpPort,
             )
-            Text(
-                text = stringResource(R.string.offline_hint),
-                color = Color(0xFF557755),
-                fontSize = 11.sp,
-            )
-
-            ModeSelector(state, onConnectedMode, onPassiveMode)
 
             StatusCard(state)
 
@@ -221,29 +329,100 @@ fun MainScreen(
                 onClearExclusions = onClearExclusions,
             )
 
-            VictimsSummaryCard(state, onSelectVictim)
+            VictimsSummaryCard(
+                state = state,
+                onTogglePinVictim = onTogglePinVictim,
+                onInspectVictim = onInspectVictim,
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilterChip(
-                    selected = state.showRadar3D,
+                OutlinedButton(
                     onClick = onToggleRadar3D,
-                    label = { Text(if (state.showRadar3D) "Vista 3D" else "Radar 2D") },
-                    leadingIcon = { Icon(Icons.Default.ViewInAr, null) },
-                )
-                Button(
-                    onClick = onReset,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (state.showRadar3D) Color(0xFF1B3822) else Color(0xFF101E17),
+                        contentColor = if (state.showRadar3D) Cyan else Color(0xFFA8C4B6),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (state.showRadar3D) Cyan else Color(0xFF1E382B),
+                    ),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 2.dp))
-                    Text("Reiniciar", fontSize = 12.sp)
+                    Icon(Icons.Default.ViewInAr, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        if (state.showRadar3D) "3D" else "2D",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
-                Button(onClick = onExportCsv) {
-                    Icon(Icons.Default.Download, null)
-                    Text(" CSV")
+
+                OutlinedButton(
+                    onClick = onToggleArCamera,
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (state.showArCamera) Color(0xFF38220A) else Color(0xFF18130B),
+                        contentColor = if (state.showArCamera) Color(0xFFFF9900) else Color(0xFFD4A86A),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (state.showArCamera) Color(0xFFFF9900) else Color(0xFF382A14),
+                    ),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                ) {
+                    Text(
+                        "🎮 MODO AR",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onReset,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF101E17),
+                        contentColor = Color(0xFFA8C4B6),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E382B)),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.action_reset), fontSize = 11.sp)
+                }
+
+                OutlinedButton(
+                    onClick = onExportCsv,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF101E17),
+                        contentColor = Cyan,
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E382B)),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("CSV", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -281,19 +460,17 @@ fun MainScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 IconButton(onClick = onBearingLeft) {
-                    Icon(Icons.AutoMirrored.Filled.RotateLeft, "Girar izq", tint = Cyan)
+                    Icon(Icons.AutoMirrored.Filled.RotateLeft, stringResource(R.string.action_rotate_left), tint = Cyan)
                 }
                 IconButton(onClick = onBearingRight) {
-                    Icon(Icons.AutoMirrored.Filled.RotateRight, "Girar der", tint = Cyan)
+                    Icon(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.action_rotate_right), tint = Cyan)
                 }
             }
 
             Text(
                 text = when (state.collectMode) {
-                    WifiCollectMode.CONNECTED ->
-                        stringResource(R.string.mode_connected_hint) + " Gira 360° alrededor del escombro."
-                    WifiCollectMode.PASSIVE_SCAN ->
-                        stringResource(R.string.mode_passive_hint) + " Gira 360° para ubicar en el radar."
+                    WifiCollectMode.CONNECTED -> stringResource(R.string.mode_connected_hint)
+                    WifiCollectMode.PASSIVE_SCAN -> stringResource(R.string.mode_passive_hint)
                 },
                 color = Color(0xFF888888),
                 fontSize = 12.sp,
@@ -304,7 +481,7 @@ fun MainScreen(
         state.toastMessage?.let { msg ->
             Snackbar(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-                action = { TextButton(onClick = onDismissToast) { Text("OK") } },
+                action = { TextButton(onClick = onDismissToast) { Text(stringResource(R.string.action_ok)) } },
             ) { Text(msg) }
             LaunchedEffect(msg) {
                 kotlinx.coroutines.delay(4000)
@@ -322,11 +499,34 @@ fun MainScreen(
         )
     }
 
+    state.forceUpdateInfo?.let { updateInfo ->
+        ForceUpdateDialog(
+            updateInfo = updateInfo,
+            onOpenUrl = { url ->
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Throwable) {
+                    Toast.makeText(context, "No se pudo abrir el enlace", Toast.LENGTH_SHORT).show()
+                }
+            },
+        )
+    }
+
     if (showAbout) {
         AboutDialog(
             onDismiss = { showAbout = false },
             onOpenUrl = { url ->
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Throwable) {
+                    Toast.makeText(context, "No se pudo abrir el enlace", Toast.LENGTH_SHORT).show()
+                }
             },
         )
     }
@@ -343,6 +543,8 @@ fun MainScreen(
             onSetRubbleZoneRadius = onSetRubbleZoneRadius,
             onSetDefaultWifiMode = onSetDefaultWifiMode,
             onSetColorblindMode = onSetColorblindMode,
+            onSetSensingEngineMode = onSetSensingEngineMode,
+            onSetOpenWrtUdpPort = onSetOpenWrtUdpPort,
             onToggleRadarLayer = onToggleRadarLayer,
             onRadarLayersModoRescate = onRadarLayersModoRescate,
             onRadarLayersSoloPersona = onRadarLayersSoloPersona,
@@ -354,17 +556,48 @@ fun MainScreen(
             onToggleAutoElevation = onToggleAutoElevation,
             onAdjustElevation = onAdjustElevation,
             onResetElevation = onResetElevation,
+            onSetAppLanguage = onSetAppLanguage,
+            onOpenEvaluationDialog = onOpenEvaluationDialog,
+            onOpenEnterLicenseDialog = onOpenEnterLicenseDialog,
+            onRemoveLicense = onRemoveLicense,
+            onLaunchPlayPurchase = onLaunchPlayPurchase,
+            onRestorePlayPurchases = onRestorePlayPurchases,
             onDismiss = { showSettings = false },
         )
     }
 
-    state.selectedVictim?.let { victim ->
+    if (state.showEvaluationDialog) {
+        EvaluationLicenseDialog(
+            licenseInfo = state.licenseInfo,
+            billingProducts = state.billingProducts,
+            onDismiss = onDismissEvaluationDialog,
+            onBuyProduct = onLaunchPlayPurchase,
+            onRestorePurchases = onRestorePlayPurchases,
+            onEnterKey = onOpenEnterLicenseDialog,
+        )
+    }
+
+    if (state.showEnterLicenseDialog) {
+        EnterLicenseKeyDialog(
+            onDismiss = onDismissEnterLicenseDialog,
+            onActivate = onActivateLicenseKey,
+        )
+    }
+
+    val activeVictimForDialog = state.inspectingVictim
+    activeVictimForDialog?.let { victim ->
         VictimDetailDialog(
             victim = victim,
+            isPinned = state.pinnedVictimId == victim.id,
             onDismiss = onDismissVictim,
+            onTogglePin = { onTogglePinVictim(victim.id) },
             onRename = { name -> onRenameVictim(victim.id, name) },
             phoneBearingDeg = state.bearingDeg,
             colorblind = state.colorblindMode,
+            liveCsiDimension = state.csiBodyDimension,
+            liveCsiPosture = state.csiBodyPosture,
+            liveCsiRcs = state.csiRcsAreaM2,
+            isCsiConnected = state.csiConnected,
         )
     }
 
@@ -389,6 +622,17 @@ fun MainScreen(
             onRadarLayersSoloPersona = onRadarLayersSoloPersona,
             onRadarLayersTodo = onRadarLayersTodo,
             onRadarLayersModoRescate = onRadarLayersModoRescate,
+        )
+    }
+
+    if (state.showArCamera) {
+        ArCameraView(
+            state = state,
+            onClose = onToggleArCamera,
+            onLockTarget = onLockArTarget,
+            onRescueVictim = onRescueArVictim,
+            onClearRescuedVictims = onClearRescuedVictims,
+            onRemoveRescuedVictim = onRemoveRescuedVictim,
         )
     }
 }
@@ -465,6 +709,8 @@ private fun SettingsDialog(
     onSetRubbleZoneRadius: (Double) -> Unit,
     onSetDefaultWifiMode: (WifiCollectMode) -> Unit,
     onSetColorblindMode: (Boolean) -> Unit,
+    onSetSensingEngineMode: (SensingEngineMode) -> Unit,
+    onSetOpenWrtUdpPort: (Int) -> Unit,
     onToggleRadarLayer: (String) -> Unit,
     onRadarLayersModoRescate: () -> Unit,
     onRadarLayersSoloPersona: () -> Unit,
@@ -476,8 +722,24 @@ private fun SettingsDialog(
     onToggleAutoElevation: (Boolean) -> Unit,
     onAdjustElevation: (Double) -> Unit,
     onResetElevation: () -> Unit,
+    onSetAppLanguage: (String) -> Unit,
+    onOpenEvaluationDialog: () -> Unit,
+    onOpenEnterLicenseDialog: () -> Unit,
+    onRemoveLicense: () -> Unit,
+    onLaunchPlayPurchase: (String) -> Unit,
+    onRestorePlayPurchases: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var showLanguagePicker by remember { mutableStateOf(false) }
+
+    if (showLanguagePicker) {
+        LanguagePickerDialog(
+            currentLanguageCode = state.appLanguage,
+            onLanguageSelected = onSetAppLanguage,
+            onDismiss = { showLanguagePicker = false },
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_title)) },
@@ -486,6 +748,128 @@ private fun SettingsDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // —— Motor de Detección & Hardware ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_sensing_mode))
+                Text(
+                    stringResource(R.string.settings_sensing_mode_title),
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                        stringResource(R.string.settings_sensing_mode_csi_desc)
+                    } else {
+                        stringResource(R.string.settings_sensing_mode_rssi_desc)
+                    },
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = { onSetSensingEngineMode(SensingEngineMode.RSSI_NATIVE) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE) Cyan else Color(0xFF1A2A1A),
+                            contentColor = if (state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE) Color.Black else Color(0xFFAACCAA),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        Text(stringResource(R.string.settings_sensing_mode_rssi), fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = { onSetSensingEngineMode(SensingEngineMode.CSI_OPENWRT) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) Cyan else Color(0xFF1A2A1A),
+                            contentColor = if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) Color.Black else Color(0xFFAACCAA),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    ) {
+                        Text(stringResource(R.string.settings_sensing_mode_csi), fontSize = 11.sp)
+                    }
+                }
+                if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.settings_csi_udp_port),
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            stringResource(R.string.settings_csi_udp_port_hint),
+                            color = Color(0xFF888888),
+                            fontSize = 11.sp,
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            listOf(5500, 5555, 8080).forEach { port ->
+                                FilterChip(
+                                    selected = state.openWrtUdpPort == port,
+                                    onClick = { onSetOpenWrtUdpPort(port) },
+                                    label = { Text("Port $port") },
+                                )
+                            }
+                        }
+                    }
+                }
+                // —— Idioma ——
+                SettingsSectionTitle(stringResource(R.string.settings_section_language))
+                Text(
+                    stringResource(R.string.settings_language_hint),
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp,
+                )
+                val currentLang = SUPPORTED_LANGUAGES.find { it.code == state.appLanguage } ?: SUPPORTED_LANGUAGES.first()
+                Card(
+                    onClick = { showLanguagePicker = true },
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF18281A)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(currentLang.flag, fontSize = 22.sp)
+                            Column {
+                                Text(
+                                    text = if (currentLang.code.isEmpty()) stringResource(R.string.settings_language_auto) else currentLang.nativeName,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                )
+                                if (currentLang.englishName != currentLang.nativeName && currentLang.code.isNotEmpty()) {
+                                    Text(
+                                        text = currentLang.englishName,
+                                        color = Color(0xFFA0C4A0),
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                        }
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = stringResource(R.string.language_picker_title),
+                            tint = Cyan,
+                        )
+                    }
+                }
+
                 // —— Detección ——
                 SettingsSectionTitle(stringResource(R.string.settings_section_detection))
                 SettingsSwitchRow(
@@ -545,7 +929,7 @@ private fun SettingsDialog(
                 }
                 if (state.excludedRescuerCount > 0) {
                     Text(
-                        "Sectores excluidos: ${state.excludedRescuerCount}",
+                        stringResource(R.string.status_excluded_sectors, state.excludedRescuerCount),
                         color = Color(0xFF888888),
                         fontSize = 11.sp,
                     )
@@ -561,7 +945,7 @@ private fun SettingsDialog(
                     }
                     if (state.rubbleZoneLabel != null) {
                         TextButton(onClick = onClearRubbleZone) {
-                            Text("Quitar zona", fontSize = 11.sp)
+                            Text(stringResource(R.string.status_remove_zone), fontSize = 11.sp)
                         }
                     }
                     Button(onClick = onExcludeRescuer) {
@@ -609,11 +993,6 @@ private fun SettingsDialog(
                     hint = stringResource(R.string.settings_colorblind_hint),
                     checked = state.colorblindMode,
                     onToggle = onSetColorblindMode,
-                )
-                Text(
-                    "Iconos: ◎ cerca · ◆ respira/viva · ▲ movimiento · ? señal · ←→ girar",
-                    color = Color(0xFFAAAAAA),
-                    fontSize = 11.sp,
                 )
 
                 // —— Alertas ——
@@ -714,9 +1093,9 @@ private fun SettingsDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         listOf(
-                            "Rescate" to onRadarLayersModoRescate,
-                            "Solo persona" to onRadarLayersSoloPersona,
-                            "Todo" to onRadarLayersTodo,
+                            stringResource(R.string.radar_preset_rescue) to onRadarLayersModoRescate,
+                            stringResource(R.string.radar_preset_person_only) to onRadarLayersSoloPersona,
+                            stringResource(R.string.radar_preset_all) to onRadarLayersTodo,
                         ).forEach { (label, action) ->
                             Button(
                                 onClick = action,
@@ -739,7 +1118,7 @@ private fun SettingsDialog(
                     "wifi" to (stringResource(R.string.settings_layer_wifi) to layers.wifi),
                     "heatmap" to (stringResource(R.string.settings_layer_heatmap) to layers.heatmap),
                     "guide" to (stringResource(R.string.settings_layer_guide) to layers.guide),
-                    "depthRays" to ("Rayas profundidad" to layers.depthRays),
+                    "depthRays" to (stringResource(R.string.radar_layer_depth_rays_short) to layers.depthRays),
                     "rubble" to (stringResource(R.string.settings_layer_rubble) to layers.rubble),
                     "trail" to (stringResource(R.string.settings_layer_trail) to layers.trail),
                     "labels" to (stringResource(R.string.settings_layer_labels) to layers.labels),
@@ -756,6 +1135,101 @@ private fun SettingsDialog(
                             onClick = { onToggleRadarLayer(key) },
                             label = { Text(label, fontSize = 11.sp) },
                         )
+                    }
+                }
+
+                // —— Licencia y Evaluación (Modelo Honor) ——
+                SettingsSectionTitle(stringResource(R.string.license_section_title))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF142418)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val lic = state.licenseInfo
+                        if (lic.isLicensed) {
+                            Text(
+                                text = "💎 " + stringResource(R.string.license_status_registered, lic.holderName),
+                                color = Color(0xFF66FF99),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                            )
+                            Text(
+                                text = "Clave: ${lic.licenseKey}",
+                                color = Color(0xFF88CC88),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            OutlinedButton(
+                                onClick = onRemoveLicense,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.toast_license_removed), fontSize = 11.sp, color = Color(0xFFFF8888))
+                            }
+                        } else {
+                            Text(
+                                text = if (lic.isTrialExpired) {
+                                    "⏳ " + stringResource(R.string.license_status_eval_extended, lic.daysUsed)
+                                } else {
+                                    "⏳ " + stringResource(R.string.license_status_eval, lic.daysUsed, lic.trialDaysMax)
+                                },
+                                color = if (lic.isTrialExpired) Color(0xFFFFB300) else Cyan,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                            )
+                            Text(
+                                text = stringResource(R.string.eval_dialog_message),
+                                color = Color(0xFFAAAAAA),
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                            )
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onLaunchPlayPurchase(com.vitalfi.billing.PlayBillingManager.PRODUCT_PRO_SUPPORTER)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Cyan,
+                                    contentColor = Color.Black,
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                            ) {
+                                Text("💎 " + stringResource(R.string.eval_btn_buy_license), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onDismiss()
+                                        onOpenEvaluationDialog()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                                ) {
+                                    Text(stringResource(R.string.about_button), fontSize = 11.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        onDismiss()
+                                        onOpenEnterLicenseDialog()
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                                ) {
+                                    Text(stringResource(R.string.eval_btn_enter_key), fontSize = 11.sp)
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = onRestorePlayPurchases,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            ) {
+                                Text(stringResource(R.string.license_btn_restore), fontSize = 11.sp, color = Color(0xFF80CBC4))
+                            }
+                        }
                     }
                 }
             }
@@ -778,49 +1252,96 @@ private fun TrappedFilterControls(
     onClearExclusions: () -> Unit,
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101810)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101912)),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E3322)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                if (state.trappedOnlyMode) "Filtro anti-rescatista activo" else "Modo detección amplia",
-                color = if (state.trappedOnlyMode) RadarGreen else Orange,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-            )
-            state.rubbleZoneLabel?.let { label ->
-                Text(label, color = Cyan, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-            }
-            state.filterStatus?.let { filter ->
-                Text(filter, color = Color(0xFFAAAAAA), fontSize = 11.sp)
-            }
-            if (state.excludedRescuerCount > 0) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    "Sectores excluidos: ${state.excludedRescuerCount}",
-                    color = Color(0xFF888888),
-                    fontSize = 11.sp,
+                    if (state.trappedOnlyMode) "🎯 " + stringResource(R.string.status_filter_trapped_active) else "🌐 " + stringResource(R.string.status_filter_wide_mode),
+                    color = if (state.trappedOnlyMode) Color(0xFF66FF99) else Color(0xFFFF9966),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
                 )
+                if (state.excludedRescuerCount > 0) {
+                    Text(
+                        stringResource(R.string.status_excluded_sectors, state.excludedRescuerCount),
+                        color = Cyan,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
             }
-            Text(
-                stringResource(R.string.mark_rubble_zone_hint),
-                color = Color(0xFF666666),
-                fontSize = 11.sp,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Button(onClick = onMarkRubbleZone) {
-                    Text(stringResource(R.string.mark_rubble_zone), fontSize = 11.sp)
+
+            state.rubbleZoneLabel?.let { label ->
+                Text(label, color = Cyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onMarkRubbleZone,
+                    modifier = Modifier.height(38.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF14241B),
+                        contentColor = Color(0xFFE8F6EF),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF244A32)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                ) {
+                    Text("🎯 " + stringResource(R.string.mark_rubble_zone), fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
                 }
                 if (state.rubbleZoneLabel != null) {
-                    TextButton(onClick = onClearRubbleZone) {
-                        Text("Quitar zona", fontSize = 11.sp)
+                    OutlinedButton(
+                        onClick = onClearRubbleZone,
+                        modifier = Modifier.height(38.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color(0xFF2E1218),
+                            contentColor = Color(0xFFFF3D68),
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5E1B28)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    ) {
+                        Text(stringResource(R.string.status_remove_zone), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
-                Button(onClick = onExcludeRescuer) {
-                    Text(stringResource(R.string.exclude_rescuer), fontSize = 11.sp)
+                OutlinedButton(
+                    onClick = onExcludeRescuer,
+                    modifier = Modifier.height(38.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFF14241B),
+                        contentColor = Color(0xFFE8F6EF),
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF244A32)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                ) {
+                    Text("🚫 " + stringResource(R.string.exclude_rescuer), fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
                 }
                 if (state.excludedRescuerCount > 0) {
-                    TextButton(onClick = onClearExclusions) {
-                        Text(stringResource(R.string.clear_exclusions), fontSize = 11.sp)
+                    OutlinedButton(
+                        onClick = onClearExclusions,
+                        modifier = Modifier.height(38.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color(0xFF2E1218),
+                            contentColor = Color(0xFFFF3D68),
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF5E1B28)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    ) {
+                        Text(stringResource(R.string.clear_exclusions), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -839,17 +1360,25 @@ private fun AboutDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.about_title)) },
+        containerColor = Color(0xFF101A12),
+        title = {
+            Text(
+                stringResource(R.string.about_title),
+                color = Cyan,
+                fontWeight = FontWeight.Bold,
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
-                    color = Color.Gray,
+                    color = Color(0xFF88CC88),
                     fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
                 )
                 Text(
                     stringResource(R.string.about_developer),
-                    color = Color(0xFF888888),
+                    color = Color(0xFFAAAAAA),
                     fontSize = 12.sp,
                 )
                 Text(
@@ -860,12 +1389,12 @@ private fun AboutDialog(
                 )
                 Text(
                     stringResource(R.string.about_company),
-                    color = Color(0xFFAAAAAA),
+                    color = Color(0xFFCCEEDD),
                     fontSize = 13.sp,
                 )
                 Text(
                     stringResource(R.string.about_license),
-                    color = Color(0xFF666666),
+                    color = Color(0xFF88AA88),
                     fontSize = 11.sp,
                 )
                 AboutLink(
@@ -883,8 +1412,90 @@ private fun AboutDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1C2E20),
+                    contentColor = Cyan,
+                ),
+            ) {
                 Text(stringResource(R.string.about_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ForceUpdateDialog(
+    updateInfo: com.vitalfi.update.UpdateInfo,
+    onOpenUrl: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = {}, // Bloqueo total: no descartable
+        containerColor = Color(0xFF141F14),
+        title = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    tint = Cyan,
+                    modifier = Modifier.size(24.dp),
+                )
+                Text(
+                    text = updateInfo.title.ifBlank { stringResource(R.string.update_required_title) },
+                    color = Cyan,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = updateInfo.message.ifBlank { stringResource(R.string.update_required_msg) },
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0D160D)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "${stringResource(R.string.update_current_ver)}: ${BuildConfig.VERSION_NAME} (v${BuildConfig.VERSION_CODE})",
+                            color = Color.Gray,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Text(
+                            text = "${stringResource(R.string.update_new_ver)}: ${updateInfo.latestVersionName} (v${updateInfo.latestVersionCode})",
+                            color = Color(0xFF66FF99),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onOpenUrl(updateInfo.downloadUrl) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Cyan,
+                    contentColor = Color.Black,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    stringResource(R.string.action_update_now),
+                    fontWeight = FontWeight.Bold,
+                )
             }
         },
     )
@@ -906,21 +1517,295 @@ private fun ModeSelector(
     state: VitalFiUiState,
     onConnected: () -> Unit,
     onPassive: () -> Unit,
+    onSetSensingMode: (SensingEngineMode) -> Unit,
+    onSetOpenWrtPort: (Int) -> Unit = {},
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-            selected = state.collectMode == WifiCollectMode.CONNECTED,
-            onClick = onConnected,
-            label = { Text("Conectado") },
-            leadingIcon = { Icon(Icons.Default.Wifi, null) },
-        )
-        FilterChip(
-            selected = state.collectMode == WifiCollectMode.PASSIVE_SCAN,
-            onClick = onPassive,
-            label = { Text("Escaneo pasivo") },
-            leadingIcon = { Icon(Icons.Default.WifiFind, null) },
-        )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF101912), RoundedCornerShape(12.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Selector Principal de Motor de Sensado (Tarjetas grandes táctiles)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val isRssi = state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE
+            val isCsi = state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT
+
+            Card(
+                onClick = { onSetSensingMode(SensingEngineMode.RSSI_NATIVE) },
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isRssi) Color(0xFF1B3822) else Color(0xFF141F16),
+                ),
+                shape = RoundedCornerShape(10.dp),
+                border = if (isRssi) androidx.compose.foundation.BorderStroke(1.5.dp, Cyan) else null,
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("📱", fontSize = 16.sp)
+                        Text(
+                            "Sensado Móvil",
+                            color = if (isRssi) Cyan else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    Text(
+                        "Teléfono Autónomo",
+                        color = Color(0xFFA0BBA0),
+                        fontSize = 10.sp,
+                    )
+                }
+            }
+
+            Card(
+                onClick = { onSetSensingMode(SensingEngineMode.CSI_OPENWRT) },
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isCsi) Color(0xFF1B3822) else Color(0xFF141F16),
+                ),
+                shape = RoundedCornerShape(10.dp),
+                border = if (isCsi) androidx.compose.foundation.BorderStroke(1.5.dp, Cyan) else null,
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("🛰️", fontSize = 16.sp)
+                        Text(
+                            "Sensor RF",
+                            color = if (isCsi) Cyan else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    Text(
+                        if (state.csiConnected) "🟢 Conectado (${state.csiPacketRateHz.toInt()} Hz)" else "📡 Esperando enlace...",
+                        color = if (state.csiConnected) Color(0xFF66FF99) else Color(0xFFFFCC00),
+                        fontSize = 10.sp,
+                        fontWeight = if (state.csiConnected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
+
+        // Sub-opciones cuando está en modo RSSI (Conectado vs Escaneo pasivo)
+        if (state.sensingEngineMode == SensingEngineMode.RSSI_NATIVE) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Modo Wi-Fi:",
+                    color = Color(0xFF88AA88),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                FilterChip(
+                    selected = state.collectMode == WifiCollectMode.CONNECTED,
+                    onClick = onConnected,
+                    label = { Text(stringResource(R.string.mode_connected), fontSize = 11.sp) },
+                    leadingIcon = { Icon(Icons.Default.Wifi, null, modifier = Modifier.size(14.dp)) },
+                )
+                FilterChip(
+                    selected = state.collectMode == WifiCollectMode.PASSIVE_SCAN,
+                    onClick = onPassive,
+                    label = { Text(stringResource(R.string.mode_passive), fontSize = 11.sp) },
+                    leadingIcon = { Icon(Icons.Default.WifiFind, null, modifier = Modifier.size(14.dp)) },
+                )
+            }
+        }
+
+        // Sub-opciones cuando está en modo CSI (Seleccionar Sensor Wi-Fi)
+        if (state.sensingEngineMode == SensingEngineMode.CSI_OPENWRT) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Sensor:",
+                    color = Color(0xFF88AA88),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                FilterChip(
+                    selected = state.ssid.isNotBlank(),
+                    onClick = onPassive,
+                    modifier = Modifier.weight(1f),
+                    label = {
+                        Text(
+                            if (state.ssid.isNotBlank()) "🛰️ ${state.ssid}" else "🔍 Seleccionar Sensor Wi-Fi...",
+                            fontSize = 11.sp,
+                            fontWeight = if (state.ssid.isNotBlank()) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.WifiFind, contentDescription = null, modifier = Modifier.size(14.dp))
+                    },
+                )
+                if (state.csiConnected) {
+                    Text(
+                        "${state.csiPacketRateHz.toInt()} Hz",
+                        color = Color(0xFF66FF99),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun LanguagePickerDialog(
+    currentLanguageCode: String,
+    onLanguageSelected: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredLanguages = remember(searchQuery) {
+        if (searchQuery.isBlank()) {
+            SUPPORTED_LANGUAGES
+        } else {
+            val q = searchQuery.trim().lowercase()
+            SUPPORTED_LANGUAGES.filter {
+                it.nativeName.lowercase().contains(q) ||
+                it.englishName.lowercase().contains(q) ||
+                it.code.lowercase().contains(q)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(R.string.language_picker_title),
+                fontWeight = FontWeight.Bold,
+                color = Cyan,
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(stringResource(R.string.language_search_placeholder)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Cyan) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.Gray)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (filteredLanguages.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            stringResource(R.string.language_search_no_results),
+                            color = Color.Gray,
+                            fontSize = 13.sp,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(filteredLanguages) { lang ->
+                            val isSelected = lang.code == currentLanguageCode
+                            Card(
+                                onClick = {
+                                    onLanguageSelected(lang.code)
+                                    onDismiss()
+                                },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) Color(0xFF1E3A24) else Color(0xFF141F14),
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(lang.flag, fontSize = 18.sp)
+                                        Column {
+                                            Text(
+                                                text = if (lang.code.isEmpty()) stringResource(R.string.settings_language_auto) else lang.nativeName,
+                                                color = if (isSelected) Cyan else Color.White,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 13.sp,
+                                            )
+                                            if (lang.englishName != lang.nativeName && lang.code.isNotEmpty()) {
+                                                Text(
+                                                    text = lang.englishName,
+                                                    color = Color(0xFF888888),
+                                                    fontSize = 11.sp,
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Cyan,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_close))
+            }
+        },
+    )
 }
 
 @Composable
@@ -932,11 +1817,11 @@ private fun NetworkPickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Selecciona red del router") },
+        title = { Text(stringResource(R.string.picker_select_router)) },
         text = {
             if (networks.isEmpty()) {
                 Text(
-                    if (isScanning) "Buscando redes Wi-Fi..."
+                    if (isScanning) stringResource(R.string.picker_scanning)
                     else stringResource(R.string.wifi_required),
                 )
             } else {
@@ -960,93 +1845,179 @@ private fun NetworkPickerDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
     )
 }
 
 @Composable
 private fun StatusCard(state: VitalFiUiState) {
+    val context = LocalContext.current
     val statusColor = when {
         state.isBreathing -> Red
         state.isActivity -> Orange
         state.calibrating -> Color(0xFFFFCC00)
         else -> Cyan
     }
-    val modeLabel = when (state.collectMode) {
-        WifiCollectMode.CONNECTED -> "conectado"
-        WifiCollectMode.PASSIVE_SCAN -> "escaneo pasivo"
-    }
+    val localizedStatus = localizeDynamicStatus(state.status, state.isBreathing, state.isActivity, state.wifiEnabled, context)
+    val localizedHint = localizeDynamicHint(state.hint, context)
+    val localizedProx = localizeDynamicProximity(state.proximity, context)
+
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF121A12)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A13)),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E3322)),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Red: ${state.ssid.ifBlank { "—" }} [$modeLabel]", color = Color.White, fontSize = 13.sp)
-            Text(
-                "Wi-Fi: ${if (state.wifiEnabled) "activo" else "apagado"} | " +
-                    "Monitoreo: ${if (state.monitoring) "sí" else "no"}" +
-                    (if (state.wifiWithoutInternet) " (sin internet)" else "") +
-                    " | ${state.compassLabel}",
-                color = Color(0xFF888888),
-                fontSize = 11.sp,
-            )
-            Text("RSSI: ${state.rssiDbm?.let { "$it dBm" } ?: "—"}", color = Color(0xFFAAAAAA), fontSize = 12.sp)
-            Text(
-                state.mlStatus,
-                color = if (state.mlReady) Color(0xFF66FF99) else Color(0xFF777777),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-            )
-            Text(state.status, color = statusColor, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-            if (state.calibrating) {
-                Text("Calibrando... ${state.calibRemainingSec}s", color = Color(0xFFFFCC00), fontSize = 12.sp)
-            }
-            if (state.rubbleConfidence > 0.05 && !state.calibrating) {
+        Column(
+            Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Fila 1: Red y Estado Técnico Sutil
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    "Confianza escombros: ${"%.0f".format(state.rubbleConfidence * 100)}%",
-                    color = if (state.isBreathing) Red else Orange,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
+                    text = "${state.ssid.ifBlank { "Red Local" }} (${state.rssiDbm?.let { "$it dBm" } ?: "—"})",
+                    color = Color(0xFFA0BBA0),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
                 )
-            }
-            if (state.victims.isNotEmpty()) {
                 Text(
-                    "Personas en sitio: ${state.victims.size} — toca un punto en el radar",
-                    color = RadarGreen,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-            Text(state.hint, color = Color(0xFFAAAAAA), fontSize = 12.sp)
-            if (state.isBreathing || state.isActivity || state.heartBeating || state.position != null) {
-                Text(
-                    "Resp: ${if (state.isBreathing) "SÍ" else "no"} ${"%.0f".format(state.respRate)} rpm | " +
-                        "Pulso: ${if (state.heartBeating) "SÍ" else "no"} ${"%.0f".format(state.heartRateBpm)} lpm | " +
-                        "Conf: ${"%.0f".format(state.confidence * 100)}% | ${state.proximity}",
-                    color = Color.White,
-                    fontSize = 12.sp,
+                    text = "${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)} · ${state.compassLabel}",
+                    color = Cyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                 )
             }
-            Text(
-                "Muestras: ${state.sampleCount}/${state.maxSamples} | Rumbo: ${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)}",
-                color = Color(0xFF666666),
-                fontSize = 11.sp,
-            )
+
+            // Fila 2: Estado Vital Principal (Hero Banner)
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        state.isBreathing -> Color(0xFF2A151C)
+                        state.isActivity -> Color(0xFF2C1E10)
+                        state.calibrating -> Color(0xFF242210)
+                        else -> Color(0xFF132417)
+                    },
+                ),
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    statusColor.copy(alpha = 0.6f),
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        val icon = when {
+                            state.isBreathing -> "🫁"
+                            state.isActivity -> "🚨"
+                            state.calibrating -> "⏳"
+                            else -> "🟢"
+                        }
+                        Text(icon, fontSize = 16.sp)
+                        Text(
+                            text = localizedStatus,
+                            color = statusColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                        )
+                    }
+                    Text(
+                        text = if (state.calibrating) {
+                            stringResource(R.string.status_calibrating, state.calibRemainingSec)
+                        } else {
+                            localizedHint
+                        },
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+
+            // Fila 3: Grid de Métricas Clave (3 Tarjetas pequeñas)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // Confianza
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162418)),
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.victim_vital_confidence), color = Color(0xFF88AA88), fontSize = 9.sp, maxLines = 1)
+                        Text(
+                            "${(state.confidence * 100).roundToInt()}%",
+                            color = if (state.confidence > 0.6) Cyan else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+
+                // Proximidad / Distancia
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162418)),
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.victim_zone), color = Color(0xFF88AA88), fontSize = 9.sp, maxLines = 1)
+                        Text(
+                            localizedProx,
+                            color = Color(0xFFFFCC00),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                        )
+                    }
+                }
+
+                // Escombros
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162418)),
+                    shape = RoundedCornerShape(6.dp),
+                ) {
+                    Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.victim_rubble_confidence), color = Color(0xFF88AA88), fontSize = 9.sp, maxLines = 1)
+                        Text(
+                            "${(state.rubbleConfidence * 100).roundToInt()}%",
+                            color = if (state.rubbleConfidence > 0.4) Color(0xFFFF9966) else Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun NavigationHint(state: VitalFiUiState) {
+    val context = LocalContext.current
     val pos = state.position
     val target = state.selectedVictim ?: state.victims.firstOrNull()
-            if (pos == null && target == null) {
+    if (pos == null && target == null) {
         if (state.rubbleConfidence > 0.12 && (state.isActivity || state.isBreathing)) {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218))) {
                 Text(
-                    text = "🗺️ Búsqueda: gira 360° despacio. Cuando aparezca el punto, alinea la flecha y camina hacia él (como un tesoro).",
+                    text = stringResource(R.string.status_nav_search_prompt),
                     modifier = Modifier.padding(10.dp),
                     color = Color(0xFFFFCC00),
                     fontSize = 13.sp,
@@ -1058,11 +2029,12 @@ private fun NavigationHint(state: VitalFiUiState) {
 
     val targetBearing = target?.bearing ?: pos!!.bearing
     val targetDistance = target?.distance ?: pos!!.distance
-    val steer = buildNavigationHint(targetBearing, state.bearingDeg, targetDistance)
-    val depthLine = pos?.let { " | Prof. est. ~${"%.1f".format(-it.depth)} m (no confirmada)" } ?: ""
+    val steer = buildNavigationHint(context, targetBearing, state.bearingDeg, targetDistance)
+    val depthLine = pos?.let { " | " + stringResource(R.string.pos_depth_est, "%.1f".format(-it.depth)) } ?: ""
+    val headingStr = stringResource(R.string.radar_heading, state.bearingDeg.roundToInt(), bearingToCardinal(state.bearingDeg))
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218))) {
         Text(
-            text = "$steer$depthLine\nTu rumbo: ${state.bearingDeg.roundToInt()}° ${bearingToCardinal(state.bearingDeg)}",
+            text = "$steer$depthLine\n$headingStr",
             modifier = Modifier.padding(10.dp),
             color = Color(0xFFFFCC00),
             fontSize = 13.sp,
@@ -1073,36 +2045,82 @@ private fun NavigationHint(state: VitalFiUiState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> Unit) {
+private fun VictimsSummaryCard(
+    state: VitalFiUiState,
+    onTogglePinVictim: (Int) -> Unit,
+    onInspectVictim: (Int) -> Unit,
+) {
     if (state.victims.isEmpty()) return
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF101810)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                "Atrapadas en el sitio: ${state.victims.size}",
-                color = RadarGreen,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.victims_trapped_count, state.victims.size),
+                    color = RadarGreen,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                )
+                if (state.pinnedVictimId != null) {
+                    val pinned = state.victims.find { it.id == state.pinnedVictimId }
+                    if (pinned != null) {
+                        Text(
+                            "📌 Ruta activa: ${pinned.label}",
+                            color = Cyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 state.victims.forEach { victim ->
+                    val isPinned = state.pinnedVictimId == victim.id
+                    val isSelected = isPinned || state.selectedVictim?.id == victim.id
                     FilterChip(
-                        selected = state.selectedVictim?.id == victim.id,
-                        onClick = { onSelectVictim(victim.id) },
+                        selected = isSelected,
+                        onClick = { onTogglePinVictim(victim.id) },
+                        leadingIcon = {
+                            if (isPinned) {
+                                Text("📌", fontSize = 12.sp)
+                            }
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { onInspectVictim(victim.id) },
+                                modifier = Modifier.size(20.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = "Detalles",
+                                    tint = if (isPinned) Cyan else Color.Gray,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                        },
                         label = {
                             val kind = victimStatusKind(victim)
+                            val pinText = if (isPinned) " [FIJADA]" else ""
+                            val coordsText = if (victim.gpsLat != null) " · 📍${"%.4f".format(victim.gpsLat)}°" else ""
                             Text(
-                                "${victim.label} ${victimStatusIconLabel(kind)} ${"%.1f".format(victim.distance)}m",
+                                "${victim.label}$pinText ${victimStatusIconLabel(kind)} ${"%.2f".format(victim.distance)}m · ↓${"%.2f".format(kotlin.math.abs(victim.depth))}m$coordsText",
                                 fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = if (isPinned) FontWeight.Bold else FontWeight.Normal,
                             )
                         },
                     )
                 }
             }
             Text(
-                "Toca Persona A/B… para ver signos vitales o ponerle un nombre de campo.",
+                stringResource(R.string.victims_touch_hint),
                 color = Color(0xFF777777),
                 fontSize = 11.sp,
             )
@@ -1113,80 +2131,316 @@ private fun VictimsSummaryCard(state: VitalFiUiState, onSelectVictim: (Int) -> U
 @Composable
 private fun VictimDetailDialog(
     victim: TrappedVictim,
+    isPinned: Boolean = false,
     onDismiss: () -> Unit,
+    onTogglePin: () -> Unit,
     onRename: (String) -> Unit,
     phoneBearingDeg: Double,
     colorblind: Boolean = false,
+    liveCsiDimension: String? = null,
+    liveCsiPosture: String? = null,
+    liveCsiRcs: Double? = null,
+    isCsiConnected: Boolean = false,
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val kind = victimStatusKind(victim)
     val color = victimColor(victim, colorblind)
-    val rel = describePersonPosition(victim.x, victim.y, victim.depth, phoneBearingDeg)
-    val horizDist = rel.distanceM
-    val burialM = rel.depthM
+    val rel = describePersonPosition(context, victim.x, victim.y, victim.depth, phoneBearingDeg)
+    val isCsiData = isCsiConnected || victim.bodyDimension.isNotBlank() || victim.bodyPosture.isNotBlank() || victim.status.contains("CSI", ignoreCase = true)
     var nameDraft by remember(victim.id, victim.label) { mutableStateOf(victim.label) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                "${victimStatusIconLabel(kind)} · ${victim.label}",
-                color = color,
-                fontWeight = FontWeight.Bold,
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "${victimStatusIconLabel(kind)} · ${victim.label}",
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                    )
+                    if (isPinned) {
+                        Text("📌", fontSize = 16.sp)
+                    }
+                }
+                Text(
+                    if (isCsiData) "🛰️ WiFi-CSI" else "📱 RSSI",
+                    color = if (isCsiData) Color(0xFF00FFCC) else Color(0xFFFFCC00),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(victim.status, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                if (victim.signatureCode.isNotBlank()) {
-                    VictimDetailRow("Firma Wi‑Fi", victim.signatureCode)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // 1. Banner de Método y Estado Vital General
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isCsiData) Color(0xFF0B1F14) else Color(0xFF1F1C0B),
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            if (isCsiData) "MÉTODO ACTIVO: 🛰️ WiFi-CSI (OFDM 56 Canales)"
+                            else "MÉTODO ACTIVO: 📱 RSSI Nativo (Smartphone)",
+                            color = if (isCsiData) Color(0xFF00FFCC) else Color(0xFFFFCC00),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        Text(
+                            if (isCsiData) victim.status else localizeDynamicStatus(victim.status, victim.isBreathing, victim.isActivity, true, context),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
+
+                // 2. Tarjeta de Ubicación Táctica & Distancia en Tiempo Real
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF121A14)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(
+                            "🎯 UBICACIÓN Y GUÍA DE APROXIMACIÓN",
+                            color = Color(0xFFFFCC00),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        VictimDetailRow(stringResource(R.string.label_distance_from_you), "🎯 ${"%.2f".format(victim.distance)} m")
+                        VictimDetailRow(
+                            stringResource(R.string.label_depth_under_rubble),
+                            if (isCsiData) "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m"
+                            else "⬇ ${"%.2f".format(kotlin.math.abs(victim.depth))} m",
+                        )
+                        VictimDetailRow(
+                            "🧭",
+                            "🧭 ${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)} (${rel.horizontal})",
+                        )
+                        VictimDetailRow("📐 3D", "📐 ${"%.2f".format(rel.slantRangeM)} m")
+                        VictimDetailRow(stringResource(R.string.label_proximity_zone), "${victim.proximity} (~${"%.2f".format(victim.distance)} m)")
+                    }
+                }
+
+                // 3. Tarjeta de Coordenadas Geográficas (Latitud, Longitud, GMS y Acciones)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0C1620)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "📍 COORDENADAS GEOGRÁFICAS (GPS)",
+                                color = Color(0xFF33CCFF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            if (victim.gpsLat != null && victim.gpsLon != null) {
+                                Text(
+                                    "🛰️ GPS Fix",
+                                    color = Color(0xFF00FF88),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+
+                        if (victim.gpsLat != null && victim.gpsLon != null) {
+                            VictimDetailRow(
+                                stringResource(R.string.victim_latitude),
+                                GpsLocationReader.formatLatitudeDecimal(victim.gpsLat),
+                            )
+                            VictimDetailRow(
+                                stringResource(R.string.victim_longitude),
+                                GpsLocationReader.formatLongitudeDecimal(victim.gpsLon),
+                            )
+                            if (victim.gpsGms.isNotBlank()) {
+                                VictimDetailRow(
+                                    stringResource(R.string.victim_gps_gms),
+                                    victim.gpsGms,
+                                )
+                            }
+                        } else {
+                            Text(
+                                "📡 Coordenadas en cálculo (esperando posición satelital del rescatista)...",
+                                color = Color(0xFFAAAAAA),
+                                fontSize = 11.sp,
+                            )
+                        }
+
+                        Spacer(Modifier.height(3.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            // Botón Fijar / Desfijar Ruta en Radar
+                            Button(
+                                onClick = {
+                                    onTogglePin()
+                                    onDismiss()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isPinned) Color(0xFF663311) else Color(0xFF006655),
+                                    contentColor = if (isPinned) Color(0xFFFFCC00) else Color(0xFF00FFCC),
+                                ),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    if (isPinned) stringResource(R.string.victim_unpin_route) else stringResource(R.string.victim_pin_route),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+
+                            // Botón Copiar Coordenadas
+                            if (victim.gpsLat != null && victim.gpsLon != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val textToCopy = "Víctima ${victim.label}: ${GpsLocationReader.formatDecimalCoordinates(victim.gpsLat, victim.gpsLon)} (${victim.gpsGms})"
+                                        clipboardManager.setText(AnnotatedString(textToCopy))
+                                        Toast.makeText(context, context.getString(R.string.victim_coords_copied), Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                ) {
+                                    Text("📋 Copiar", color = Color.White, fontSize = 11.sp)
+                                }
+
+                                // Botón Abrir en Google Maps / GPS
+                                OutlinedButton(
+                                    onClick = {
+                                        val lat = victim.gpsLat
+                                        val lon = victim.gpsLon
+                                        if (lat == null || lon == null) return@OutlinedButton
+                                        var mapOpened = false
+                                        try {
+                                            val geoUri = Uri.parse(GpsLocationReader.buildGoogleMapsGeoUri(lat, lon, victim.label))
+                                            val mapIntent = Intent(Intent.ACTION_VIEW, geoUri).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(mapIntent)
+                                            mapOpened = true
+                                        } catch (_: Throwable) {}
+
+                                        if (!mapOpened) {
+                                            try {
+                                                val webUri = Uri.parse(GpsLocationReader.buildGoogleMapsWebUrl(lat, lon))
+                                                val webIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
+                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                context.startActivity(webIntent)
+                                                mapOpened = true
+                                            } catch (_: Throwable) {}
+                                        }
+
+                                        if (!mapOpened) {
+                                            val textToCopy = "Víctima ${victim.label}: ${GpsLocationReader.formatDecimalCoordinates(lat, lon)} (${victim.gpsGms})"
+                                            clipboardManager.setText(AnnotatedString(textToCopy))
+                                            Toast.makeText(context, "No se encontró app de mapas. Coordenadas copiadas al portapapeles.", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                ) {
+                                    Text("🗺️ Mapas", color = Color(0xFF00FFCC), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Tarjeta de Signos Vitales
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF101815)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(
+                            "🫀 SIGNOS VITALES CONFIRMADOS",
+                            color = Color(0xFF00FFCC),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        VictimDetailRow(
+                            stringResource(R.string.label_respiration),
+                            if (victim.isBreathing && victim.respRate > 0) "🫁 ${"%.1f".format(victim.respRate)} rpm"
+                            else stringResource(R.string.label_not_detected_f),
+                        )
+                        VictimDetailRow(
+                            stringResource(R.string.label_cardiac_pulse),
+                            if (victim.heartBeating && victim.heartRateBpm > 0) "❤️ ${"%.0f".format(victim.heartRateBpm)} lpm"
+                            else stringResource(R.string.label_not_detected_m),
+                        )
+                        VictimDetailRow(stringResource(R.string.label_vital_confidence), "${"%.0f".format(victim.confidence * 100)}%")
+                        VictimDetailRow(stringResource(R.string.label_rubble_confidence), "${"%.0f".format(victim.rubbleConfidence * 100)}%")
+                    }
+                }
+
+                // 5. Tarjeta de Perfil y Dimensiones Corporales (CSI)
+                if (isCsiData) {
+                    val effectiveDimension = victim.bodyDimension.ifBlank { liveCsiDimension ?: "En cálculo de subportadoras..." }
+                    val effectivePosture = victim.bodyPosture.ifBlank { liveCsiPosture ?: "En análisis..." }
+                    val effectiveRcs = if (victim.rcsAreaM2 > 0.0) victim.rcsAreaM2 else (liveCsiRcs ?: 0.0)
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1C18)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(
+                                "📏 CSI",
+                                color = Color(0xFF66FF99),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            VictimDetailRow(stringResource(R.string.label_body_span), "📏 $effectiveDimension")
+                            VictimDetailRow(stringResource(R.string.label_posture_under_rubble), "🧘 $effectivePosture")
+                            if (effectiveRcs > 0.0) {
+                                VictimDetailRow("RCS", "👤 ${"%.2f".format(effectiveRcs)} m²")
+                            }
+                        }
+                    }
+                }
+
+                // 6. Etiqueta / Nombre Táctico
                 OutlinedTextField(
                     value = nameDraft,
                     onValueChange = { nameDraft = it.take(28) },
-                    label = { Text("Nombre de campo") },
-                    placeholder = { Text("Ej. Niño zona norte") },
+                    label = { Text(stringResource(R.string.victim_field_name)) },
+                    placeholder = { Text(stringResource(R.string.victim_field_name_placeholder)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    "Etiqueta local (no identifica identidad civil). Vacío = Persona A/B.",
-                    color = Color(0xFF777777),
-                    fontSize = 10.sp,
-                )
-                Text(
-                    "Mediciones Wi-Fi · iconos = estado (no solo color)",
-                    color = if (colorblind) Color(0xFF80C0FF) else RadarGreen,
-                    fontSize = 11.sp,
-                )
-                VictimDetailRow("Desde ti", rel.horizontal)
-                VictimDetailRow("Vertical", rel.vertical)
-                VictimDetailRow("Distancia horizontal", "${"%.2f".format(horizDist)} m")
-                VictimDetailRow(
-                    "Profundidad",
-                    if (burialM >= 0.12) "~${"%.2f".format(burialM)} m estimados — no confirmados"
-                    else "Profundidad desconocida",
-                )
-                VictimDetailRow("Distancia 3D (recta)", "${"%.2f".format(rel.slantRangeM)} m")
-                VictimDetailRow(
-                    "Rumbo",
-                    "${victim.bearing.roundToInt()}° ${bearingToCardinal(victim.bearing)}",
-                )
-                VictimDetailRow("Zona", "${victim.proximity} (~${"%.1f".format(horizDist)} m)")
-                VictimDetailRow(
-                    "Respirando",
-                    if (victim.isBreathing) "SÍ — ${"%.1f".format(victim.respRate)} rpm" else "No detectado",
-                )
-                VictimDetailRow(
-                    "Corazón latiendo",
-                    if (victim.heartBeating) "SÍ — ${"%.0f".format(victim.heartRateBpm)} lpm" else "No detectado",
-                )
-                VictimDetailRow("Actividad", if (victim.isActivity) "Sí" else "No")
-                VictimDetailRow("Confianza vital", "${"%.0f".format(victim.confidence * 100)}%")
-                VictimDetailRow("Confianza escombros", "${"%.0f".format(victim.rubbleConfidence * 100)}%")
-                Text(
-                    rel.coordsLine,
-                    color = Color(0xFF666666),
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
                 )
             }
         },
@@ -1196,19 +2450,23 @@ private fun VictimDetailDialog(
                     onRename(nameDraft)
                     onDismiss()
                 },
-            ) { Text("Guardar") }
+            ) { Text(stringResource(R.string.action_save), color = Color(0xFF00FFCC), fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close), color = Color.Gray) }
         },
     )
 }
 
 @Composable
 private fun VictimDetailRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color(0xFF888888), fontSize = 13.sp)
-        Text(value, color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Color(0xFFAAAAAA), fontSize = 11.sp)
+        Text(value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
     }
 }
 
@@ -1257,6 +2515,7 @@ fun RadarView(
                 isFakeBoldText = true
             }
         }
+        val context = LocalContext.current
         var canvasSize by remember { mutableStateOf(IntSize.Zero) }
         val divisor = RADAR_DEFAULT_RANGE_M
 
@@ -1288,7 +2547,7 @@ fun RadarView(
                 drawRadarSonarPulse2D(sonarPulse, viewport)
             }
             if (layers.wifi) {
-                drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint, sonarPulse)
+                drawWifiCoverage2D(wifiCoverageRadiusM, divisor, viewport, labelPaint, sonarPulse, context)
                 drawRfEnvironment2D(
                     cells = environmentCells,
                     phoneBearingDeg = bearingDeg,
@@ -1316,6 +2575,7 @@ fun RadarView(
                     labelPaint = labelPaint,
                     tagPaint = tagPaint,
                     colorblind = colorblind,
+                    context = context,
                 )
             }
             drawVictims2D(
@@ -1328,6 +2588,7 @@ fun RadarView(
                 tagPaint,
                 showLabels = layers.labels,
                 colorblind = colorblind,
+                pulsePhase = sonarPulse,
             )
         }
     }
@@ -1338,7 +2599,7 @@ fun SignalChart(samples: List<Double>, modifier: Modifier = Modifier) {
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0D140D)), modifier = modifier) {
         if (samples.size < 2) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Esperando señal Wi-Fi (dBm)...", color = Color.Gray, fontSize = 12.sp)
+                Text(stringResource(R.string.waiting_wifi_signal), color = Color.Gray, fontSize = 12.sp)
             }
         } else {
             Canvas(Modifier.fillMaxSize().padding(8.dp)) {

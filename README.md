@@ -82,8 +82,8 @@ graph LR
     C --> E[Red Mesh BLE Multi-Nodo]
 ```
 
-### 🎯 Tareas abiertas para colaboradores:
-- [ ] **Integración de Hardware CSI (ESP32 / Wi-Fi CSI):** Implementar la recepción de matrices CSI completas (Amplitud y Fase) mediante microcontroladores ESP32 para superar la limitación del RSSI nativo de Android.
+### 🎯 Tareas abiertas y avances:
+- [x] **Integración de Hardware CSI (ESP32-S3 / Wi-Fi CSI):** Firmware PlatformIO disponible en [`firmware/esp32s3/`](firmware/esp32s3/) con captura nativa de matrices OFDM $I/Q$ y streaming UDP v2 a la App.
 - [ ] **Optimización de Procesamiento en Kotlin:** Implementación eficiente de transformadas de Fourier y filtros pasabanda para procesamiento en tiempo real.
 - [ ] **Renderizado de Radar 3D Avanzado:** Mejorar el motor gráfico del radar táctil con Canvas y shaders en Jetpack Compose.
 - [ ] **Sincronización Mesh Multi-Dispositivo:** Red de escaneo coordinado entre varios teléfonos mediante Bluetooth Low Energy (BLE).
@@ -99,8 +99,8 @@ Revisa nuestra [Guía de Contribución (CONTRIBUTING.md)](CONTRIBUTING.md) para 
 | Elemento | Especificación / Notas |
 |----------|------------------------|
 | **Dispositivo Móvil** | Smartphone Android (Android 8.0 / API 26 o superior) |
-| **Emisor Wi-Fi** | Router o AP portátil convencional en la banda de **2.4 GHz** (mayor penetración de obstáculos) |
-| **Opcional (Fase 2)** | Módulo ESP32 habilitado para extracción de CSI |
+| **Sensor CSI Hardware** | **ESP32-S3** (ver guía en [`firmware/`](firmware/)) o router OpenWrt (ath9k) |
+| **Emisor Wi-Fi** | Banda de **2.4 GHz** (mayor penetración en escombros y obstáculos) |
 
 ### Entorno de Desarrollo (Android Nativo)
 - [Android Studio Ladybug / Koala](https://developer.android.com/studio) con JDK 17+
@@ -133,6 +133,7 @@ cd android
 Toda la documentación técnica del proyecto está disponible en la carpeta [`docs/`](docs/):
 
 - 📜 [Términos, Condiciones y Privacidad](docs/TERMINOS_Y_CONDICIONES.md)
+- 💎 [Modelo de Licencia y Evaluación Continua](docs/MODELO_LICENCIA.md)
 - 📖 [Guía para Añadir VitalFi en ORCID](docs/ORCID_ADD_WORK.md)
 - 🔬 [Ficha BibTeX para Importación Académica (`docs/vitalfi.bib`)](docs/vitalfi.bib)
 - 📐 [Fórmula y Fundamento de Detección Vital (PDF)](docs/Formula_Deteccion_VitalFi.pdf)
